@@ -1,0 +1,12 @@
+[package]
+name = "mymusic_daw"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cpal = "0.15"
+midir = "0.9"
+eframe = "0.30"
+egui = "0.30"
+ringbuf = "0.4"
+atomic_float = "1.0"
