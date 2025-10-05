@@ -1,5 +1,6 @@
 // Main UI App UI
 
+use crate::audio::parameters::AtomicF32;
 use crate::messaging::channels::CommandProducer;
 use crate::messaging::command::Command;
 use crate::midi::event::MidiEvent;
@@ -8,15 +9,18 @@ use std::collections::HashSet;
 
 pub struct DawApp {
     command_tx: CommandProducer,
-    volume: f32,
+    volume_atomic: AtomicF32,
+    volume_ui: f32,
     active_notes: HashSet<u8>,
 }
 
 impl DawApp {
-    pub fn new(command_tx: CommandProducer) -> Self {
+    pub fn new(command_tx: CommandProducer, volume_atomic: AtomicF32) -> Self {
+        let initial_volume = volume_atomic.get();
         Self {
             command_tx,
-            volume: 0.5,
+            volume_atomic,
+            volume_ui: initial_volume,
             active_notes: HashSet::new(),
         }
     }
@@ -147,10 +151,13 @@ impl eframe::App for DawApp {
 
             ui.add_space(10.0);
 
-            // Volume control
+            // Volume control (connected to atomic parameter)
             ui.horizontal(|ui| {
                 ui.label("Volume:");
-                ui.add(egui::Slider::new(&mut self.volume, 0.0..=1.0));
+                if ui.add(egui::Slider::new(&mut self.volume_ui, 0.0..=1.0)).changed() {
+                    // Update atomic volume when slider changes
+                    self.volume_atomic.set(self.volume_ui);
+                }
             });
 
             ui.add_space(20.0);

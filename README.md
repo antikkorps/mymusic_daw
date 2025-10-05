@@ -100,7 +100,7 @@ Voir [TODO.md](TODO.md) pour la roadmap complète.
 - [x] MIDI input
 - [x] Oscillateurs de base
 - [x] Polyphonie
-- [ ] UI basique
+- [x] UI basique
 - [ ] Tests d'intégration
 
 ### Phase 2

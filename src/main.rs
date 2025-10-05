@@ -19,7 +19,7 @@ fn main() {
     let (command_tx_midi, command_rx_midi) = create_command_channel(512);
 
     println!("Audio engine initialisation...");
-    let _audio_engine = match AudioEngine::new(command_rx_ui, command_rx_midi) {
+    let audio_engine = match AudioEngine::new(command_rx_ui, command_rx_midi) {
         Ok(engine) => engine,
         Err(e) => {
             eprintln!("ERROR: {}", e);
@@ -44,6 +44,6 @@ fn main() {
     let _ = eframe::run_native(
         "MyMusic DAW",
         native_options,
-        Box::new(|_cc| Ok(Box::new(DawApp::new(command_tx_ui)))),
+        Box::new(|_cc| Ok(Box::new(DawApp::new(command_tx_ui, audio_engine.volume.clone())))),
     );
 }
