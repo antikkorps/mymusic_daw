@@ -15,7 +15,7 @@
 - [x] Créer le système de communication lock-free (ringbuffer)
   - [x] Channel MIDI → Audio
   - [x] Channel UI → Audio
-  - [ ] Atomics pour les paramètres (volume, etc.) - À FAIRE
+  - [x] Atomics pour les paramètres (volume, etc.)
 
 ### Synthèse
 - [x] Implémenter les oscillateurs de base
@@ -37,7 +37,7 @@
 ### Interface utilisateur
 - [x] Créer l'UI de base avec egui/eframe
   - [x] Fenêtre principale
-  - [x] Slider de volume (affiché mais pas connecté)
+  - [x] Slider de volume (connecté via atomics)
   - [ ] Sélecteur de forme d'onde - À FAIRE
   - [x] Visualisation des notes actives
   - [x] Clavier virtuel avec touches PC (A W S E D F T G Y H U J K)

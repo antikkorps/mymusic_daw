@@ -4,6 +4,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, Stream, StreamConfig};
 use std::sync::Arc;
 
+use crate::audio::parameters::AtomicF32;
 use crate::messaging::channels::CommandConsumer;
 use crate::messaging::command::Command;
 use crate::midi::event::MidiEvent;
@@ -13,6 +14,7 @@ pub struct AudioEngine {
     _device: Device,
     _stream: Stream,
     sample_rate: f32,
+    pub volume: AtomicF32,
 }
 
 impl AudioEngine {
@@ -44,6 +46,10 @@ impl AudioEngine {
         let channels = config.channels() as usize;
 
         let config: StreamConfig = config.into();
+
+        // Create atomic volume parameter (shared between UI and audio thread)
+        let volume = AtomicF32::new(0.5); // Default volume: 50%
+        let volume_clone = volume.clone();
 
         // Créer le VoiceManager (pré-alloué, partagé avec le callback)
         let voice_manager = Arc::new(std::sync::Mutex::new(VoiceManager::new(sample_rate)));
@@ -105,8 +111,11 @@ impl AudioEngine {
 
                     // Generate audio samples
                     if let Ok(mut vm) = voice_manager_clone.try_lock() {
+                        // Read volume once per buffer (atomic read)
+                        let current_volume = volume_clone.get();
+
                         for frame in data.chunks_mut(channels) {
-                            let sample = vm.next_sample();
+                            let sample = vm.next_sample() * current_volume;
 
                             // write in all channels (mono → stereo)
                             for channel_sample in frame.iter_mut() {
@@ -142,6 +151,7 @@ impl AudioEngine {
             _device: device,
             _stream: stream,
             sample_rate,
+            volume,
         })
     }
 
