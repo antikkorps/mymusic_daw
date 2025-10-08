@@ -463,6 +463,35 @@ atomic_float = "1.0"    # AtomicF32
 - Documentation inline
 - **IMPORTANT : Tous les commentaires de code doivent être en ANGLAIS**
 
+### Points de vigilance
+
+- **Mesure CPU dans le callback**: éviter `Instant::now()` à chaque buffer; échantillonner 1/N callbacks, accumuler des compteurs atomiques, et calculer/publier hors chemin critique quand possible.
+- **Dispatch oscillateurs**: `Box<dyn Oscillator>` est flexible mais coûte du dispatch dynamique; préférer un `enum OscKind` + `match` (static dispatch) ou des voix spécialisées pour le cœur DSP.
+- **Horodatage MIDI**: ajouter des timestamps relatifs en samples (`samples_from_now`) pour un scheduling sample-accurate et réduire le jitter.
+- **Paramètres atomiques**: stocker les `f32` via `AtomicU32` (bits) et appliquer un smoothing 1‑pole côté audio pour éviter le zipper noise.
+- **Gestion d’erreurs CPAL**: utiliser le callback d’erreur du stream, tenter un redémarrage avec backoff exponentiel borné, et fallback device si nécessaire.
+- **Dénormaux et saturation**: empêcher les denormals (FTZ/DAZ ou offset minuscule) et choisir clamp ou soft clip (ex. tanh) pour [-1, 1].
+- **Formats/buffers CPAL**: gérer `i16/u16` et interleaved vs non‑interleaved de manière explicite et sans allocations.
+- **Priorités threads**: viser une priorité élevée (RT si possible) pour l’audio; jamais de logs/I/O/allocations dans le callback.
+
+### Décisions d'implémentation recommandées
+
+- `MidiEventTimed`:
+  - `struct MidiEventTimed { event: MidiEvent, samples_from_now: u32 }`
+  - Côté thread MIDI: convertir le timestamp en samples au sample rate courant et remplir `samples_from_now`.
+  - Côté audio: consommer et déclencher l’événement à l’échantillon.
+- Monitoring CPU échantillonné:
+  - Mesurer 1/N callbacks et accumuler dans des `AtomicU64` (ns et compteurs), calculer `CPU% = callback_time / (buffer_size / sample_rate)`.
+  - Publier vers l’UI via atomics/ringbuffer à 30–60 Hz max.
+- Paramètres continus:
+  - Représenter `f32` en `AtomicU32` via `to_bits/from_bits`; appliquer un filtre 1‑pole côté audio pour transitions douces.
+- Anti‑dénormaux:
+  - Utilitaire `fn sanitize(sample: f32) -> f32` qui force FTZ ou ajoute un très faible offset pour éviter la chute de perf.
+- Oscillateurs:
+  - Préférer `enum OscKind { Sine, Square, Saw, Triangle }` et un `match` dans la boucle DSP pour du static dispatch.
+- CPAL formats:
+  - Normaliser en interne vers `f32` et gérer conversion depuis/vers `i16/u16` et interleaved/non‑interleaved sans allocations dans le callback.
+
 ### Debugging
 
 - Métriques de performance (temps callback)
@@ -770,6 +799,13 @@ struct SharedState {
 - **Format** : f32 interleaved stereo
 - **MIDI** : Standard MIDI 1.0
 - **Fréquence MIDI** : `440.0 * 2^((note - 69) / 12.0)`
+
+### Décisions plateforme à préciser
+
+- Systèmes cibles prioritaires: macOS (CoreAudio), Windows (WASAPI), Linux (ALSA/Pulse/JACK?)
+- Stratégie de latence: taille de tampon par défaut et options d’ajustement UI
+- Politique de fallback périphériques et reconnection automatique
+- Politique de priorisation threads selon OS (capabilities/limitations)
 
 ## Stratégie de tests
 

@@ -76,18 +76,28 @@
   - [ ] Détection déconnexion périphérique
   - [x] Tentative de reconnexion avec backoff exponentiel
   - [ ] Fallback sur périphérique par défaut
+  - [ ] Handler d'erreurs CPAL (callback d'erreur du stream)
+  - [ ] Redémarrage du stream avec backoff borné (max 2s)
+  - [ ] Journalisation hors callback, notification UI non-bloquante
+
+### Timing et précision (audio/MIDI)
+
+- [ ] Introduire `MidiEventTimed { event, samples_from_now: u32 }`
+- [ ] Timestamp relatif côté thread MIDI (quantification en samples)
+- [ ] Scheduling sample-accurate dans le callback audio
+- [ ] Dimensionner le ringbuffer SPSC pour la pire rafale MIDI
 
 ### Monitoring de la charge CPU
 
-- [ ] Mesure du temps callback audio
-  - [ ] Record start time (Instant)
-  - [ ] Record end time
-  - [ ] Calcul du pourcentage CPU (callback_time / available_time)
-  - [ ] Stockage dans AtomicF32 (accessible UI)
-- [ ] UI du monitoring
-  - [ ] Indicateur CPU dans la barre de statut
-  - [ ] Couleur : vert (<50%), orange (50-75%), rouge (>75%)
-  - [ ] Warning si surcharge détectée
+- [ ] Mesure du temps callback audio (échantillonnée)
+  - [ ] Mesurer 1/N callbacks (N configurable) pour limiter l'overhead
+  - [ ] Accumuler temps total et compteurs dans des atomics
+  - [ ] Calcul CPU% = callback_time / available_time
+  - [ ] Publication vers UI via atomic ou ringbuffer (hors allocations)
+  - [ ] UI du monitoring
+    - [ ] Indicateur CPU dans la barre de statut
+    - [ ] Couleur : vert (<50%), orange (50-75%), rouge (>75%)
+    - [ ] Warning si surcharge détectée
 
 ### Gestion des erreurs UI
 
@@ -101,6 +111,19 @@
   - [ ] Surcharge CPU
   - [ ] Errors génériques
 
+### Hygiène DSP et paramètres
+
+- [ ] Anti-dénormaux (flush-to-zero ou DC offset minuscule)
+- [ ] Clamp ou soft-saturation (ex. tanh) sur la sortie [-1,1]
+- [ ] Smoothing 1-pole pour `volume` et autres paramètres continus
+- [ ] Représenter `f32` en `AtomicU32` via `to_bits/from_bits` (éviter lib)
+
+### Compatibilité formats/buffers CPAL
+
+- [ ] Support `i16` et `u16` en entrée/sortie (conversion sans allocation)
+- [ ] Gérer interleaved vs non-interleaved
+- [ ] Tests de conformité sur plusieurs hosts (CoreAudio/WASAPI/ALSA)
+
 ### Tests et CI/CD
 
 - [ ] Setup CI (GitHub Actions)
@@ -108,10 +131,12 @@
   - [ ] Cargo clippy (linter)
   - [ ] Cargo fmt check (formatting)
   - [ ] Badge de statut dans README
+- [ ] Benchmarks avec Criterion (dev-dependency)
 - [ ] Tests unitaires
   - [ ] Tests oscillateurs (fréquence, amplitude, phase)
   - [ ] Tests Voice Manager (allocation, voice stealing)
   - [ ] Tests MIDI parsing
+  - [ ] Tests anti-dénormaux et smoothing des paramètres
 - [ ] Tests d'intégration
   - [ ] Test MIDI → Audio end-to-end
   - [ ] Test latency benchmark (< 10ms target) (déplacé depuis Phase 1)
