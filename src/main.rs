@@ -1,4 +1,5 @@
 mod audio;
+mod connection;
 mod messaging;
 mod midi;
 mod synth;
@@ -6,7 +7,7 @@ mod ui;
 
 use audio::engine::AudioEngine;
 use messaging::channels::create_command_channel;
-use midi::input::MidiInput;
+use midi::manager::MidiConnectionManager;
 use ui::app::DawApp;
 
 fn main() {
@@ -28,7 +29,7 @@ fn main() {
     };
 
     println!("\nMIDI Initialisation...");
-    let _midi_input = MidiInput::new(command_tx_midi).ok();
+    let midi_manager = MidiConnectionManager::new(command_tx_midi);
 
     println!("\n=== DAW started ! ===\n");
     println!("Graphical UI launching...\n");
@@ -44,6 +45,12 @@ fn main() {
     let _ = eframe::run_native(
         "MyMusic DAW",
         native_options,
-        Box::new(|_cc| Ok(Box::new(DawApp::new(command_tx_ui, audio_engine.volume.clone())))),
+        Box::new(|_cc| {
+            Ok(Box::new(DawApp::new(
+                command_tx_ui,
+                audio_engine.volume.clone(),
+                midi_manager,
+            )))
+        }),
     );
 }

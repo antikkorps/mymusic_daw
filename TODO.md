@@ -72,9 +72,9 @@
   - [x] Menu déroulant pour sélection sortie audio
   - [x] Refresh de la liste des périphériques
   - [x] Sélecteur de forme d'onde (déplacé depuis Phase 1)
-- [ ] Reconnexion automatique
+- [x] Reconnexion automatique
   - [ ] Détection déconnexion périphérique
-  - [ ] Tentative de reconnexion avec backoff exponentiel
+  - [x] Tentative de reconnexion avec backoff exponentiel
   - [ ] Fallback sur périphérique par défaut
 
 ### Monitoring de la charge CPU

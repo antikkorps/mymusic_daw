@@ -2,10 +2,12 @@
 
 use crate::audio::device::{AudioDeviceInfo, AudioDeviceManager};
 use crate::audio::parameters::AtomicF32;
+use crate::connection::status::DeviceStatus;
 use crate::messaging::channels::CommandProducer;
 use crate::messaging::command::Command;
 use crate::midi::device::{MidiDeviceInfo, MidiDeviceManager};
 use crate::midi::event::MidiEvent;
+use crate::midi::manager::MidiConnectionManager;
 use crate::synth::oscillator::WaveformType;
 use eframe::egui;
 use std::collections::HashSet;
@@ -18,6 +20,7 @@ pub struct DawApp {
     // Device management
     audio_device_manager: AudioDeviceManager,
     midi_device_manager: MidiDeviceManager,
+    midi_connection_manager: MidiConnectionManager,
     available_audio_devices: Vec<AudioDeviceInfo>,
     available_midi_devices: Vec<MidiDeviceInfo>,
     selected_audio_device: String,
@@ -27,7 +30,11 @@ pub struct DawApp {
 }
 
 impl DawApp {
-    pub fn new(command_tx: CommandProducer, volume_atomic: AtomicF32) -> Self {
+    pub fn new(
+        command_tx: CommandProducer,
+        volume_atomic: AtomicF32,
+        midi_connection_manager: MidiConnectionManager,
+    ) -> Self {
         let initial_volume = volume_atomic.get();
 
         // Initialiser les gestionnaires de périphériques
@@ -45,11 +52,16 @@ impl DawApp {
             .map(|d| d.name.clone())
             .unwrap_or_default();
 
-        let selected_midi_device = available_midi_devices
-            .iter()
-            .find(|d| d.is_default)
-            .map(|d| d.name.clone())
-            .unwrap_or_default();
+        // Synchroniser avec le device cible du manager MIDI
+        let selected_midi_device = midi_connection_manager
+            .target_device()
+            .unwrap_or_else(|| {
+                available_midi_devices
+                    .iter()
+                    .find(|d| d.is_default)
+                    .map(|d| d.name.clone())
+                    .unwrap_or_default()
+            });
 
         Self {
             command_tx,
@@ -58,6 +70,7 @@ impl DawApp {
             active_notes: HashSet::new(),
             audio_device_manager,
             midi_device_manager,
+            midi_connection_manager,
             available_audio_devices,
             available_midi_devices,
             selected_audio_device,
@@ -202,6 +215,18 @@ impl eframe::App for DawApp {
 
             ui.horizontal(|ui| {
                 ui.label("MIDI Input:");
+
+                // Status indicator avec couleur
+                let midi_status = self.midi_connection_manager.status();
+                let (status_text, status_color) = match midi_status {
+                    DeviceStatus::Connected => ("●", egui::Color32::GREEN),
+                    DeviceStatus::Connecting => ("●", egui::Color32::YELLOW),
+                    DeviceStatus::Disconnected => ("○", egui::Color32::GRAY),
+                    DeviceStatus::Error => ("●", egui::Color32::RED),
+                };
+                ui.colored_label(status_color, status_text);
+
+                let previous_device = self.selected_midi_device.clone();
                 egui::ComboBox::from_id_salt("midi_device_selector")
                     .selected_text(&self.selected_midi_device)
                     .show_ui(ui, |ui| {
@@ -218,6 +243,11 @@ impl eframe::App for DawApp {
                             }
                         }
                     });
+
+                // Si le device a changé, déclencher la reconnexion
+                if previous_device != self.selected_midi_device {
+                    self.midi_connection_manager.set_target_device(self.selected_midi_device.clone());
+                }
 
                 if ui.button("🔄").on_hover_text("Refresh devices").clicked() {
                     self.refresh_devices();
