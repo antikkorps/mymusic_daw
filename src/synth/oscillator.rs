@@ -8,7 +8,7 @@ pub trait Oscillator {
     fn reset(&mut self);
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum WaveformType {
     Sine,
     Square,

@@ -87,6 +87,9 @@ impl AudioEngine {
                             Command::SetVolume(_vol) => {
                                 // TODO: implement volume control
                             }
+                            Command::SetWaveform(waveform) => {
+                                vm.set_waveform(waveform);
+                            }
                             Command::Quit => {}
                         }
                     };

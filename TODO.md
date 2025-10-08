@@ -43,7 +43,6 @@
 - [x] Créer l'UI de base avec egui/eframe
   - [x] Fenêtre principale
   - [x] Slider de volume (connecté via atomics)
-  - [ ] Sélecteur de forme d'onde - À FAIRE
   - [x] Visualisation des notes actives
   - [x] Clavier virtuel avec touches PC (A W S E D F T G Y H U J K)
   - [x] Clavier virtuel cliquable
@@ -53,7 +52,6 @@
 - [x] Tester l'intégration complète (MIDI → Synth → Audio out)
   - [x] Test avec clavier MIDI externe (détection auto)
   - [x] Test avec clavier PC virtuel
-  - [ ] Test de latence - À MESURER
   - [x] Test de stabilité du callback audio (fonctionnel)
 
 ---
@@ -65,14 +63,15 @@
 
 ### Gestion des périphériques audio/MIDI
 
-- [ ] Énumération des périphériques disponibles
-  - [ ] Lister périphériques audio (entrée/sortie)
-  - [ ] Lister ports MIDI
-  - [ ] Stocker infos périphériques (nom, ID, statut)
-- [ ] UI de sélection
-  - [ ] Menu déroulant pour sélection entrée MIDI
-  - [ ] Menu déroulant pour sélection sortie audio
-  - [ ] Refresh de la liste des périphériques
+- [x] Énumération des périphériques disponibles
+  - [x] Lister périphériques audio (entrée/sortie)
+  - [x] Lister ports MIDI
+  - [x] Stocker infos périphériques (nom, ID, statut)
+- [x] UI de sélection
+  - [x] Menu déroulant pour sélection entrée MIDI
+  - [x] Menu déroulant pour sélection sortie audio
+  - [x] Refresh de la liste des périphériques
+  - [x] Sélecteur de forme d'onde (déplacé depuis Phase 1)
 - [ ] Reconnexion automatique
   - [ ] Détection déconnexion périphérique
   - [ ] Tentative de reconnexion avec backoff exponentiel
@@ -115,7 +114,7 @@
   - [ ] Tests MIDI parsing
 - [ ] Tests d'intégration
   - [ ] Test MIDI → Audio end-to-end
-  - [ ] Test latency benchmark (< 10ms target)
+  - [ ] Test latency benchmark (< 10ms target) (déplacé depuis Phase 1)
   - [ ] Test stabilité (run 1h sans crash)
 
 ### Documentation et communauté

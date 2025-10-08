@@ -1,9 +1,12 @@
 // Main UI App UI
 
+use crate::audio::device::{AudioDeviceInfo, AudioDeviceManager};
 use crate::audio::parameters::AtomicF32;
 use crate::messaging::channels::CommandProducer;
 use crate::messaging::command::Command;
+use crate::midi::device::{MidiDeviceInfo, MidiDeviceManager};
 use crate::midi::event::MidiEvent;
+use crate::synth::oscillator::WaveformType;
 use eframe::egui;
 use std::collections::HashSet;
 
@@ -12,17 +15,60 @@ pub struct DawApp {
     volume_atomic: AtomicF32,
     volume_ui: f32,
     active_notes: HashSet<u8>,
+    // Device management
+    audio_device_manager: AudioDeviceManager,
+    midi_device_manager: MidiDeviceManager,
+    available_audio_devices: Vec<AudioDeviceInfo>,
+    available_midi_devices: Vec<MidiDeviceInfo>,
+    selected_audio_device: String,
+    selected_midi_device: String,
+    // Synth parameters
+    selected_waveform: WaveformType,
 }
 
 impl DawApp {
     pub fn new(command_tx: CommandProducer, volume_atomic: AtomicF32) -> Self {
         let initial_volume = volume_atomic.get();
+
+        // Initialiser les gestionnaires de périphériques
+        let audio_device_manager = AudioDeviceManager::new();
+        let midi_device_manager = MidiDeviceManager::new();
+
+        // Énumérer les périphériques disponibles
+        let available_audio_devices = audio_device_manager.list_output_devices();
+        let available_midi_devices = midi_device_manager.list_input_ports();
+
+        // Sélectionner les périphériques par défaut
+        let selected_audio_device = available_audio_devices
+            .iter()
+            .find(|d| d.is_default)
+            .map(|d| d.name.clone())
+            .unwrap_or_default();
+
+        let selected_midi_device = available_midi_devices
+            .iter()
+            .find(|d| d.is_default)
+            .map(|d| d.name.clone())
+            .unwrap_or_default();
+
         Self {
             command_tx,
             volume_atomic,
             volume_ui: initial_volume,
             active_notes: HashSet::new(),
+            audio_device_manager,
+            midi_device_manager,
+            available_audio_devices,
+            available_midi_devices,
+            selected_audio_device,
+            selected_midi_device,
+            selected_waveform: WaveformType::Sine,
         }
+    }
+
+    fn refresh_devices(&mut self) {
+        self.available_audio_devices = self.audio_device_manager.list_output_devices();
+        self.available_midi_devices = self.midi_device_manager.list_input_ports();
     }
 
     fn send_note_on(&mut self, note: u8) {
@@ -151,12 +197,87 @@ impl eframe::App for DawApp {
 
             ui.add_space(10.0);
 
+            // === Device Selection Section ===
+            ui.heading("Devices");
+
+            ui.horizontal(|ui| {
+                ui.label("MIDI Input:");
+                egui::ComboBox::from_id_salt("midi_device_selector")
+                    .selected_text(&self.selected_midi_device)
+                    .show_ui(ui, |ui| {
+                        if self.available_midi_devices.is_empty() {
+                            ui.label("No MIDI device available");
+                        } else {
+                            for device in &self.available_midi_devices {
+                                let label = if device.is_default {
+                                    format!("{} (default)", device.name)
+                                } else {
+                                    device.name.clone()
+                                };
+                                ui.selectable_value(&mut self.selected_midi_device, device.name.clone(), label);
+                            }
+                        }
+                    });
+
+                if ui.button("🔄").on_hover_text("Refresh devices").clicked() {
+                    self.refresh_devices();
+                }
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("Audio Output:");
+                egui::ComboBox::from_id_salt("audio_device_selector")
+                    .selected_text(&self.selected_audio_device)
+                    .show_ui(ui, |ui| {
+                        if self.available_audio_devices.is_empty() {
+                            ui.label("No audio device available");
+                        } else {
+                            for device in &self.available_audio_devices {
+                                let label = if device.is_default {
+                                    format!("{} (default)", device.name)
+                                } else {
+                                    device.name.clone()
+                                };
+                                ui.selectable_value(&mut self.selected_audio_device, device.name.clone(), label);
+                            }
+                        }
+                    });
+            });
+
+            ui.add_space(10.0);
+            ui.separator();
+
             // Volume control (connected to atomic parameter)
             ui.horizontal(|ui| {
                 ui.label("Volume:");
                 if ui.add(egui::Slider::new(&mut self.volume_ui, 0.0..=1.0)).changed() {
                     // Update atomic volume when slider changes
                     self.volume_atomic.set(self.volume_ui);
+                }
+            });
+
+            // Waveform selection
+            ui.horizontal(|ui| {
+                ui.label("Waveform:");
+                let previous_waveform = self.selected_waveform;
+                egui::ComboBox::from_id_salt("waveform_selector")
+                    .selected_text(match self.selected_waveform {
+                        WaveformType::Sine => "Sine",
+                        WaveformType::Square => "Square",
+                        WaveformType::Saw => "Saw",
+                        WaveformType::Triangle => "Triangle",
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut self.selected_waveform, WaveformType::Sine, "Sine");
+                        ui.selectable_value(&mut self.selected_waveform, WaveformType::Square, "Square");
+                        ui.selectable_value(&mut self.selected_waveform, WaveformType::Saw, "Saw");
+                        ui.selectable_value(&mut self.selected_waveform, WaveformType::Triangle, "Triangle");
+                    });
+
+                // Send command if waveform changed
+                if previous_waveform != self.selected_waveform {
+                    let cmd = Command::SetWaveform(self.selected_waveform);
+                    let _ = ringbuf::traits::Producer::try_push(&mut self.command_tx, cmd);
                 }
             });
 
