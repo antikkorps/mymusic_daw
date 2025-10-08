@@ -1,5 +1,6 @@
 // Voice Manager - Polyphony handling
 
+use super::oscillator::WaveformType;
 use super::voice::Voice;
 
 const MAX_VOICES: usize = 16;
@@ -37,8 +38,15 @@ impl VoiceManager {
         }
     }
 
+    pub fn set_waveform(&mut self, waveform: WaveformType) {
+        // Change waveform for all voices
+        for voice in &mut self.voices {
+            voice.set_waveform(waveform);
+        }
+    }
+
     pub fn next_sample(&mut self) -> f32 {
         // Mix all the active voices
-        self.voices.iter_mut().map(|v| v.next_sample()).sum::<f32>() / MAX_VOICES as f32 // simple normalization
+        self.voices.iter_mut().map(|v| v.next_sample()).sum::<f32>() / 4.0 // gain constant raisonnable
     }
 }

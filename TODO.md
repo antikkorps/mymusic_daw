@@ -43,7 +43,6 @@
 - [x] Créer l'UI de base avec egui/eframe
   - [x] Fenêtre principale
   - [x] Slider de volume (connecté via atomics)
-  - [ ] Sélecteur de forme d'onde - À FAIRE
   - [x] Visualisation des notes actives
   - [x] Clavier virtuel avec touches PC (A W S E D F T G Y H U J K)
   - [x] Clavier virtuel cliquable
@@ -53,7 +52,6 @@
 - [x] Tester l'intégration complète (MIDI → Synth → Audio out)
   - [x] Test avec clavier MIDI externe (détection auto)
   - [x] Test avec clavier PC virtuel
-  - [ ] Test de latence - À MESURER
   - [x] Test de stabilité du callback audio (fonctionnel)
 
 ---
@@ -65,30 +63,41 @@
 
 ### Gestion des périphériques audio/MIDI
 
-- [ ] Énumération des périphériques disponibles
-  - [ ] Lister périphériques audio (entrée/sortie)
-  - [ ] Lister ports MIDI
-  - [ ] Stocker infos périphériques (nom, ID, statut)
-- [ ] UI de sélection
-  - [ ] Menu déroulant pour sélection entrée MIDI
-  - [ ] Menu déroulant pour sélection sortie audio
-  - [ ] Refresh de la liste des périphériques
-- [ ] Reconnexion automatique
+- [x] Énumération des périphériques disponibles
+  - [x] Lister périphériques audio (entrée/sortie)
+  - [x] Lister ports MIDI
+  - [x] Stocker infos périphériques (nom, ID, statut)
+- [x] UI de sélection
+  - [x] Menu déroulant pour sélection entrée MIDI
+  - [x] Menu déroulant pour sélection sortie audio
+  - [x] Refresh de la liste des périphériques
+  - [x] Sélecteur de forme d'onde (déplacé depuis Phase 1)
+- [x] Reconnexion automatique
   - [ ] Détection déconnexion périphérique
-  - [ ] Tentative de reconnexion avec backoff exponentiel
+  - [x] Tentative de reconnexion avec backoff exponentiel
   - [ ] Fallback sur périphérique par défaut
+  - [ ] Handler d'erreurs CPAL (callback d'erreur du stream)
+  - [ ] Redémarrage du stream avec backoff borné (max 2s)
+  - [ ] Journalisation hors callback, notification UI non-bloquante
+
+### Timing et précision (audio/MIDI)
+
+- [ ] Introduire `MidiEventTimed { event, samples_from_now: u32 }`
+- [ ] Timestamp relatif côté thread MIDI (quantification en samples)
+- [ ] Scheduling sample-accurate dans le callback audio
+- [ ] Dimensionner le ringbuffer SPSC pour la pire rafale MIDI
 
 ### Monitoring de la charge CPU
 
-- [ ] Mesure du temps callback audio
-  - [ ] Record start time (Instant)
-  - [ ] Record end time
-  - [ ] Calcul du pourcentage CPU (callback_time / available_time)
-  - [ ] Stockage dans AtomicF32 (accessible UI)
-- [ ] UI du monitoring
-  - [ ] Indicateur CPU dans la barre de statut
-  - [ ] Couleur : vert (<50%), orange (50-75%), rouge (>75%)
-  - [ ] Warning si surcharge détectée
+- [ ] Mesure du temps callback audio (échantillonnée)
+  - [ ] Mesurer 1/N callbacks (N configurable) pour limiter l'overhead
+  - [ ] Accumuler temps total et compteurs dans des atomics
+  - [ ] Calcul CPU% = callback_time / available_time
+  - [ ] Publication vers UI via atomic ou ringbuffer (hors allocations)
+  - [ ] UI du monitoring
+    - [ ] Indicateur CPU dans la barre de statut
+    - [ ] Couleur : vert (<50%), orange (50-75%), rouge (>75%)
+    - [ ] Warning si surcharge détectée
 
 ### Gestion des erreurs UI
 
@@ -102,6 +111,19 @@
   - [ ] Surcharge CPU
   - [ ] Errors génériques
 
+### Hygiène DSP et paramètres
+
+- [ ] Anti-dénormaux (flush-to-zero ou DC offset minuscule)
+- [ ] Clamp ou soft-saturation (ex. tanh) sur la sortie [-1,1]
+- [ ] Smoothing 1-pole pour `volume` et autres paramètres continus
+- [ ] Représenter `f32` en `AtomicU32` via `to_bits/from_bits` (éviter lib)
+
+### Compatibilité formats/buffers CPAL
+
+- [ ] Support `i16` et `u16` en entrée/sortie (conversion sans allocation)
+- [ ] Gérer interleaved vs non-interleaved
+- [ ] Tests de conformité sur plusieurs hosts (CoreAudio/WASAPI/ALSA)
+
 ### Tests et CI/CD
 
 - [ ] Setup CI (GitHub Actions)
@@ -109,13 +131,15 @@
   - [ ] Cargo clippy (linter)
   - [ ] Cargo fmt check (formatting)
   - [ ] Badge de statut dans README
+- [ ] Benchmarks avec Criterion (dev-dependency)
 - [ ] Tests unitaires
   - [ ] Tests oscillateurs (fréquence, amplitude, phase)
   - [ ] Tests Voice Manager (allocation, voice stealing)
   - [ ] Tests MIDI parsing
+  - [ ] Tests anti-dénormaux et smoothing des paramètres
 - [ ] Tests d'intégration
   - [ ] Test MIDI → Audio end-to-end
-  - [ ] Test latency benchmark (< 10ms target)
+  - [ ] Test latency benchmark (< 10ms target) (déplacé depuis Phase 1)
   - [ ] Test stabilité (run 1h sans crash)
 
 ### Documentation et communauté
