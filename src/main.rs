@@ -50,6 +50,7 @@ fn main() {
                 command_tx_ui,
                 audio_engine.volume.clone(),
                 midi_manager,
+                audio_engine.cpu_monitor.clone(),
             )))
         }),
     );

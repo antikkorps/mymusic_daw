@@ -1,2 +1,4 @@
 /target
 .env
+# macOS Finder metadata should not be versioned
+.DS_Store

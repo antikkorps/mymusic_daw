@@ -4,3 +4,5 @@ pub mod engine;
 pub mod device;
 pub mod buffer;
 pub mod parameters;
+pub mod dsp_utils;
+pub mod cpu_monitor;

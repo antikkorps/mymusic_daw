@@ -1,5 +1,6 @@
 // Main UI App UI
 
+use crate::audio::cpu_monitor::CpuMonitor;
 use crate::audio::device::{AudioDeviceInfo, AudioDeviceManager};
 use crate::audio::parameters::AtomicF32;
 use crate::connection::status::DeviceStatus;
@@ -27,6 +28,8 @@ pub struct DawApp {
     selected_midi_device: String,
     // Synth parameters
     selected_waveform: WaveformType,
+    // CPU monitoring
+    cpu_monitor: CpuMonitor,
 }
 
 impl DawApp {
@@ -34,6 +37,7 @@ impl DawApp {
         command_tx: CommandProducer,
         volume_atomic: AtomicF32,
         midi_connection_manager: MidiConnectionManager,
+        cpu_monitor: CpuMonitor,
     ) -> Self {
         let initial_volume = volume_atomic.get();
 
@@ -76,6 +80,7 @@ impl DawApp {
             selected_audio_device,
             selected_midi_device,
             selected_waveform: WaveformType::Sine,
+            cpu_monitor,
         }
     }
 
@@ -311,7 +316,33 @@ impl eframe::App for DawApp {
                 }
             });
 
-            ui.add_space(20.0);
+            ui.add_space(10.0);
+            ui.separator();
+
+            // CPU Monitor
+            ui.horizontal(|ui| {
+                let cpu_percentage = self.cpu_monitor.get_cpu_percentage();
+                let load_level = self.cpu_monitor.get_load_level();
+
+                ui.label("CPU:");
+
+                // Color based on load level
+                let (cpu_color, status_text) = match load_level {
+                    crate::audio::cpu_monitor::CpuLoad::Low => (egui::Color32::GREEN, "●"),
+                    crate::audio::cpu_monitor::CpuLoad::Medium => (egui::Color32::from_rgb(255, 165, 0), "●"), // Orange
+                    crate::audio::cpu_monitor::CpuLoad::High => (egui::Color32::RED, "●"),
+                };
+
+                ui.colored_label(cpu_color, status_text);
+                ui.label(format!("{:.1}%", cpu_percentage));
+
+                // Show warning if CPU is high
+                if matches!(load_level, crate::audio::cpu_monitor::CpuLoad::High) {
+                    ui.colored_label(egui::Color32::RED, "⚠ High CPU load!");
+                }
+            });
+
+            ui.add_space(10.0);
 
             // Virtual Keyboard
             self.draw_keyboard(ui);

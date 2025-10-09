@@ -6,6 +6,8 @@ Ce DAW est construit autour d'une architecture modulaire qui respecte les contra
 
 ## Principes architecturaux fondamentaux
 
+**IMPORTANT : Tous les commentaires de code, documentation inline et messages de commit doivent être en ANGLAIS.**
+
 ### 1. **Séparation stricte des threads**
 
 - **Thread UI** (egui/eframe) : Interface utilisateur, interactions
