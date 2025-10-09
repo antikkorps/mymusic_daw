@@ -89,15 +89,15 @@
 
 ### Monitoring de la charge CPU
 
-- [ ] Mesure du temps callback audio (échantillonnée)
-  - [ ] Mesurer 1/N callbacks (N configurable) pour limiter l'overhead
-  - [ ] Accumuler temps total et compteurs dans des atomics
-  - [ ] Calcul CPU% = callback_time / available_time
-  - [ ] Publication vers UI via atomic ou ringbuffer (hors allocations)
-  - [ ] UI du monitoring
-    - [ ] Indicateur CPU dans la barre de statut
-    - [ ] Couleur : vert (<50%), orange (50-75%), rouge (>75%)
-    - [ ] Warning si surcharge détectée
+- [x] Mesure du temps callback audio (échantillonnée)
+  - [x] Mesurer 1/N callbacks (N configurable) pour limiter l'overhead
+  - [x] Accumuler temps total et compteurs dans des atomics
+  - [x] Calcul CPU% = callback_time / available_time
+  - [x] Publication vers UI via atomic ou ringbuffer (hors allocations)
+  - [x] UI du monitoring
+    - [x] Indicateur CPU dans la barre de statut
+    - [x] Couleur : vert (<50%), orange (50-75%), rouge (>75%)
+    - [x] Warning si surcharge détectée
 
 ### Gestion des erreurs UI
 
@@ -113,10 +113,10 @@
 
 ### Hygiène DSP et paramètres
 
-- [ ] Anti-dénormaux (flush-to-zero ou DC offset minuscule)
-- [ ] Clamp ou soft-saturation (ex. tanh) sur la sortie [-1,1]
-- [ ] Smoothing 1-pole pour `volume` et autres paramètres continus
-- [ ] Représenter `f32` en `AtomicU32` via `to_bits/from_bits` (éviter lib)
+- [x] Anti-dénormaux (flush-to-zero ou DC offset minuscule)
+- [x] Clamp ou soft-saturation (ex. tanh) sur la sortie [-1,1]
+- [x] Smoothing 1-pole pour `volume` et autres paramètres continus
+- [x] Représenter `f32` en `AtomicU32` via `to_bits/from_bits` (éviter lib)
 
 ### Compatibilité formats/buffers CPAL
 
@@ -126,17 +126,18 @@
 
 ### Tests et CI/CD
 
-- [ ] Setup CI (GitHub Actions)
+- [ ] Setup CI (GitHub Actions) - **À FAIRE PLUS TARD (après Phase 1.5)**
+  - [ ] Créer .github/workflows/test.yml
   - [ ] Tests unitaires auto sur chaque commit
   - [ ] Cargo clippy (linter)
   - [ ] Cargo fmt check (formatting)
   - [ ] Badge de statut dans README
 - [ ] Benchmarks avec Criterion (dev-dependency)
-- [ ] Tests unitaires
-  - [ ] Tests oscillateurs (fréquence, amplitude, phase)
-  - [ ] Tests Voice Manager (allocation, voice stealing)
-  - [ ] Tests MIDI parsing
-  - [ ] Tests anti-dénormaux et smoothing des paramètres
+- [x] Tests unitaires
+  - [x] Tests oscillateurs (fréquence, amplitude, phase) - 8 tests
+  - [x] Tests Voice Manager (allocation, voice stealing) - 8 tests
+  - [x] Tests MIDI parsing - 11 tests
+  - [x] Tests anti-dénormaux et smoothing des paramètres - 4 tests
 - [ ] Tests d'intégration
   - [ ] Test MIDI → Audio end-to-end
   - [ ] Test latency benchmark (< 10ms target) (déplacé depuis Phase 1)

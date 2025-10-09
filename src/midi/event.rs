@@ -68,3 +68,149 @@ impl MidiEvent {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_note_on() {
+        let bytes = [0x90, 60, 100]; // Note On, note 60 (C4), velocity 100
+        let event = MidiEvent::from_bytes(&bytes).unwrap();
+
+        match event {
+            MidiEvent::NoteOn { note, velocity } => {
+                assert_eq!(note, 60);
+                assert_eq!(velocity, 100);
+            }
+            _ => panic!("Expected NoteOn event"),
+        }
+    }
+
+    #[test]
+    fn test_note_off_explicit() {
+        let bytes = [0x80, 60, 0]; // Note Off, note 60
+        let event = MidiEvent::from_bytes(&bytes).unwrap();
+
+        match event {
+            MidiEvent::NoteOff { note } => {
+                assert_eq!(note, 60);
+            }
+            _ => panic!("Expected NoteOff event"),
+        }
+    }
+
+    #[test]
+    fn test_note_off_velocity_zero() {
+        // Note On avec velocity 0 = Note Off
+        let bytes = [0x90, 64, 0];
+        let event = MidiEvent::from_bytes(&bytes).unwrap();
+
+        match event {
+            MidiEvent::NoteOff { note } => {
+                assert_eq!(note, 64);
+            }
+            _ => panic!("Expected NoteOff event (velocity 0)"),
+        }
+    }
+
+    #[test]
+    fn test_control_change() {
+        let bytes = [0xB0, 7, 127]; // CC, controller 7 (volume), value 127
+        let event = MidiEvent::from_bytes(&bytes).unwrap();
+
+        match event {
+            MidiEvent::ControlChange { controller, value } => {
+                assert_eq!(controller, 7);
+                assert_eq!(value, 127);
+            }
+            _ => panic!("Expected ControlChange event"),
+        }
+    }
+
+    #[test]
+    fn test_pitch_bend() {
+        let bytes = [0xE0, 0x00, 0x40]; // Pitch Bend, valeur centrée
+        let event = MidiEvent::from_bytes(&bytes).unwrap();
+
+        match event {
+            MidiEvent::PitchBend { value } => {
+                // 0x40 << 7 | 0x00 = 8192 (centre)
+                assert_eq!(value, 8192);
+            }
+            _ => panic!("Expected PitchBend event"),
+        }
+    }
+
+    #[test]
+    fn test_invalid_empty_message() {
+        let bytes = [];
+        let event = MidiEvent::from_bytes(&bytes);
+        assert!(event.is_none());
+    }
+
+    #[test]
+    fn test_invalid_incomplete_message() {
+        let bytes = [0x90, 60]; // Note On sans velocity
+        let event = MidiEvent::from_bytes(&bytes);
+        assert!(event.is_none());
+    }
+
+    #[test]
+    fn test_invalid_unknown_status() {
+        let bytes = [0xF0, 0x00, 0x00]; // Status inconnu
+        let event = MidiEvent::from_bytes(&bytes);
+        assert!(event.is_none());
+    }
+
+    #[test]
+    fn test_midi_channel_ignored() {
+        // Le channel (4 bits de poids faible) doit être ignoré
+        let bytes1 = [0x90, 60, 100]; // Channel 0
+        let bytes2 = [0x9F, 60, 100]; // Channel 15
+
+        let event1 = MidiEvent::from_bytes(&bytes1).unwrap();
+        let event2 = MidiEvent::from_bytes(&bytes2).unwrap();
+
+        // Les deux doivent être des NoteOn identiques
+        match (event1, event2) {
+            (MidiEvent::NoteOn { note: n1, velocity: v1 }, MidiEvent::NoteOn { note: n2, velocity: v2 }) => {
+                assert_eq!(n1, n2);
+                assert_eq!(v1, v2);
+            }
+            _ => panic!("Expected both to be NoteOn events"),
+        }
+    }
+
+    #[test]
+    fn test_valid_note_range() {
+        // Tester différentes notes MIDI valides
+        for note_num in [0, 60, 127] {
+            let bytes = [0x90, note_num, 100];
+            let event = MidiEvent::from_bytes(&bytes).unwrap();
+
+            match event {
+                MidiEvent::NoteOn { note, .. } => {
+                    assert_eq!(note, note_num);
+                }
+                _ => panic!("Expected NoteOn"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_velocity_range() {
+        // Tester différentes vélocités valides
+        for vel in [1, 64, 127] {
+            let bytes = [0x90, 60, vel];
+            let event = MidiEvent::from_bytes(&bytes).unwrap();
+
+            match event {
+                MidiEvent::NoteOn { velocity, .. } => {
+                    assert_eq!(velocity, vel);
+                }
+                _ => panic!("Expected NoteOn"),
+            }
+        }
+    }
+}
