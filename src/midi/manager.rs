@@ -27,6 +27,19 @@ impl MidiConnectionManager {
         let target_device = Arc::new(Mutex::new(None));
         let command_tx = Arc::new(Mutex::new(command_tx));
 
+        // Check if MIDI is available (WSL-friendly)
+        let midi_available = Self::is_midi_available();
+        if !midi_available {
+            println!("⚠ MIDI not available - running without MIDI support");
+            return Self {
+                connection,
+                status,
+                target_device,
+                command_tx,
+                _monitor_thread: None,
+            };
+        }
+
         // Créer une instance et lancer le monitoring
         let mut manager = Self {
             connection: connection.clone(),
@@ -49,6 +62,15 @@ impl MidiConnectionManager {
 
         manager._monitor_thread = Some(monitor_thread);
         manager
+    }
+
+    /// Check if MIDI subsystem is available (WSL-friendly)
+    fn is_midi_available() -> bool {
+        // Try to initialize MIDI input to check availability
+        match MidirInput::new("MIDI Availability Check") {
+            Ok(_) => true,
+            Err(_) => false,
+        }
     }
 
     /// Tente de se connecter au premier device MIDI disponible
@@ -159,6 +181,7 @@ impl MidiConnectionManager {
     ) -> thread::JoinHandle<()> {
         thread::spawn(move || {
             let mut reconnect_strategy = ReconnectionStrategy::new();
+            let mut consecutive_failures = 0;
 
             loop {
                 thread::sleep(Duration::from_secs(2)); // Polling toutes les 2 secondes
@@ -183,7 +206,14 @@ impl MidiConnectionManager {
                             let midi_in = match MidirInput::new("MyMusic DAW MIDI Fallback") {
                                 Ok(m) => m,
                                 Err(_) => {
-                                    thread::sleep(Duration::from_secs(30));
+                                    consecutive_failures += 1;
+                                    // If MIDI has failed many times, wait longer (WSL-friendly)
+                                    let wait_time = if consecutive_failures > 5 {
+                                        Duration::from_secs(30)
+                                    } else {
+                                        Duration::from_secs(5)
+                                    };
+                                    thread::sleep(wait_time);
                                     reconnect_strategy.reset();
                                     continue;
                                 }
