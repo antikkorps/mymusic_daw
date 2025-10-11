@@ -6,9 +6,10 @@ mod synth;
 mod ui;
 
 use audio::engine::AudioEngine;
-use messaging::channels::create_command_channel;
+use messaging::channels::{create_command_channel, create_notification_channel};
 use midi::manager::MidiConnectionManager;
 use ui::app::DawApp;
+use std::sync::{Arc, Mutex};
 
 fn main() {
     println!("=== MyMusic DAW ===");
@@ -18,6 +19,10 @@ fn main() {
     // Need 2 ringbufs : one for MIDI, One for UI
     let (command_tx_ui, command_rx_ui) = create_command_channel(512);
     let (command_tx_midi, command_rx_midi) = create_command_channel(512);
+
+    // Create notification channel (for error handling)
+    let (notification_tx, notification_rx) = create_notification_channel(256);
+    let notification_tx = Arc::new(Mutex::new(notification_tx));
 
     println!("Audio engine initialisation...");
     let audio_engine = match AudioEngine::new(command_rx_ui, command_rx_midi) {
@@ -29,7 +34,7 @@ fn main() {
     };
 
     println!("\nMIDI Initialisation...");
-    let midi_manager = MidiConnectionManager::new(command_tx_midi);
+    let midi_manager = MidiConnectionManager::new(command_tx_midi, notification_tx);
 
     println!("\n=== DAW started ! ===\n");
     println!("Graphical UI launching...\n");
@@ -51,6 +56,7 @@ fn main() {
                 audio_engine.volume.clone(),
                 midi_manager,
                 audio_engine.cpu_monitor.clone(),
+                notification_rx,
             )))
         }),
     );

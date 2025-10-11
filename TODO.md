@@ -98,18 +98,19 @@
     - [x] Indicateur CPU dans la barre de statut
     - [x] Couleur : vert (<50%), orange (50-75%), rouge (>75%)
     - [x] Warning si surcharge détectée
+  - [ ] **À RETESTER** : Le monitoring fonctionne mais impossible de charger le CPU avec juste le synthé. À revalider en Phase 3+ avec filtres/effets/plugins
 
 ### Gestion des erreurs UI
 
-- [ ] Barre de statut
-  - [ ] Composant UI en bas de fenêtre
-  - [ ] Affichage messages d'erreur/warning
-  - [ ] Queue de notifications (ringbuffer)
-- [ ] Types d'erreurs à gérer
-  - [ ] Échec connexion MIDI
-  - [ ] Déconnexion carte son
-  - [ ] Surcharge CPU
-  - [ ] Errors génériques
+- [x] Barre de statut
+  - [x] Composant UI en bas de fenêtre
+  - [x] Affichage messages d'erreur/warning
+  - [x] Queue de notifications (ringbuffer)
+- [x] Types d'erreurs à gérer
+  - [x] Échec connexion MIDI
+  - [ ] Déconnexion carte son (CPAL stream error handler - optionnel)
+  - [x] Surcharge CPU
+  - [x] Errors génériques
 
 ### Hygiène DSP et paramètres
 
