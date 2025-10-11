@@ -2,8 +2,9 @@
 
 use crate::connection::reconnect::ReconnectionStrategy;
 use crate::connection::status::{AtomicDeviceStatus, DeviceStatus};
-use crate::messaging::channels::CommandProducer;
+use crate::messaging::channels::{CommandProducer, NotificationProducer};
 use crate::messaging::command::Command;
+use crate::messaging::notification::{Notification, NotificationCategory};
 use crate::midi::event::MidiEvent;
 use midir::{MidiInput as MidirInput, MidiInputConnection};
 use std::sync::{Arc, Mutex};
@@ -17,11 +18,12 @@ pub struct MidiConnectionManager {
     status: AtomicDeviceStatus,
     target_device: Arc<Mutex<Option<String>>>,
     command_tx: Arc<Mutex<CommandProducer>>,
+    notification_tx: Arc<Mutex<NotificationProducer>>,
     _monitor_thread: Option<thread::JoinHandle<()>>,
 }
 
 impl MidiConnectionManager {
-    pub fn new(command_tx: CommandProducer) -> Self {
+    pub fn new(command_tx: CommandProducer, notification_tx: Arc<Mutex<NotificationProducer>>) -> Self {
         let connection = Arc::new(Mutex::new(None));
         let status = AtomicDeviceStatus::new(DeviceStatus::Disconnected);
         let target_device = Arc::new(Mutex::new(None));
@@ -46,6 +48,7 @@ impl MidiConnectionManager {
             status: status.clone(),
             target_device: target_device.clone(),
             command_tx: command_tx.clone(),
+            notification_tx: notification_tx.clone(),
             _monitor_thread: None,
         };
 
@@ -58,6 +61,7 @@ impl MidiConnectionManager {
             status.clone(),
             target_device,
             command_tx,
+            notification_tx,
         );
 
         manager._monitor_thread = Some(monitor_thread);
@@ -80,6 +84,10 @@ impl MidiConnectionManager {
             Err(e) => {
                 eprintln!("Failed to initialize MIDI: {}", e);
                 self.status.set(DeviceStatus::Error);
+                self.send_notification(Notification::error(
+                    NotificationCategory::Midi,
+                    format!("Failed to initialize MIDI: {}", e),
+                ));
                 return;
             }
         };
@@ -88,6 +96,10 @@ impl MidiConnectionManager {
         if ports.is_empty() {
             println!("No MIDI devices found");
             self.status.set(DeviceStatus::Disconnected);
+            self.send_notification(Notification::warning(
+                NotificationCategory::Midi,
+                "No MIDI devices found".to_string(),
+            ));
             return;
         }
 
@@ -114,6 +126,10 @@ impl MidiConnectionManager {
             Err(e) => {
                 eprintln!("Failed to initialize MIDI: {}", e);
                 self.status.set(DeviceStatus::Error);
+                self.send_notification(Notification::error(
+                    NotificationCategory::Midi,
+                    format!("Failed to initialize MIDI: {}", e),
+                ));
                 return false;
             }
         };
@@ -132,6 +148,10 @@ impl MidiConnectionManager {
             None => {
                 eprintln!("MIDI device '{}' not found", device_name);
                 self.status.set(DeviceStatus::Disconnected);
+                self.send_notification(Notification::error(
+                    NotificationCategory::Midi,
+                    format!("MIDI device '{}' not found", device_name),
+                ));
                 return false;
             }
         };
@@ -162,11 +182,19 @@ impl MidiConnectionManager {
                 }
                 self.status.set(DeviceStatus::Connected);
                 println!("✓ MIDI connected: {}", device_name);
+                self.send_notification(Notification::info(
+                    NotificationCategory::Midi,
+                    format!("MIDI connected: {}", device_name),
+                ));
                 true
             }
             Err(e) => {
                 eprintln!("Failed to connect to MIDI device: {}", e);
                 self.status.set(DeviceStatus::Error);
+                self.send_notification(Notification::error(
+                    NotificationCategory::Midi,
+                    format!("Failed to connect to MIDI: {}", e),
+                ));
                 false
             }
         }
@@ -178,10 +206,18 @@ impl MidiConnectionManager {
         status: AtomicDeviceStatus,
         target_device: Arc<Mutex<Option<String>>>,
         command_tx: Arc<Mutex<CommandProducer>>,
+        notification_tx: Arc<Mutex<NotificationProducer>>,
     ) -> thread::JoinHandle<()> {
         thread::spawn(move || {
             let mut reconnect_strategy = ReconnectionStrategy::new();
             let mut consecutive_failures = 0;
+
+            // Helper pour envoyer des notifications depuis le thread
+            let send_notification = |notif: Notification| {
+                if let Ok(mut tx) = notification_tx.try_lock() {
+                    let _ = ringbuf::traits::Producer::try_push(&mut *tx, notif);
+                }
+            };
 
             loop {
                 thread::sleep(Duration::from_secs(2)); // Polling toutes les 2 secondes
@@ -201,6 +237,10 @@ impl MidiConnectionManager {
                         // Tenter de se reconnecter
                         if !reconnect_strategy.should_retry() {
                             eprintln!("MIDI: Max reconnection attempts reached, trying default device");
+                            send_notification(Notification::warning(
+                                NotificationCategory::Midi,
+                                "Max reconnection attempts reached".to_string(),
+                            ));
 
                             // Fallback : essayer le premier device disponible
                             let midi_in = match MidirInput::new("MyMusic DAW MIDI Fallback") {
@@ -292,11 +332,19 @@ impl MidiConnectionManager {
                                         }
                                         status.set(DeviceStatus::Connected);
                                         println!("✓ MIDI reconnected: {}", device_name);
+                                        send_notification(Notification::info(
+                                            NotificationCategory::Midi,
+                                            format!("MIDI reconnected: {}", device_name),
+                                        ));
                                         reconnect_strategy.reset();
                                     }
                                     Err(e) => {
                                         eprintln!("MIDI reconnection failed: {}", e);
                                         status.set(DeviceStatus::Error);
+                                        send_notification(Notification::error(
+                                            NotificationCategory::Midi,
+                                            "MIDI reconnection failed".to_string(),
+                                        ));
                                     }
                                 }
                             } else {
@@ -336,5 +384,12 @@ impl MidiConnectionManager {
     /// Retourne le device cible actuel
     pub fn target_device(&self) -> Option<String> {
         self.target_device.lock().ok().and_then(|t| t.clone())
+    }
+
+    /// Helper pour envoyer une notification
+    fn send_notification(&self, notification: Notification) {
+        if let Ok(mut tx) = self.notification_tx.try_lock() {
+            let _ = ringbuf::traits::Producer::try_push(&mut *tx, notification);
+        }
     }
 }

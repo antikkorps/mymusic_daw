@@ -1,17 +1,18 @@
 // Main UI App UI
 
-use crate::audio::cpu_monitor::CpuMonitor;
+use crate::audio::cpu_monitor::{CpuLoad, CpuMonitor};
 use crate::audio::device::{AudioDeviceInfo, AudioDeviceManager};
 use crate::audio::parameters::AtomicF32;
 use crate::connection::status::DeviceStatus;
-use crate::messaging::channels::CommandProducer;
+use crate::messaging::channels::{CommandProducer, NotificationConsumer};
 use crate::messaging::command::Command;
+use crate::messaging::notification::{Notification, NotificationCategory};
 use crate::midi::device::{MidiDeviceInfo, MidiDeviceManager};
 use crate::midi::event::MidiEvent;
 use crate::midi::manager::MidiConnectionManager;
 use crate::synth::oscillator::WaveformType;
 use eframe::egui;
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 pub struct DawApp {
     command_tx: CommandProducer,
@@ -30,6 +31,11 @@ pub struct DawApp {
     selected_waveform: WaveformType,
     // CPU monitoring
     cpu_monitor: CpuMonitor,
+    last_cpu_load: CpuLoad,
+    // Notification system
+    notification_rx: NotificationConsumer,
+    notification_queue: VecDeque<Notification>,
+    max_notifications: usize,
 }
 
 impl DawApp {
@@ -38,6 +44,7 @@ impl DawApp {
         volume_atomic: AtomicF32,
         midi_connection_manager: MidiConnectionManager,
         cpu_monitor: CpuMonitor,
+        notification_rx: NotificationConsumer,
     ) -> Self {
         let initial_volume = volume_atomic.get();
 
@@ -81,12 +88,61 @@ impl DawApp {
             selected_midi_device,
             selected_waveform: WaveformType::Sine,
             cpu_monitor,
+            last_cpu_load: CpuLoad::Low,
+            notification_rx,
+            notification_queue: VecDeque::new(),
+            max_notifications: 10,
         }
     }
 
     fn refresh_devices(&mut self) {
         self.available_audio_devices = self.audio_device_manager.list_output_devices();
         self.available_midi_devices = self.midi_device_manager.list_input_ports();
+    }
+
+    /// Lit les nouvelles notifications depuis le ringbuffer et les ajoute à la queue
+    fn update_notifications(&mut self) {
+        // Lire toutes les notifications disponibles
+        while let Some(notification) = ringbuf::traits::Consumer::try_pop(&mut self.notification_rx) {
+            self.notification_queue.push_back(notification);
+
+            // Limiter la taille de la queue
+            if self.notification_queue.len() > self.max_notifications {
+                self.notification_queue.pop_front();
+            }
+        }
+    }
+
+    /// Récupère la notification la plus récente (si elle existe)
+    fn get_latest_notification(&self) -> Option<&Notification> {
+        self.notification_queue.back()
+    }
+
+    /// Récupère toutes les notifications récentes (moins de 5 secondes)
+    fn get_recent_notifications(&self) -> Vec<&Notification> {
+        self.notification_queue
+            .iter()
+            .rev()
+            .filter(|n| n.is_recent(5000))
+            .take(3)
+            .collect()
+    }
+
+    /// Vérifie la charge CPU et envoie une notification si elle devient élevée
+    fn check_cpu_load(&mut self) {
+        let current_load = self.cpu_monitor.get_load_level();
+
+        // Envoyer une notification seulement lors de la transition vers High
+        if matches!(current_load, CpuLoad::High) && !matches!(self.last_cpu_load, CpuLoad::High) {
+            let cpu_percentage = self.cpu_monitor.get_cpu_percentage();
+            let notification = Notification::warning(
+                NotificationCategory::Cpu,
+                format!("High CPU load: {:.1}%", cpu_percentage),
+            );
+            self.notification_queue.push_back(notification);
+        }
+
+        self.last_cpu_load = current_load;
     }
 
     fn send_note_on(&mut self, note: u8) {
@@ -202,12 +258,50 @@ impl DawApp {
         ui.add_space(10.0);
         ui.label(format!("Notes actives : {}", self.active_notes.len()));
     }
+
+    /// Affiche la barre de statut en bas de la fenêtre
+    fn draw_status_bar(&self, ui: &mut egui::Ui) {
+        ui.separator();
+        ui.horizontal(|ui| {
+            // Afficher les notifications récentes (moins de 5s)
+            let recent_notifications = self.get_recent_notifications();
+
+            if recent_notifications.is_empty() {
+                ui.label("Ready");
+            } else {
+                for notification in recent_notifications {
+                    // Couleur selon le niveau
+                    let (icon, color) = match notification.level {
+                        crate::messaging::notification::NotificationLevel::Info => {
+                            ("ℹ", egui::Color32::from_rgb(100, 150, 255))
+                        }
+                        crate::messaging::notification::NotificationLevel::Warning => {
+                            ("⚠", egui::Color32::from_rgb(255, 165, 0))
+                        }
+                        crate::messaging::notification::NotificationLevel::Error => {
+                            ("✖", egui::Color32::RED)
+                        }
+                    };
+
+                    ui.colored_label(color, icon);
+                    ui.colored_label(color, &notification.message);
+                    ui.add_space(10.0);
+                }
+            }
+        });
+    }
 }
 
 impl eframe::App for DawApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Ask for a refresh to capture keyboard events
         ctx.request_repaint();
+
+        // Update notifications from ringbuffer
+        self.update_notifications();
+
+        // Check CPU load and notify if high
+        self.check_cpu_load();
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("MyMusic DAW - MVP");
@@ -350,6 +444,10 @@ impl eframe::App for DawApp {
             ui.add_space(20.0);
             ui.separator();
             ui.label("Info : Play with your computer keyboard or an external MIDI Keyboard");
+
+            // Status bar at the bottom
+            ui.add_space(10.0);
+            self.draw_status_bar(ui);
         });
     }
 }
