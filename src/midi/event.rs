@@ -8,6 +8,15 @@ pub enum MidiEvent {
     PitchBend { value: i16 },
 }
 
+/// MIDI event with sample-accurate timing
+/// `samples_from_now` represents when this event should be processed
+/// relative to the current audio callback's first sample
+#[derive(Debug, Clone, Copy)]
+pub struct MidiEventTimed {
+    pub event: MidiEvent,
+    pub samples_from_now: u32,
+}
+
 impl MidiEvent {
     /// Parse un RAW MIDI message
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {

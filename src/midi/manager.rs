@@ -5,7 +5,7 @@ use crate::connection::status::{AtomicDeviceStatus, DeviceStatus};
 use crate::messaging::channels::{CommandProducer, NotificationProducer};
 use crate::messaging::command::Command;
 use crate::messaging::notification::{Notification, NotificationCategory};
-use crate::midi::event::MidiEvent;
+use crate::midi::event::{MidiEvent, MidiEventTimed};
 use midir::{MidiInput as MidirInput, MidiInputConnection};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -165,7 +165,13 @@ impl MidiConnectionManager {
             "mymusic-daw-input",
             move |_timestamp, message, _| {
                 if let Some(midi_event) = MidiEvent::from_bytes(message) {
-                    let cmd = Command::Midi(midi_event);
+                    // Create timed MIDI event
+                    // TODO: Calculate precise samples_from_now based on _timestamp
+                    let timed_event = MidiEventTimed {
+                        event: midi_event,
+                        samples_from_now: 0,
+                    };
+                    let cmd = Command::Midi(timed_event);
                     // Lock et push (non-bloquant grâce à try_lock)
                     if let Ok(mut tx) = command_tx_clone.try_lock() {
                         let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
@@ -316,7 +322,13 @@ impl MidiConnectionManager {
                                     "mymusic-daw-reconnect",
                                     move |_timestamp, message, _| {
                                         if let Some(midi_event) = MidiEvent::from_bytes(message) {
-                                            let cmd = Command::Midi(midi_event);
+                                            // Create timed MIDI event
+                                            // TODO: Calculate precise samples_from_now based on _timestamp
+                                            let timed_event = MidiEventTimed {
+                                                event: midi_event,
+                                                samples_from_now: 0,
+                                            };
+                                            let cmd = Command::Midi(timed_event);
                                             if let Ok(mut tx) = cmd_tx_clone.try_lock() {
                                                 let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
                                             }

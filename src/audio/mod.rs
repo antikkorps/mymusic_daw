@@ -6,3 +6,4 @@ pub mod buffer;
 pub mod parameters;
 pub mod dsp_utils;
 pub mod cpu_monitor;
+pub mod timing;
