@@ -2,7 +2,7 @@
 
 use crate::messaging::channels::CommandProducer;
 use crate::messaging::command::Command;
-use crate::midi::event::MidiEvent;
+use crate::midi::event::{MidiEvent, MidiEventTimed};
 use midir::{MidiInput as MidirInput, MidiInputConnection};
 
 pub struct MidiInput {
@@ -45,8 +45,16 @@ impl MidiInput {
                 move |_timestamp, message, _| {
                     // MIDI Callback  - running on a separate thread
                     if let Some(midi_event) = MidiEvent::from_bytes(message) {
+                        // Create timed MIDI event
+                        // TODO: Calculate precise samples_from_now based on _timestamp
+                        // For now, use 0 (immediate processing) to establish infrastructure
+                        let timed_event = MidiEventTimed {
+                            event: midi_event,
+                            samples_from_now: 0,
+                        };
+
                         // Send the MIDI event in the ringbuffer
-                        let cmd = Command::Midi(midi_event);
+                        let cmd = Command::Midi(timed_event);
 
                         // try_push is not blocking
                         if ringbuf::traits::Producer::try_push(&mut command_tx, cmd).is_err() {

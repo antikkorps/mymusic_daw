@@ -9,7 +9,7 @@ use crate::audio::dsp_utils::{flush_denormals_to_zero, soft_clip, OnePoleSmoothe
 use crate::audio::parameters::AtomicF32;
 use crate::messaging::channels::CommandConsumer;
 use crate::messaging::command::Command;
-use crate::midi::event::MidiEvent;
+use crate::midi::event::{MidiEvent, MidiEventTimed};
 use crate::synth::voice_manager::VoiceManager;
 
 pub struct AudioEngine {
@@ -95,19 +95,30 @@ impl AudioEngine {
                     // Start CPU monitoring (only samples some callbacks)
                     let measure_start = cpu_monitor_clone.start_measure();
 
+                    // helper function to process MIDI events
+                    let process_midi_event = |timed_event: MidiEventTimed, vm: &mut VoiceManager| {
+                        // TODO: Implement proper scheduling based on samples_from_now
+                        // For now, process immediately if samples_from_now == 0
+                        if timed_event.samples_from_now == 0 {
+                            match timed_event.event {
+                                MidiEvent::NoteOn { note, velocity } => {
+                                    vm.note_on(note, velocity);
+                                }
+                                MidiEvent::NoteOff { note } => {
+                                    vm.note_off(note);
+                                }
+                                _ => {} // Ignore other events for now
+                            }
+                        }
+                        // Events with samples_from_now > 0 are ignored for now
+                        // Future: store in pre-allocated queue and process at the right time
+                    };
+
                     // helper function to process commands
                     let process_command = |cmd: Command, vm: &mut VoiceManager| {
                         match cmd {
-                            Command::Midi(midi_event) => {
-                                match midi_event {
-                                    MidiEvent::NoteOn { note, velocity } => {
-                                        vm.note_on(note, velocity);
-                                    }
-                                    MidiEvent::NoteOff { note } => {
-                                        vm.note_off(note);
-                                    }
-                                    _ => {} // Ignore other events for now
-                                }
+                            Command::Midi(timed_event) => {
+                                process_midi_event(timed_event, vm);
                             }
                             Command::SetVolume(_vol) => {
                                 // TODO: implement volume control

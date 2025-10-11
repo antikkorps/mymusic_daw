@@ -8,7 +8,7 @@ use crate::messaging::channels::{CommandProducer, NotificationConsumer};
 use crate::messaging::command::Command;
 use crate::messaging::notification::{Notification, NotificationCategory};
 use crate::midi::device::{MidiDeviceInfo, MidiDeviceManager};
-use crate::midi::event::MidiEvent;
+use crate::midi::event::{MidiEvent, MidiEventTimed};
 use crate::midi::manager::MidiConnectionManager;
 use crate::synth::oscillator::WaveformType;
 use eframe::egui;
@@ -147,17 +147,25 @@ impl DawApp {
 
     fn send_note_on(&mut self, note: u8) {
         if self.active_notes.insert(note) {
-            let cmd = Command::Midi(MidiEvent::NoteOn {
-                note,
-                velocity: 100,
-            });
+            let timed_event = MidiEventTimed {
+                event: MidiEvent::NoteOn {
+                    note,
+                    velocity: 100,
+                },
+                samples_from_now: 0, // Immediate processing from UI
+            };
+            let cmd = Command::Midi(timed_event);
             let _ = ringbuf::traits::Producer::try_push(&mut self.command_tx, cmd);
         }
     }
 
     fn send_note_off(&mut self, note: u8) {
         if self.active_notes.remove(&note) {
-            let cmd = Command::Midi(MidiEvent::NoteOff { note });
+            let timed_event = MidiEventTimed {
+                event: MidiEvent::NoteOff { note },
+                samples_from_now: 0, // Immediate processing from UI
+            };
+            let cmd = Command::Midi(timed_event);
             let _ = ringbuf::traits::Producer::try_push(&mut self.command_tx, cmd);
         }
     }

@@ -11,17 +11,27 @@ use midi::manager::MidiConnectionManager;
 use ui::app::DawApp;
 use std::sync::{Arc, Mutex};
 
+// Ringbuffer capacity constants
+// Sized for worst-case MIDI burst scenarios:
+// - MIDI can theoretically send ~1000 messages/second (31250 baud)
+// - With typical audio buffer of 10-20ms, we expect <20 messages per callback
+// - 512 capacity provides >500ms buffer at max MIDI rate
+// - Safe for buffer sizes up to 24576 samples (~500ms at 48kHz)
+const MIDI_RINGBUFFER_CAPACITY: usize = 512;
+const UI_RINGBUFFER_CAPACITY: usize = 512;
+const NOTIFICATION_RINGBUFFER_CAPACITY: usize = 256;
+
 fn main() {
     println!("=== MyMusic DAW ===");
     println!("Version 0.1.0 - MVP\n");
 
     // Create the communication channels
     // Need 2 ringbufs : one for MIDI, One for UI
-    let (command_tx_ui, command_rx_ui) = create_command_channel(512);
-    let (command_tx_midi, command_rx_midi) = create_command_channel(512);
+    let (command_tx_ui, command_rx_ui) = create_command_channel(UI_RINGBUFFER_CAPACITY);
+    let (command_tx_midi, command_rx_midi) = create_command_channel(MIDI_RINGBUFFER_CAPACITY);
 
     // Create notification channel (for error handling)
-    let (notification_tx, notification_rx) = create_notification_channel(256);
+    let (notification_tx, notification_rx) = create_notification_channel(NOTIFICATION_RINGBUFFER_CAPACITY);
     let notification_tx = Arc::new(Mutex::new(notification_tx));
 
     println!("Audio engine initialisation...");

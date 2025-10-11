@@ -11,26 +11,60 @@ Un DAW (Digital Audio Workstation) minimaliste écrit en Rust.
 
 Voir [AGENTS.md](AGENTS.md) pour l'architecture complète.
 
-## État actuel (MVP - Phase 1) ✅ TERMINÉ
+## État actuel
 
-✅ **Fonctionnalités implémentées** :
-- Moteur audio CPAL avec callback temps-réel
-- Système de communication lock-free (2 ringbufs : MIDI + UI → Audio)
-- Oscillateurs (Sine, Square, Saw, Triangle)
-- Voice Manager avec polyphonie (16 voix)
-- Input MIDI (détection automatique du premier port)
-- Conversion MIDI note → fréquence
-- **Interface utilisateur egui/eframe**
+### Phase 1 (MVP) ✅ TERMINÉ
+- ✅ Moteur audio CPAL avec callback temps-réel
+- ✅ Système de communication lock-free (2 ringbufs : MIDI + UI → Audio)
+- ✅ Oscillateurs (Sine, Square, Saw, Triangle)
+- ✅ Voice Manager avec polyphonie (16 voix)
+- ✅ Input MIDI (détection automatique du premier port)
+- ✅ Conversion MIDI note → fréquence
+
+### Phase 1.5 (Robustesse et UX) 🔥 EN COURS
+✅ **Implémenté** :
+- **Gestion des périphériques**
+  - Énumération des périphériques audio/MIDI
+  - Sélecteurs UI pour audio output et MIDI input
+  - Reconnexion automatique avec backoff exponentiel
+  - Hot-swapping des périphériques
+- **Interface utilisateur améliorée**
   - Clavier virtuel avec touches PC (A W S E D F T G Y H U J K)
   - Clavier visuel cliquable
-  - Slider de volume (UI seulement, pas encore connecté à l'audio)
+  - Slider de volume (connecté à l'audio avec smoothing)
+  - Sélecteur de forme d'onde (Sine, Square, Saw, Triangle)
   - Affichage du nombre de notes actives
+  - Barre de statut avec notifications
+- **Monitoring CPU**
+  - Indicateur de charge CPU en temps réel
+  - Couleurs : vert (<50%), orange (50-75%), rouge (>75%)
+  - Alertes en cas de surcharge
+- **Hygiène DSP**
+  - Anti-dénormaux (flush-to-zero)
+  - Soft-saturation sur la sortie
+  - Smoothing 1-pole pour paramètres continus
+  - AtomicF32 thread-safe
+- **Timing MIDI (infrastructure)**
+  - Structure `MidiEventTimed` avec `samples_from_now`
+  - Module `AudioTiming` pour conversions précises
+  - Scheduling sample-accurate dans callback audio
+  - Ringbuffers dimensionnés pour pire rafale MIDI (512 événements)
+- **Tests**
+  - 47 tests unitaires ✅
+  - Tests oscillateurs, voice manager, MIDI parsing
+  - Tests DSP (anti-dénormaux, smoothing)
+  - Tests timing, CPU monitoring, reconnexion
 
-🎯 **Prochaines étapes (Phase 2)** :
-- Connecter le slider de volume à l'audio
-- Sélecteur de forme d'onde
+🎯 **Prochaines étapes (Phase 1.5)** :
+- Tests d'intégration (MIDI → Audio end-to-end)
+- Test de latency benchmark (< 10ms target)
+- Support formats CPAL (i16/u16)
+- Documentation (cargo doc, README, CONTRIBUTING)
+
+🚀 **Prochaine phase (Phase 2)** :
 - Enveloppe ADSR
 - Modulation LFO
+- Polyphonie avancée
 
 ## Utilisation
 
@@ -68,11 +102,32 @@ Pour tester sans clavier physique :
 
 ```
 src/
-├── audio/          # Moteur CPAL et callback temps-réel
-├── synth/          # Oscillateurs, voix, polyphonie
-├── midi/           # Input MIDI et parsing
-├── ui/             # Interface egui (à venir)
-└── messaging/      # Communication lock-free
+├── audio/
+│   ├── engine.rs       # Moteur CPAL et callback temps-réel
+│   ├── timing.rs       # Timing sample-accurate pour MIDI
+│   ├── cpu_monitor.rs  # Monitoring de la charge CPU
+│   ├── dsp_utils.rs    # Utilitaires DSP (anti-dénormaux, smoothing)
+│   ├── parameters.rs   # Paramètres atomiques thread-safe
+│   ├── device.rs       # Gestion des périphériques audio
+│   └── buffer.rs       # Buffers audio (future)
+├── synth/
+│   ├── oscillator.rs   # Oscillateurs (Sine, Square, Saw, Triangle)
+│   ├── voice.rs        # Système de voix
+│   └── voice_manager.rs # Polyphonie (16 voix)
+├── midi/
+│   ├── event.rs        # Types MIDI et MidiEventTimed
+│   ├── input.rs        # Input MIDI de base (legacy)
+│   ├── manager.rs      # Connection manager avec reconnexion auto
+│   └── device.rs       # Énumération des périphériques MIDI
+├── connection/
+│   ├── status.rs       # Status atomique des connexions
+│   └── reconnect.rs    # Stratégie de reconnexion avec backoff
+├── messaging/
+│   ├── channels.rs     # Création des ringbuffers lock-free
+│   ├── command.rs      # Types de commandes (UI → Audio)
+│   └── notification.rs # Système de notifications (Audio → UI)
+└── ui/
+    └── app.rs          # Interface egui/eframe
 ```
 
 ## Règles du callback audio (Zone Sacrée)
@@ -95,46 +150,73 @@ Le callback audio CPAL est **critique pour la performance** :
 
 Voir [TODO.md](TODO.md) pour la roadmap complète.
 
-### Phase 1 (MVP - en cours)
+### Phase 1 (MVP) ✅ TERMINÉ
 - [x] Audio engine CPAL
 - [x] MIDI input
 - [x] Oscillateurs de base
 - [x] Polyphonie
 - [x] UI basique
-- [ ] Tests d'intégration
 
-### Phase 2
+### Phase 1.5 (Robustesse - en cours) 🔥
+- [x] Gestion des périphériques audio/MIDI
+- [x] Reconnexion automatique
+- [x] Timing MIDI (infrastructure)
+- [x] Monitoring CPU
+- [x] Hygiène DSP et paramètres
+- [x] 47 tests unitaires
+- [ ] Tests d'intégration
+- [ ] Documentation complète
+
+### Phase 2 (Enrichissement du son)
 - Enveloppes ADSR
 - Modulation (LFO, vélocité)
 - Polyphonie avancée
 
-### Phase 3
+### Phase 3 (Filtres et effets)
 - Filtres (LP, HP, BP)
-- Effets (delay, reverb, distortion)
+- Effets (delay, reverb)
 
-### Phase 4+
-- Séquenceur / Piano roll
-- Architecture de plugins
-- Export audio
+### Phase 4 (Séquenceur)
+- Timeline et transport
+- Piano roll
+- Recording MIDI
+- Persistance projets
+
+### Phase 5+ (Plugins et distribution)
+- Support CLAP plugins
+- Routing audio avancé
+- VST3 (optionnel)
+- Distribution (Tauri + licensing)
 
 ## Développement
 
 ### Build
 
 ```bash
-cargo build
+cargo build          # Debug build
+cargo build --release # Release build (optimized)
 ```
 
 ### Run
 
 ```bash
-cargo run
+cargo run            # Debug mode
+cargo run --release  # Release mode (better audio performance)
+```
+
+### Tests
+
+```bash
+cargo test           # Run all 47 unit tests
+cargo test -- --nocapture # Show println! output
 ```
 
 ### Check
 
 ```bash
-cargo check
+cargo check          # Fast compile check
+cargo clippy         # Linter
+cargo fmt            # Format code
 ```
 
 ## License

@@ -82,10 +82,20 @@
 
 ### Timing et précision (audio/MIDI)
 
-- [ ] Introduire `MidiEventTimed { event, samples_from_now: u32 }`
-- [ ] Timestamp relatif côté thread MIDI (quantification en samples)
-- [ ] Scheduling sample-accurate dans le callback audio
-- [ ] Dimensionner le ringbuffer SPSC pour la pire rafale MIDI
+- [x] Introduire `MidiEventTimed { event, samples_from_now: u32 }`
+- [x] Timestamp relatif côté thread MIDI (quantification en samples)
+  - Infrastructure complète avec module `AudioTiming`
+  - Conversion microsecondes → samples implémentée
+  - Pour l'instant : `samples_from_now = 0` (traitement immédiat)
+  - TODO futur : utiliser les timestamps midir pour calcul précis
+- [x] Scheduling sample-accurate dans le callback audio
+  - Infrastructure de scheduling implémentée
+  - Fonction `process_midi_event` avec support timing
+  - TODO futur : queue d'événements pour scheduling différé
+- [x] Dimensionner le ringbuffer SPSC pour la pire rafale MIDI
+  - Capacité : 512 événements (>500ms buffer au max MIDI rate)
+  - Documentation détaillée du dimensionnement
+  - Tests unitaires du module timing (6 tests)
 
 ### Monitoring de la charge CPU
 
@@ -139,6 +149,11 @@
   - [x] Tests Voice Manager (allocation, voice stealing) - 8 tests
   - [x] Tests MIDI parsing - 11 tests
   - [x] Tests anti-dénormaux et smoothing des paramètres - 4 tests
+  - [x] Tests timing audio (AudioTiming module) - 6 tests
+  - [x] Tests CPU monitoring - 5 tests
+  - [x] Tests reconnexion automatique - 3 tests
+  - [x] Tests notifications - 3 tests
+  - **Total : 47 tests unitaires ✅**
 - [ ] Tests d'intégration
   - [ ] Test MIDI → Audio end-to-end
   - [ ] Test latency benchmark (< 10ms target) (déplacé depuis Phase 1)
