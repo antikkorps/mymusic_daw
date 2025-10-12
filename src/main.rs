@@ -35,7 +35,7 @@ fn main() {
     let notification_tx = Arc::new(Mutex::new(notification_tx));
 
     println!("Audio engine initialisation...");
-    let audio_engine = match AudioEngine::new(command_rx_ui, command_rx_midi) {
+    let audio_engine = match AudioEngine::new(command_rx_ui, command_rx_midi, notification_tx.clone()) {
         Ok(engine) => engine,
         Err(e) => {
             eprintln!("ERROR: {}", e);

@@ -72,13 +72,18 @@
   - [x] Menu déroulant pour sélection sortie audio
   - [x] Refresh de la liste des périphériques
   - [x] Sélecteur de forme d'onde (déplacé depuis Phase 1)
-- [x] Reconnexion automatique
-  - [ ] Détection déconnexion périphérique
+- [x] Reconnexion automatique MIDI
+  - [x] Détection déconnexion périphérique MIDI
   - [x] Tentative de reconnexion avec backoff exponentiel
-  - [ ] Fallback sur périphérique par défaut
-  - [ ] Handler d'erreurs CPAL (callback d'erreur du stream)
-  - [ ] Redémarrage du stream avec backoff borné (max 2s)
-  - [ ] Journalisation hors callback, notification UI non-bloquante
+  - [x] Fallback sur périphérique MIDI par défaut
+  - [x] Journalisation hors callback, notification UI non-bloquante
+- [x] Gestion des erreurs Audio (CPAL)
+  - [x] Handler d'erreurs CPAL (callback d'erreur du stream) ✅
+  - [x] Détection des erreurs de stream audio ✅
+  - [x] Notification UI non-bloquante des erreurs audio ✅
+  - [x] AtomicDeviceStatus pour suivre l'état de la connexion audio ✅
+  - **Note**: Reconnexion automatique impossible sur macOS (CoreAudio Stream n'est pas Send/Sync)
+  - **Solution**: L'error callback détecte les erreurs et notifie l'UI. La reconnexion manuelle est possible au redémarrage.
 
 ### Timing et précision (audio/MIDI)
 
@@ -131,9 +136,25 @@
 
 ### Compatibilité formats/buffers CPAL
 
-- [ ] Support `i16` et `u16` en entrée/sortie (conversion sans allocation)
-- [ ] Gérer interleaved vs non-interleaved
+- [x] Support `i16` et `u16` en entrée/sortie (conversion sans allocation) ✅
+  - [x] Module `format_conversion` avec conversions f32 ↔ i16 ↔ u16
+  - [x] Tests unitaires (8 tests) couvrant conversions, roundtrip, clamping
+  - [x] Fonction `write_mono_to_interleaved_frame` pour écriture optimisée
+  - [x] Support automatique via trait `FromSample<f32>` de CPAL
+- [x] Gérer interleaved vs non-interleaved ✅
+  - [x] Système générique qui gère interleaved (format le plus courant)
+  - [x] Détection automatique du format via `sample_format()`
+  - [x] `AudioEngine::build_stream<T>` générique pour tous les formats
+  - **Note**: Non-interleaved est rare et non supporté (peut être ajouté si besoin)
+- [x] Architecture multi-format ✅
+  - [x] Détection du format device avec `SampleFormat`
+  - [x] Match sur F32/I16/U16 et création du stream approprié
+  - [x] Callback audio unique qui fonctionne avec tous les formats
+  - [x] Génération interne en f32, conversion automatique à la sortie
 - [ ] Tests de conformité sur plusieurs hosts (CoreAudio/WASAPI/ALSA)
+  - [ ] Test sur macOS (CoreAudio) - disponible localement
+  - [ ] Test sur Windows (WASAPI) - nécessite VM ou machine Windows
+  - [ ] Test sur Linux (ALSA/PulseAudio) - nécessite VM ou machine Linux
 
 ### Tests et CI/CD
 
