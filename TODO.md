@@ -180,13 +180,18 @@
   - [ ] Test latency benchmark (< 10ms target) (déplacé depuis Phase 1)
   - [ ] Test stabilité (run 1h sans crash)
 
-### Documentation et communauté
+### Documentation et communauté - **REPORTÉ POST-v1.0** ⏭️
+
+**Décision** : Trop tôt pour ouvrir aux contributeurs externes. L'API et l'architecture vont encore beaucoup évoluer jusqu'à v1.0 (Phase 4). Cette section sera réactivée après avoir atteint le milestone v1.0.0 avec un DAW fonctionnel et stable.
+
+**Reporté à** : Phase 6a (Performance et stabilité) - Quand le projet sera "production-ready"
 
 - [ ] Documentation cargo doc des modules principaux
-- [ ] README.md avec screenshots
-- [ ] CONTRIBUTING.md
-- [ ] GitHub repo public
-- [ ] Discord/Forum setup (optionnel)
+- [ ] README.md avec screenshots et getting started
+- [ ] CONTRIBUTING.md (guidelines pour contributeurs)
+- [ ] GitHub repo public avec issues templates
+- [ ] Discord/Forum setup (optionnel, si communauté intéressée)
+- [ ] Documentation utilisateur (manuel, FAQ)
 
 ---
 
@@ -473,12 +478,26 @@
 - [ ] Spectrum analyzer (FFT)
 - [ ] VU meters améliorés
 
-### Documentation utilisateur
+### Documentation et ouverture communauté (ACTIVÉ ICI)
 
-- [ ] Manuel utilisateur (wiki)
-- [ ] Video tutorials (YouTube)
-- [ ] FAQ
-- [ ] Troubleshooting guide
+Cette section était initialement en Phase 1.5 mais a été reportée car trop prématurée.
+À ce stade (post v1.2.0), le DAW est stable et production-ready, donc prêt pour la communauté.
+
+- [ ] Documentation technique (cargo doc)
+  - [ ] Documentation complète des modules publics
+  - [ ] Examples d'utilisation dans la doc
+  - [ ] Architecture documentation (diagrammes)
+- [ ] Documentation utilisateur
+  - [ ] README.md avec screenshots et getting started
+  - [ ] Manuel utilisateur (wiki/mdbook)
+  - [ ] Video tutorials (YouTube)
+  - [ ] FAQ et troubleshooting guide
+- [ ] Ouverture communauté
+  - [ ] CONTRIBUTING.md (guidelines pour contributeurs)
+  - [ ] Code of Conduct
+  - [ ] GitHub repo public avec issues templates
+  - [ ] Discord/Forum setup (si demande communauté)
+  - [ ] Roadmap publique et transparente
 
 ---
 
@@ -714,9 +733,19 @@
 
 ---
 
-**Priorité actuelle** : Phase 1.5 - Robustesse et UX de base
+**Priorité actuelle** : Phase 1.5 - Robustesse et UX de base (quasi terminée ✅)
 **Objectif** : Rendre le DAW utilisable par d'autres personnes
-**Next milestone** : v0.2.0 (dans 2-3 semaines)
+**Progrès Phase 1.5** :
+  - ✅ Gestion des périphériques audio/MIDI
+  - ✅ Reconnexion automatique MIDI
+  - ✅ Gestion des erreurs Audio (CPAL)
+  - ✅ Timing et précision audio/MIDI
+  - ✅ Monitoring CPU
+  - ✅ Compatibilité formats CPAL (F32/I16/U16)
+  - ⏳ Tests d'intégration (restants)
+  - ⏭️ Documentation (reportée post-v1.0)
+
+**Next milestone** : v0.2.0 (proche, tests d'intégration puis release)
 
 ---
 
