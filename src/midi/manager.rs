@@ -38,6 +38,7 @@ impl MidiConnectionManager {
                 status,
                 target_device,
                 command_tx,
+                notification_tx,
                 _monitor_thread: None,
             };
         }
