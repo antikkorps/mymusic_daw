@@ -742,7 +742,7 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 | Phase | Objectif | Durée | Release | Cumul |
 |-------|----------|-------|---------|-------|
 | **Phase 1** ✅ | MVP - Synth polyphonique | TERMINÉ | v0.1.0 | - |
-| **Phase 1.5** 🔥 | Robustesse + CI/CD | 2-3 sem | v0.2.0 | ~3 sem |
+| **Phase 1.5** ✅ | Robustesse + Tests | TERMINÉ | v0.2.0 | ~3 sem |
 | **Phase 2** | ADSR, LFO, Modulation | 3-4 sem | v0.3.0 | ~7 sem |
 | **Phase 2.5** | UX Design | 1-2 sem | - | ~9 sem |
 | **Phase 3a** | Filtres + 2 Effets | 3-4 sem | v0.4.0 | ~13 sem |

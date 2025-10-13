@@ -21,7 +21,7 @@ Voir [AGENTS.md](AGENTS.md) pour l'architecture complète.
 - ✅ Input MIDI (détection automatique du premier port)
 - ✅ Conversion MIDI note → fréquence
 
-### Phase 1.5 (Robustesse et UX) 🔥 EN COURS
+### Phase 1.5 (Robustesse et UX) ✅ TERMINÉ - v0.2.0 🎉
 ✅ **Implémenté** :
 - **Gestion des périphériques**
   - Énumération des périphériques audio/MIDI
@@ -44,25 +44,38 @@ Voir [AGENTS.md](AGENTS.md) pour l'architecture complète.
   - Soft-saturation sur la sortie
   - Smoothing 1-pole pour paramètres continus
   - AtomicF32 thread-safe
-- **Timing MIDI (infrastructure)**
+- **Timing MIDI**
   - Structure `MidiEventTimed` avec `samples_from_now`
   - Module `AudioTiming` pour conversions précises
   - Scheduling sample-accurate dans callback audio
   - Ringbuffers dimensionnés pour pire rafale MIDI (512 événements)
-- **Tests**
-  - 47 tests unitaires ✅
+- **Compatibilité formats audio**
+  - Support F32, I16, U16 (conversion automatique)
+  - Détection format device et adaptation
+  - Tests de conversion et roundtrip
+- **Tests complets** ✅
+  - **66 tests passent** (55 unitaires + 11 intégration)
   - Tests oscillateurs, voice manager, MIDI parsing
-  - Tests DSP (anti-dénormaux, smoothing)
+  - Tests DSP (anti-dénormaux, smoothing, format conversion)
   - Tests timing, CPU monitoring, reconnexion
+  - Tests d'intégration MIDI → Audio end-to-end
+  - Tests de latence (< 10ms target **ATTEINT**)
+  - Tests de stabilité (990M samples, 0 crash)
+- **Benchmarks Criterion** ✅
+  - Benchmarks oscillateurs, voice processing
+  - Benchmark MIDI → Audio pipeline
+  - Latence mesurée : ~200ns NoteOn, 69µs buffer (153x faster than real-time)
+  - Rapports HTML disponibles
 
-🎯 **Prochaines étapes (Phase 1.5)** :
-- Tests d'intégration (MIDI → Audio end-to-end)
-- Test de latency benchmark (< 10ms target)
-- Support formats CPAL (i16/u16)
-- Documentation (cargo doc, README, CONTRIBUTING)
+**Performance mesurée** :
+- ⚡ Latence NoteOn : ~200ns
+- ⚡ Génération audio : 153x plus rapide que temps réel
+- ✅ Target < 10ms : **ATTEINT**
+- ✅ Stabilité : 990M samples sans crash
 
 🚀 **Prochaine phase (Phase 2)** :
-- Enveloppe ADSR
+- Command Pattern pour Undo/Redo (architecture critique)
+- Enveloppes ADSR
 - Modulation LFO
 - Polyphonie avancée
 
@@ -102,6 +115,8 @@ Pour tester sans clavier physique :
 
 ```
 src/
+├── lib.rs              # Exports pour tests et benchmarks
+├── main.rs             # Point d'entrée binaire
 ├── audio/
 │   ├── engine.rs       # Moteur CPAL et callback temps-réel
 │   ├── timing.rs       # Timing sample-accurate pour MIDI
@@ -109,6 +124,7 @@ src/
 │   ├── dsp_utils.rs    # Utilitaires DSP (anti-dénormaux, smoothing)
 │   ├── parameters.rs   # Paramètres atomiques thread-safe
 │   ├── device.rs       # Gestion des périphériques audio
+│   ├── format_conversion.rs # Conversions F32/I16/U16
 │   └── buffer.rs       # Buffers audio (future)
 ├── synth/
 │   ├── oscillator.rs   # Oscillateurs (Sine, Square, Saw, Triangle)
@@ -128,6 +144,14 @@ src/
 │   └── notification.rs # Système de notifications (Audio → UI)
 └── ui/
     └── app.rs          # Interface egui/eframe
+
+tests/
+├── midi_to_audio.rs    # Tests end-to-end MIDI → Audio
+├── latency.rs          # Tests de latence et performance
+└── stability.rs        # Tests de stabilité longue durée
+
+benches/
+└── audio_benchmarks.rs # Benchmarks Criterion (oscillateurs, latence, etc.)
 ```
 
 ## Règles du callback audio (Zone Sacrée)
@@ -157,15 +181,16 @@ Voir [TODO.md](TODO.md) pour la roadmap complète.
 - [x] Polyphonie
 - [x] UI basique
 
-### Phase 1.5 (Robustesse - en cours) 🔥
+### Phase 1.5 (Robustesse) ✅ TERMINÉ - v0.2.0
 - [x] Gestion des périphériques audio/MIDI
 - [x] Reconnexion automatique
-- [x] Timing MIDI (infrastructure)
+- [x] Timing MIDI sample-accurate
 - [x] Monitoring CPU
 - [x] Hygiène DSP et paramètres
-- [x] 47 tests unitaires
-- [ ] Tests d'intégration
-- [ ] Documentation complète
+- [x] Compatibilité formats audio (F32/I16/U16)
+- [x] 66 tests (55 unitaires + 11 intégration)
+- [x] Benchmarks Criterion avec rapports HTML
+- [x] Documentation tests (TESTING.md)
 
 ### Phase 2 (Enrichissement du son)
 - Enveloppes ADSR
@@ -207,9 +232,45 @@ cargo run --release  # Release mode (better audio performance)
 ### Tests
 
 ```bash
-cargo test           # Run all 47 unit tests
-cargo test -- --nocapture # Show println! output
+# Tous les tests (66 tests : 55 unitaires + 11 intégration)
+cargo test
+
+# Tests unitaires uniquement
+cargo test --lib
+
+# Tests d'intégration uniquement
+cargo test --tests
+
+# Afficher la sortie des tests (println!)
+cargo test -- --nocapture
+
+# Tests spécifiques
+cargo test --test midi_to_audio          # Pipeline MIDI → Audio
+cargo test --test latency -- --nocapture # Mesures de latence
+cargo test --test stability               # Stabilité (court + stress)
+
+# Test de stabilité longue durée (1 heure, marqué comme ignored)
+cargo test --test stability -- --ignored --nocapture
 ```
+
+### Benchmarks
+
+```bash
+# Tous les benchmarks Criterion
+cargo bench
+
+# Benchmark spécifique
+cargo bench oscillator
+cargo bench latency
+
+# Test rapide des benchmarks (sans mesures complètes)
+cargo bench -- --test
+
+# Voir les rapports HTML (après avoir lancé les benchmarks)
+open target/criterion/report/index.html
+```
+
+Voir [TESTING.md](TESTING.md) pour la documentation complète des tests.
 
 ### Check
 
