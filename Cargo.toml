@@ -1,6 +1,6 @@
 [package]
 name = "mymusic_daw"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 
 [dependencies]
@@ -9,3 +9,10 @@ midir = "0.9"
 eframe = "0.30"
 egui = "0.30"
 ringbuf = "0.4"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "audio_benchmarks"
+harness = false
