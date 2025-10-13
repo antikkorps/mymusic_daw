@@ -1,14 +1,5 @@
-mod audio;
-mod connection;
-mod messaging;
-mod midi;
-mod synth;
-mod ui;
-
-use audio::engine::AudioEngine;
-use messaging::channels::{create_command_channel, create_notification_channel};
-use midi::manager::MidiConnectionManager;
-use ui::app::DawApp;
+use mymusic_daw::{AudioEngine, create_command_channel, create_notification_channel, MidiConnectionManager};
+use mymusic_daw::ui::app::DawApp;
 use std::sync::{Arc, Mutex};
 
 // Ringbuffer capacity constants

@@ -56,10 +56,10 @@
 
 ---
 
-## Phase 1.5 : Robustesse et UX de base (PRIORITÉ) 🔥
+## Phase 1.5 : Robustesse et UX de base ✅ (TERMINÉ)
 
 **Objectif** : Rendre le DAW utilisable par d'autres personnes
-**Release** : v0.2.0
+**Release** : v0.2.0 🎉
 
 ### Gestion des périphériques audio/MIDI
 
@@ -164,7 +164,13 @@
   - [ ] Cargo clippy (linter)
   - [ ] Cargo fmt check (formatting)
   - [ ] Badge de statut dans README
-- [ ] Benchmarks avec Criterion (dev-dependency)
+- [x] Benchmarks avec Criterion (dev-dependency) ✅
+  - [x] Setup Criterion avec HTML reports
+  - [x] Benchmarks oscillateurs (toutes waveforms)
+  - [x] Benchmarks voice processing (polyphonie 1-16 voix)
+  - [x] Benchmarks MIDI processing
+  - [x] Benchmarks latence MIDI → Audio
+  - [x] Benchmarks timing conversions
 - [x] Tests unitaires
   - [x] Tests oscillateurs (fréquence, amplitude, phase) - 8 tests
   - [x] Tests Voice Manager (allocation, voice stealing) - 8 tests
@@ -174,11 +180,22 @@
   - [x] Tests CPU monitoring - 5 tests
   - [x] Tests reconnexion automatique - 3 tests
   - [x] Tests notifications - 3 tests
-  - **Total : 47 tests unitaires ✅**
-- [ ] Tests d'intégration
-  - [ ] Test MIDI → Audio end-to-end
-  - [ ] Test latency benchmark (< 10ms target) (déplacé depuis Phase 1)
-  - [ ] Test stabilité (run 1h sans crash)
+  - [x] Tests format conversion - 8 tests
+  - **Total : 55 tests unitaires ✅**
+- [x] Tests d'intégration ✅
+  - [x] Test MIDI → Audio end-to-end (4 tests)
+  - [x] Test latency benchmark (< 10ms target) - **ATTEINT: ~200ns NoteOn + 69µs buffer** ⚡
+  - [x] Test stabilité court (5 min) - **990M samples, 0 crash** ✅
+  - [x] Test stabilité stress polyphonique (30s, 16 voix)
+  - [x] Test stabilité rapid notes (10,000 cycles)
+  - [x] Test stabilité long (1h) - disponible avec `--ignored`
+  - **Total : 11 tests d'intégration ✅**
+- [x] Documentation des tests ✅
+  - [x] TESTING.md avec instructions complètes
+  - [x] Métriques de performance documentées
+  - [x] Commandes pour lancer tests et benchmarks
+
+**Total tests : 66 tests passent** 🎉
 
 ### Documentation et communauté - **REPORTÉ POST-v1.0** ⏭️
 
@@ -199,6 +216,17 @@
 
 **Objectif** : Synth expressif avec modulation
 **Release** : v0.3.0
+
+**⚠️ ARCHITECTURE CRITIQUE** : Implémenter le **Command Pattern** dès cette phase pour l'Undo/Redo (voir "Décisions Architecturales"). Toutes les modifications de paramètres (ADSR, LFO, etc.) doivent passer par des `UndoableCommand`.
+
+### Command Pattern & Undo/Redo (PRIORITAIRE)
+
+- [ ] Implémenter le trait `UndoableCommand`
+- [ ] Créer le `CommandManager` avec undo/redo stacks
+- [ ] Implémenter `SetParameterCommand` pour les params audio
+- [ ] Intégrer Ctrl+Z / Ctrl+Y dans l'UI
+- [ ] Tester avec les paramètres ADSR et LFO
+- [ ] Documentation du pattern pour futures features
 
 ### Enveloppes
 
@@ -331,6 +359,8 @@
 **Release** : v1.0.0 🎉 (MILESTONE MAJEUR)
 **Durée** : 6-8 semaines
 
+**⚠️ ARCHITECTURE CRITIQUE** : Format de projet en **ZIP container hybride** (voir "Décisions Architecturales"). JSON/RON pour l'état, binaire pour les samples, extensible et versionné.
+
 ### Timeline
 
 - [ ] Système de timeline (BPM, mesures, signature)
@@ -373,10 +403,15 @@
 
 ### Persistance projets
 
-- [ ] Save project (format JSON ou binaire)
-- [ ] Load project
-- [ ] Export audio (WAV)
-- [ ] Auto-save toutes les 5 min
+- [ ] Format de projet (ZIP container - voir "Décisions Architecturales")
+  - [ ] Structure ZIP avec manifest.json, project.ron, tracks/*, audio/*
+  - [ ] Serialization/Deserialization avec serde
+  - [ ] Support versionning du format (migration)
+  - [ ] Compression automatique via ZIP
+- [ ] Save project (.mymusic)
+- [ ] Load project avec validation et migration de version
+- [ ] Export audio (WAV, FLAC)
+- [ ] Auto-save toutes les 5 min (en arrière-plan)
 
 ---
 
@@ -562,6 +597,8 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 **Release** : v2.0.0
 **Durée** : 6-8 semaines (étendu pour licensing)
 
+**⚠️ ARCHITECTURE CRITIQUE** : Gestion de l'état global avec **Commands & Events** (voir "Décisions Architecturales"). Le moteur audio est la source de vérité, l'UI est une vue. Redux optionnel côté frontend.
+
 ### Architecture Tauri
 
 - [ ] Setup projet Tauri
@@ -705,7 +742,7 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 | Phase | Objectif | Durée | Release | Cumul |
 |-------|----------|-------|---------|-------|
 | **Phase 1** ✅ | MVP - Synth polyphonique | TERMINÉ | v0.1.0 | - |
-| **Phase 1.5** 🔥 | Robustesse + CI/CD | 2-3 sem | v0.2.0 | ~3 sem |
+| **Phase 1.5** ✅ | Robustesse + Tests | TERMINÉ | v0.2.0 | ~3 sem |
 | **Phase 2** | ADSR, LFO, Modulation | 3-4 sem | v0.3.0 | ~7 sem |
 | **Phase 2.5** | UX Design | 1-2 sem | - | ~9 sem |
 | **Phase 3a** | Filtres + 2 Effets | 3-4 sem | v0.4.0 | ~13 sem |
@@ -733,7 +770,7 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 
 ---
 
-**Priorité actuelle** : Phase 1.5 - Robustesse et UX de base (quasi terminée ✅)
+**Priorité actuelle** : Phase 1.5 - Robustesse et UX de base ✅ **TERMINÉE**
 **Objectif** : Rendre le DAW utilisable par d'autres personnes
 **Progrès Phase 1.5** :
   - ✅ Gestion des périphériques audio/MIDI
@@ -742,10 +779,79 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
   - ✅ Timing et précision audio/MIDI
   - ✅ Monitoring CPU
   - ✅ Compatibilité formats CPAL (F32/I16/U16)
-  - ⏳ Tests d'intégration (restants)
+  - ✅ Tests d'intégration (66 tests passent)
+  - ✅ Benchmarks Criterion (latence < 10ms atteinte)
   - ⏭️ Documentation (reportée post-v1.0)
 
-**Next milestone** : v0.2.0 (proche, tests d'intégration puis release)
+**Release v0.2.0 prête** 🎉
+
+**Next milestone** : Phase 2 - Enrichissement du son (ADSR, LFO, Command Pattern)
+
+---
+
+## Décisions Architecturales Critiques 🏗️
+
+Ces décisions doivent être prises **tôt** car elles impactent toute l'architecture du DAW.
+
+### 1. Gestion de l'état global (critique pour Phase 7 Tauri)
+
+**Problème** : Avec Tauri, synchronisation de l'état entre UI (JS/TS) et moteur audio (Rust) devient complexe.
+
+**Décision** :
+- **Source de vérité unique** : Le moteur audio (backend Rust)
+- **UI = Vue** de cet état (read-only + envoi de commandes)
+- **Pattern Commands & Events** :
+  - `Commands` : UI → Audio (actions, via ringbuffer)
+  - `StateEvents` : Audio → UI (notifications, via ringbuffer)
+  - Validation dans le backend avant application
+- **Redux côté frontend** (optionnel) : Pour gérer l'état UI uniquement (pas l'état audio)
+
+**À implémenter** : Phase 2-3 (avant que ça devienne ingérable)
+
+### 2. Architecture Undo/Redo (URGENT - Phase 2) ⚠️
+
+**Problème** : Ajouter l'undo/redo après coup sur toutes les actions est **extrêmement complexe**.
+
+**Décision** :
+- **Command Pattern générique** dès Phase 2
+- Trait `UndoableCommand { execute(), undo(), redo() }`
+- Toutes les actions passent par un `CommandManager`
+- Stack d'undo avec limite mémoire (ex: 100 actions)
+- S'applique à **tout** : params, notes, routing, plugins, etc.
+
+**Exemple** :
+```rust
+trait UndoableCommand: Send {
+    fn execute(&mut self, state: &mut DawState) -> Result<()>;
+    fn undo(&mut self, state: &mut DawState) -> Result<()>;
+    fn description(&self) -> String;
+}
+```
+
+**À implémenter** : Phase 2 (ADSR/LFO) - en même temps que les premiers params complexes
+
+### 3. Format de Projet (Phase 4)
+
+**Problème** : JSON seul = lent pour gros projets, binaire seul = pas debuggable.
+
+**Décision** : **ZIP container hybride** (standard industrie)
+- Structure :
+  ```
+  project.mymusic (ZIP)
+  ├── manifest.json      # Metadata
+  ├── project.ron        # État DAW (JSON ou RON)
+  ├── tracks/*.json      # Notes, automation
+  ├── audio/*.wav        # Samples (binaire)
+  └── plugins/*.bin      # États plugins
+  ```
+- **Avantages** :
+  - JSON/RON : Git-friendly, debuggable
+  - Binaire : Performance pour audio
+  - ZIP : Compression automatique
+  - Extensible : Ajout de fichiers sans breaking changes
+  - Versionning : Migration de format possible
+
+**À implémenter** : Phase 4 (Séquenceur)
 
 ---
 
