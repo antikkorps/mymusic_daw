@@ -3,6 +3,7 @@
 use crate::command::state::DawState;
 use crate::command::trait_def::{UndoableCommand, CommandResult, CommandError};
 use crate::messaging::command::Command;
+use crate::synth::envelope::AdsrParams;
 use crate::synth::oscillator::WaveformType;
 
 /// Command to set the volume
@@ -146,6 +147,95 @@ impl UndoableCommand for SetWaveformCommand {
 
     fn description(&self) -> String {
         format!("Set Waveform to {:?}", self.new_waveform)
+    }
+}
+
+/// Command to set ADSR envelope parameters
+///
+/// This command changes the ADSR parameters for all voices and sends the update to the audio thread.
+/// It stores the old parameters to enable undo.
+pub struct SetAdsrCommand {
+    new_params: AdsrParams,
+    old_params: Option<AdsrParams>,
+}
+
+impl SetAdsrCommand {
+    /// Create a new SetAdsrCommand
+    ///
+    /// # Arguments
+    /// * `params` - The new ADSR parameters
+    pub fn new(params: AdsrParams) -> Self {
+        Self {
+            new_params: params,
+            old_params: None,
+        }
+    }
+
+    /// Create a command for a specific ADSR parameter
+    pub fn attack(attack: f32) -> Self {
+        let params = AdsrParams::new(attack, 0.1, 0.7, 0.2); // Use defaults for other params
+        Self::new(params)
+    }
+
+    pub fn decay(decay: f32) -> Self {
+        let params = AdsrParams::new(0.01, decay, 0.7, 0.2);
+        Self::new(params)
+    }
+
+    pub fn sustain(sustain: f32) -> Self {
+        let params = AdsrParams::new(0.01, 0.1, sustain, 0.2);
+        Self::new(params)
+    }
+
+    pub fn release(release: f32) -> Self {
+        let params = AdsrParams::new(0.01, 0.1, 0.7, release);
+        Self::new(params)
+    }
+}
+
+impl UndoableCommand for SetAdsrCommand {
+    fn execute(&mut self, state: &mut DawState) -> CommandResult<()> {
+        // Store old value for undo
+        self.old_params = Some(state.adsr);
+
+        // Update state
+        state.adsr = self.new_params;
+
+        // Send to audio thread
+        if !state.send_to_audio(Command::SetAdsr(self.new_params)) {
+            return Err(CommandError::ExecutionFailed(
+                "Failed to send ADSR command to audio thread (ringbuffer full)".into()
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn undo(&mut self, state: &mut DawState) -> CommandResult<()> {
+        let old_params = self.old_params
+            .ok_or_else(|| CommandError::UndoFailed("No previous ADSR parameters stored".into()))?;
+
+        // Restore old value
+        state.adsr = old_params;
+
+        // Send to audio thread
+        if !state.send_to_audio(Command::SetAdsr(old_params)) {
+            return Err(CommandError::UndoFailed(
+                "Failed to send ADSR command to audio thread (ringbuffer full)".into()
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn description(&self) -> String {
+        format!(
+            "Set ADSR (A:{:.3}s D:{:.3}s S:{:.2} R:{:.3}s)",
+            self.new_params.attack,
+            self.new_params.decay,
+            self.new_params.sustain,
+            self.new_params.release
+        )
     }
 }
 

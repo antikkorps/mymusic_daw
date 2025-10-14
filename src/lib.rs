@@ -15,6 +15,7 @@ pub use command::{CommandManager, DawState, UndoableCommand};
 pub use messaging::channels::{create_command_channel, create_notification_channel};
 pub use midi::event::{MidiEvent, MidiEventTimed};
 pub use midi::manager::MidiConnectionManager;
+pub use synth::envelope::AdsrParams;
 pub use synth::oscillator::{Oscillator, SimpleOscillator, WaveformType};
 pub use synth::voice::Voice;
 pub use synth::voice_manager::VoiceManager;

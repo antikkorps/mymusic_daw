@@ -4,6 +4,7 @@
 // It also holds the communication channels to send messages to the audio thread.
 
 use crate::messaging::channels::CommandProducer;
+use crate::synth::envelope::AdsrParams;
 use crate::synth::oscillator::WaveformType;
 use std::sync::{Arc, Mutex};
 
@@ -19,12 +20,14 @@ pub struct DawState {
     /// Current waveform type
     pub waveform: WaveformType,
 
+    /// ADSR envelope parameters
+    pub adsr: AdsrParams,
+
     /// Command sender to communicate with audio thread (UI channel)
     /// Wrapped in Arc<Mutex<>> to allow sharing between DawApp and commands
     pub command_sender: Arc<Mutex<CommandProducer>>,
 
     // Future parameters will be added here:
-    // pub adsr: AdsrParams,
     // pub lfo: LfoParams,
     // pub filter: FilterParams,
     // etc.
@@ -36,6 +39,7 @@ impl DawState {
         Self {
             volume: 0.5,
             waveform: WaveformType::Sine,
+            adsr: AdsrParams::default(),
             command_sender,
         }
     }

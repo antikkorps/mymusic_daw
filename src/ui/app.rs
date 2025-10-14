@@ -4,7 +4,8 @@ use crate::audio::cpu_monitor::{CpuLoad, CpuMonitor};
 use crate::audio::device::{AudioDeviceInfo, AudioDeviceManager};
 use crate::audio::parameters::AtomicF32;
 use crate::command::{CommandManager, DawState};
-use crate::command::commands::{SetVolumeCommand, SetWaveformCommand};
+use crate::command::commands::{SetVolumeCommand, SetWaveformCommand, SetAdsrCommand};
+use crate::synth::envelope::AdsrParams;
 use crate::connection::status::DeviceStatus;
 use crate::messaging::channels::{CommandProducer, NotificationConsumer};
 use crate::messaging::command::Command;
@@ -37,6 +38,11 @@ pub struct DawApp {
     selected_midi_device: String,
     // Synth parameters
     selected_waveform: WaveformType,
+    // ADSR UI state
+    adsr_attack: f32,
+    adsr_decay: f32,
+    adsr_sustain: f32,
+    adsr_release: f32,
     // CPU monitoring
     cpu_monitor: CpuMonitor,
     last_cpu_load: CpuLoad,
@@ -102,6 +108,10 @@ impl DawApp {
             selected_audio_device,
             selected_midi_device,
             selected_waveform: WaveformType::Sine,
+            adsr_attack: 0.01,
+            adsr_decay: 0.1,
+            adsr_sustain: 0.7,
+            adsr_release: 0.2,
             cpu_monitor,
             last_cpu_load: CpuLoad::Low,
             notification_rx,
@@ -334,6 +344,10 @@ impl eframe::App for DawApp {
                             // Update UI state from DawState after undo
                             self.volume_ui = self.daw_state.volume;
                             self.selected_waveform = self.daw_state.waveform;
+                            self.adsr_attack = self.daw_state.adsr.attack;
+                            self.adsr_decay = self.daw_state.adsr.decay;
+                            self.adsr_sustain = self.daw_state.adsr.sustain;
+                            self.adsr_release = self.daw_state.adsr.release;
                             self.volume_atomic.set(self.daw_state.volume);
                             println!("Undo: {}", description);
                         }
@@ -352,6 +366,10 @@ impl eframe::App for DawApp {
                             // Update UI state from DawState after redo
                             self.volume_ui = self.daw_state.volume;
                             self.selected_waveform = self.daw_state.waveform;
+                            self.adsr_attack = self.daw_state.adsr.attack;
+                            self.adsr_decay = self.daw_state.adsr.decay;
+                            self.adsr_sustain = self.daw_state.adsr.sustain;
+                            self.adsr_release = self.daw_state.adsr.release;
                             self.volume_atomic.set(self.daw_state.volume);
                             println!("Redo: {}", description);
                         }
@@ -477,6 +495,90 @@ impl eframe::App for DawApp {
                     let cmd = Box::new(SetWaveformCommand::new(self.selected_waveform));
                     if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
                         eprintln!("Failed to execute waveform command: {}", e);
+                    }
+                }
+            });
+
+            ui.add_space(10.0);
+            ui.separator();
+
+            // === ADSR Envelope Section ===
+            ui.heading("ADSR Envelope");
+
+            ui.horizontal(|ui| {
+                ui.label("Attack:");
+                if ui.add(egui::Slider::new(&mut self.adsr_attack, 0.001..=2.0)
+                    .text("s")
+                    .logarithmic(true))
+                    .changed()
+                {
+                    let params = AdsrParams::new(
+                        self.adsr_attack,
+                        self.adsr_decay,
+                        self.adsr_sustain,
+                        self.adsr_release,
+                    );
+                    let cmd = Box::new(SetAdsrCommand::new(params));
+                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                        eprintln!("Failed to execute ADSR command: {}", e);
+                    }
+                }
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("Decay:");
+                if ui.add(egui::Slider::new(&mut self.adsr_decay, 0.001..=2.0)
+                    .text("s")
+                    .logarithmic(true))
+                    .changed()
+                {
+                    let params = AdsrParams::new(
+                        self.adsr_attack,
+                        self.adsr_decay,
+                        self.adsr_sustain,
+                        self.adsr_release,
+                    );
+                    let cmd = Box::new(SetAdsrCommand::new(params));
+                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                        eprintln!("Failed to execute ADSR command: {}", e);
+                    }
+                }
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("Sustain:");
+                if ui.add(egui::Slider::new(&mut self.adsr_sustain, 0.0..=1.0))
+                    .changed()
+                {
+                    let params = AdsrParams::new(
+                        self.adsr_attack,
+                        self.adsr_decay,
+                        self.adsr_sustain,
+                        self.adsr_release,
+                    );
+                    let cmd = Box::new(SetAdsrCommand::new(params));
+                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                        eprintln!("Failed to execute ADSR command: {}", e);
+                    }
+                }
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("Release:");
+                if ui.add(egui::Slider::new(&mut self.adsr_release, 0.001..=5.0)
+                    .text("s")
+                    .logarithmic(true))
+                    .changed()
+                {
+                    let params = AdsrParams::new(
+                        self.adsr_attack,
+                        self.adsr_decay,
+                        self.adsr_sustain,
+                        self.adsr_release,
+                    );
+                    let cmd = Box::new(SetAdsrCommand::new(params));
+                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                        eprintln!("Failed to execute ADSR command: {}", e);
                     }
                 }
             });

@@ -409,6 +409,9 @@ impl AudioEngine {
                             Command::SetWaveform(waveform) => {
                                 vm.set_waveform(waveform);
                             }
+                            Command::SetAdsr(adsr_params) => {
+                                vm.set_adsr(adsr_params);
+                            }
                             Command::Quit => {}
                         }
                     };

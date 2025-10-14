@@ -195,7 +195,7 @@
   - [x] Métriques de performance documentées
   - [x] Commandes pour lancer tests et benchmarks
 
-**Total tests : 68 tests passent** 🎉 (55 tests Phase 1.5 + 13 tests Command Pattern)
+**Total tests : 84 tests passent** 🎉 (55 tests Phase 1.5 + 13 tests Command Pattern + 10 tests ADSR + 2 tests Voice Stealing + 4 tests intégration mis à jour)
 
 ### Documentation et communauté - **REPORTÉ POST-v1.0** ⏭️
 
@@ -227,22 +227,23 @@
 - [x] Intégrer Ctrl+Z / Ctrl+Y dans l'UI
 - [x] Tests unitaires (13 tests, 68 total avec intégration)
 - [x] Documentation du pattern (doc/COMMAND_PATTERN.md)
-- [ ] **À FAIRE** : Tester avec les paramètres ADSR et LFO (Phase 2 prochaine étape)
+- [x] Tester avec les paramètres ADSR ✅
+- [ ] **À FAIRE** : Tester avec les paramètres LFO (Phase 2 prochaine étape)
 
-### Enveloppes
+### Enveloppes ✅ (TERMINÉ)
 
-- [ ] Implémenter enveloppe ADSR
-  - [ ] Attack
-  - [ ] Decay
-  - [ ] Sustain
-  - [ ] Release
-- [ ] Intégrer ADSR dans Voice
-- [ ] UI pour contrôles ADSR
-- [ ] Tests unitaires ADSR (timing, courbes)
+- [x] Implémenter enveloppe ADSR
+  - [x] Attack
+  - [x] Decay
+  - [x] Sustain
+  - [x] Release
+- [x] Intégrer ADSR dans Voice
+- [x] UI pour contrôles ADSR (4 sliders avec undo/redo)
+- [x] Tests unitaires ADSR (10 tests - timing, courbes, retriggering)
 
 ### Polyphonie avancée
 
-- [ ] Améliorer le voice stealing (priorité par vélocité/âge)
+- [x] Améliorer le voice stealing (priorité par âge + releasing voices d'abord)
 - [ ] Modes de polyphonie (mono, legato, poly)
 - [ ] Portamento/glide
 
