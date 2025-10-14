@@ -23,7 +23,10 @@ pub struct MidiConnectionManager {
 }
 
 impl MidiConnectionManager {
-    pub fn new(command_tx: CommandProducer, notification_tx: Arc<Mutex<NotificationProducer>>) -> Self {
+    pub fn new(
+        command_tx: CommandProducer,
+        notification_tx: Arc<Mutex<NotificationProducer>>,
+    ) -> Self {
         let connection = Arc::new(Mutex::new(None));
         let status = AtomicDeviceStatus::new(DeviceStatus::Disconnected);
         let target_device = Arc::new(Mutex::new(None));
@@ -243,7 +246,9 @@ impl MidiConnectionManager {
                     DeviceStatus::Disconnected | DeviceStatus::Error => {
                         // Tenter de se reconnecter
                         if !reconnect_strategy.should_retry() {
-                            eprintln!("MIDI: Max reconnection attempts reached, trying default device");
+                            eprintln!(
+                                "MIDI: Max reconnection attempts reached, trying default device"
+                            );
                             send_notification(Notification::warning(
                                 NotificationCategory::Midi,
                                 "Max reconnection attempts reached".to_string(),
@@ -331,7 +336,9 @@ impl MidiConnectionManager {
                                             };
                                             let cmd = Command::Midi(timed_event);
                                             if let Ok(mut tx) = cmd_tx_clone.try_lock() {
-                                                let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+                                                let _ = ringbuf::traits::Producer::try_push(
+                                                    &mut *tx, cmd,
+                                                );
                                             }
                                         }
                                     },

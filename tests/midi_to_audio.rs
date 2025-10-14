@@ -41,11 +41,12 @@ fn test_midi_to_audio_pipeline() {
         "Audio should be generated after NoteOn (Middle C)"
     );
 
-    // Test 3: NoteOff stops audio (after some samples)
+    // Test 3: NoteOff stops audio (after release phase completes)
     voice_manager.note_off(60);
 
-    // Generate some samples to let the note stop
-    for _ in 0..100 {
+    // Process samples through the release phase
+    // Default release is 0.2s = 0.2 * 48000 = 9600 samples
+    for _ in 0..10000 {
         voice_manager.next_sample();
     }
 
@@ -58,7 +59,7 @@ fn test_midi_to_audio_pipeline() {
             break;
         }
     }
-    assert!(silent, "Audio should be silent after NoteOff");
+    assert!(silent, "Audio should be silent after NoteOff and release phase");
 }
 
 #[test]
@@ -102,8 +103,9 @@ fn test_midi_polyphony() {
     voice_manager.note_off(60);
     voice_manager.note_off(67);
 
-    // After some samples, should be silent
-    for _ in 0..100 {
+    // Process samples through the release phase
+    // Default release is 0.2s = 0.2 * 48000 = 9600 samples
+    for _ in 0..10000 {
         voice_manager.next_sample();
     }
 
@@ -115,7 +117,7 @@ fn test_midi_polyphony() {
             break;
         }
     }
-    assert!(silent, "Audio should be silent after all notes are off");
+    assert!(silent, "Audio should be silent after all notes are off and release phase");
 }
 
 #[test]
