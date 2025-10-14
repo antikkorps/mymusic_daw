@@ -195,7 +195,7 @@
   - [x] Métriques de performance documentées
   - [x] Commandes pour lancer tests et benchmarks
 
-**Total tests : 66 tests passent** 🎉
+**Total tests : 68 tests passent** 🎉 (55 tests Phase 1.5 + 13 tests Command Pattern)
 
 ### Documentation et communauté - **REPORTÉ POST-v1.0** ⏭️
 
@@ -219,14 +219,15 @@
 
 **⚠️ ARCHITECTURE CRITIQUE** : Implémenter le **Command Pattern** dès cette phase pour l'Undo/Redo (voir "Décisions Architecturales"). Toutes les modifications de paramètres (ADSR, LFO, etc.) doivent passer par des `UndoableCommand`.
 
-### Command Pattern & Undo/Redo (PRIORITAIRE)
+### Command Pattern & Undo/Redo ✅ (TERMINÉ)
 
-- [ ] Implémenter le trait `UndoableCommand`
-- [ ] Créer le `CommandManager` avec undo/redo stacks
-- [ ] Implémenter `SetParameterCommand` pour les params audio
-- [ ] Intégrer Ctrl+Z / Ctrl+Y dans l'UI
-- [ ] Tester avec les paramètres ADSR et LFO
-- [ ] Documentation du pattern pour futures features
+- [x] Implémenter le trait `UndoableCommand`
+- [x] Créer le `CommandManager` avec undo/redo stacks
+- [x] Implémenter `SetVolumeCommand` et `SetWaveformCommand` (premiers params)
+- [x] Intégrer Ctrl+Z / Ctrl+Y dans l'UI
+- [x] Tests unitaires (13 tests, 68 total avec intégration)
+- [x] Documentation du pattern (doc/COMMAND_PATTERN.md)
+- [ ] **À FAIRE** : Tester avec les paramètres ADSR et LFO (Phase 2 prochaine étape)
 
 ### Enveloppes
 
