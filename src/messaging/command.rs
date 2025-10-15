@@ -5,6 +5,7 @@ use crate::synth::envelope::AdsrParams;
 use crate::synth::lfo::LfoParams;
 use crate::synth::oscillator::WaveformType;
 use crate::synth::poly_mode::PolyMode;
+use crate::synth::modulation::ModRouting;
 use crate::synth::portamento::PortamentoParams;
 
 #[derive(Debug, Clone, Copy)]
@@ -16,5 +17,9 @@ pub enum Command {
     SetLfo(LfoParams),
     SetPolyMode(PolyMode),
     SetPortamento(PortamentoParams),
+    /// Update a modulation routing slot (UI → Audio)
+    SetModRouting { index: u8, routing: ModRouting },
+    /// Clear a modulation routing slot
+    ClearModRouting { index: u8 },
     Quit,
 }

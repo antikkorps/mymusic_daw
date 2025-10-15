@@ -195,6 +195,12 @@ impl AudioEngine {
                                 MidiEvent::NoteOff { note } => {
                                     vm.note_off(note);
                                 }
+                                MidiEvent::ChannelAftertouch { value } => {
+                                    vm.set_aftertouch(value);
+                                }
+                                MidiEvent::PolyAftertouch { note: _n, value: _v } => {
+                                    // TODO: Poly aftertouch per-note support (Phase 2+)
+                                }
                                 _ => {} // Ignore other events for now
                             }
                         }
@@ -213,6 +219,24 @@ impl AudioEngine {
                             }
                             Command::SetWaveform(waveform) => {
                                 vm.set_waveform(waveform);
+                            }
+                            Command::SetAdsr(adsr_params) => {
+                                vm.set_adsr(adsr_params);
+                            }
+                            Command::SetLfo(lfo_params) => {
+                                vm.set_lfo(lfo_params);
+                            }
+                            Command::SetPolyMode(poly_mode) => {
+                                vm.set_poly_mode(poly_mode);
+                            }
+                            Command::SetPortamento(portamento_params) => {
+                                vm.set_portamento(portamento_params);
+                            }
+                            Command::SetModRouting { index, routing } => {
+                                vm.set_mod_routing(index as usize, routing);
+                            }
+                            Command::ClearModRouting { index } => {
+                                vm.clear_mod_routing(index as usize);
                             }
                             Command::Quit => {}
                         }
@@ -390,6 +414,12 @@ impl AudioEngine {
                                 MidiEvent::NoteOff { note } => {
                                     vm.note_off(note);
                                 }
+                                MidiEvent::ChannelAftertouch { value } => {
+                                    vm.set_aftertouch(value);
+                                }
+                                MidiEvent::PolyAftertouch { note: _n, value: _v } => {
+                                    // TODO: Poly aftertouch per-note support (Phase 2+)
+                                }
                                 _ => {} // Ignore other events for now
                             }
                         }
@@ -420,6 +450,12 @@ impl AudioEngine {
                             }
                             Command::SetPortamento(portamento_params) => {
                                 vm.set_portamento(portamento_params);
+                            }
+                            Command::SetModRouting { index, routing } => {
+                                vm.set_mod_routing(index as usize, routing);
+                            }
+                            Command::ClearModRouting { index } => {
+                                vm.clear_mod_routing(index as usize);
                             }
                             Command::Quit => {}
                         }

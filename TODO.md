@@ -274,17 +274,19 @@
   - [x] Intégration avec Command Pattern (undo/redo)
   - [x] Tests unitaires LFO (11 tests)
   - [ ] Sync LFO au tempo (optionnel - Phase 4+)
-- [ ] Vélocité → intensité (déjà partiellement implémentée)
-- [ ] Aftertouch support
+  - [x] Vélocité → intensité (étendu via matrice de modulation)
+  - [x] Aftertouch (Channel Pressure) support
 
 ### Architecture de modulation avancée
 
 - [ ] Matrice de modulation générique
-  - [ ] Sources de modulation (LFO, Enveloppes, Vélocité, Aftertouch, etc.)
-  - [ ] Destinations de modulation (Pitch, Cutoff, Amplitude, Pan, etc.)
-  - [ ] Système d'assignation flexible source → destination
-  - [ ] Quantité de modulation réglable par routing
-  - [ ] UI pour visualiser et éditer la matrice
+  - [x] MVP: matrice pré‑allouée (8 slots) sans allocations runtime
+  - [x] Sources (MVP): LFO(0), Vélocité, Aftertouch
+  - [x] Destinations (MVP): OscillatorPitch(0), Amplitude
+  - [x] Assignation source → destination + amount [-1..1] (semitones pour Pitch)
+  - [x] UI minimale (4 slots) + commandes `SetModRouting`/`ClearModRouting`
+  - [ ] Étendre sources (Enveloppes), destinations (FilterCutoff, Pan)
+  - [ ] Éditeur UI avancé (drag & drop, presets)
 
 ---
 

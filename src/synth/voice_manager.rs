@@ -3,6 +3,7 @@
 use super::oscillator::WaveformType;
 use super::poly_mode::PolyMode;
 use super::voice::Voice;
+use super::modulation::{ModulationMatrix, ModRouting, MAX_ROUTINGS};
 
 const MAX_VOICES: usize = 16;
 
@@ -14,6 +15,10 @@ pub struct VoiceManager {
     poly_mode: PolyMode,
     /// Last note played (used for legato detection)
     last_note: Option<u8>,
+    /// Global modulation matrix applied to all voices
+    mod_matrix: ModulationMatrix,
+    /// Current channel aftertouch value (0.0..1.0)
+    aftertouch: f32,
 }
 
 impl VoiceManager {
@@ -26,6 +31,8 @@ impl VoiceManager {
             age_counter: 0,
             poly_mode: PolyMode::default(),
             last_note: None,
+            mod_matrix: ModulationMatrix::new_empty(),
+            aftertouch: 0.0,
         }
     }
 
@@ -200,9 +207,38 @@ impl VoiceManager {
         self.poly_mode
     }
 
+    /// Update channel aftertouch value and propagate to all voices
+    pub fn set_aftertouch(&mut self, value: u8) {
+        let at = (value as f32 / 127.0).clamp(0.0, 1.0);
+        self.aftertouch = at;
+        for v in &mut self.voices {
+            v.set_aftertouch(at);
+        }
+    }
+
+    /// Set a modulation routing in the matrix
+    pub fn set_mod_routing(&mut self, index: usize, routing: ModRouting) {
+        if index < MAX_ROUTINGS {
+            self.mod_matrix.set_routing(index, routing);
+        }
+    }
+
+    /// Clear a modulation routing in the matrix
+    pub fn clear_mod_routing(&mut self, index: usize) {
+        if index < MAX_ROUTINGS {
+            self.mod_matrix.clear_routing(index);
+        }
+    }
+
     pub fn next_sample(&mut self) -> f32 {
-        // Mix all the active voices
-        self.voices.iter_mut().map(|v| v.next_sample()).sum::<f32>() / 4.0 // gain constant raisonnable
+        // Copy matrix locally to avoid borrowing conflicts
+        let matrix = self.mod_matrix;
+        // Mix all the active voices using the modulation matrix
+        self.voices
+            .iter_mut()
+            .map(|v| v.next_sample_with_matrix(&matrix))
+            .sum::<f32>()
+            / 4.0 // simple headroom
     }
 
     pub fn active_voice_count(&self) -> usize {

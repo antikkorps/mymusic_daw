@@ -8,6 +8,7 @@ use crate::synth::envelope::AdsrParams;
 use crate::synth::lfo::LfoParams;
 use crate::synth::oscillator::WaveformType;
 use crate::synth::poly_mode::PolyMode;
+use crate::synth::modulation::{ModRouting, ModSource, ModDestination};
 use crate::synth::portamento::PortamentoParams;
 use std::sync::{Arc, Mutex};
 
@@ -35,6 +36,10 @@ pub struct DawState {
     /// Portamento parameters
     pub portamento: PortamentoParams,
 
+    /// UI-visible copy of modulation routings (MVP)
+    /// Keeps the first 8 slots so undo/redo can reflect in UI without querying audio thread
+    pub mod_routings: [ModRouting; 8],
+
     /// Command sender to communicate with audio thread (UI channel)
     /// Wrapped in Arc<Mutex<>> to allow sharing between DawApp and commands
     pub command_sender: Arc<Mutex<CommandProducer>>,
@@ -54,6 +59,7 @@ impl DawState {
             lfo: LfoParams::default(),
             poly_mode: PolyMode::default(),
             portamento: PortamentoParams::default(),
+            mod_routings: [ModRouting { source: ModSource::Velocity, destination: ModDestination::Amplitude, amount: 0.0, enabled: false }; 8],
             command_sender,
         }
     }

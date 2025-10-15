@@ -2,6 +2,7 @@
 
 use super::envelope::{AdsrEnvelope, AdsrParams};
 use super::lfo::{Lfo, LfoParams};
+use super::modulation::ModulationMatrix;
 use super::oscillator::{Oscillator, SimpleOscillator, WaveformType};
 use super::portamento::{PortamentoGlide, PortamentoParams};
 
@@ -12,6 +13,7 @@ pub struct Voice {
     portamento: PortamentoGlide,
     note: u8,
     velocity: f32,
+    aftertouch: f32,
     active: bool,
     waveform: WaveformType,
     sample_rate: f32,
@@ -38,6 +40,7 @@ impl Voice {
             portamento: PortamentoGlide::new(portamento_params, initial_frequency, sample_rate),
             note: 0,
             velocity: 0.0,
+            aftertouch: 0.0,
             active: false,
             waveform,
             sample_rate,
@@ -121,6 +124,11 @@ impl Voice {
 
     pub fn get_velocity(&self) -> f32 {
         self.velocity
+    }
+
+    /// Set current channel aftertouch value for this voice (0.0 .. 1.0)
+    pub fn set_aftertouch(&mut self, value: f32) {
+        self.aftertouch = value.clamp(0.0, 1.0);
     }
 
     /// Check if the voice is in release phase (note off but still sounding)
@@ -210,6 +218,69 @@ impl Voice {
 
         // Apply envelope and velocity
         sample *= self.velocity * envelope_value;
+
+        sample
+    }
+
+    /// Render next sample using the modulation matrix (MVP)
+    ///
+    /// This path evaluates the fixed modulation matrix with sources
+    /// (LFO0, Velocity, Aftertouch) and destinations (Pitch, Amplitude).
+    /// For backward compatibility, existing LFO destination behavior still applies
+    /// and is combined with matrix outputs (final result is clamped via output stage).
+    pub fn next_sample_with_matrix(&mut self, matrix: &ModulationMatrix) -> f32 {
+        use super::lfo::LfoDestination;
+
+        // Process portamento to get base (glided) frequency
+        self.base_frequency = self.portamento.process(self.target_frequency);
+
+        // Process LFO and cache value for this sample
+        let lfo_value = self.lfo.process(); // in [-depth, +depth]
+
+        // Legacy LFO destination: compute semitone offset if targeting pitch
+        let legacy_lfo_semitones = if matches!(self.lfo.destination(), LfoDestination::Pitch) {
+            // Scale to ±2 semitones max as before
+            lfo_value * 2.0
+        } else {
+            0.0
+        };
+
+        // Apply legacy pitch modulation first
+        let mut frequency = if legacy_lfo_semitones != 0.0 {
+            let mult = 2_f32.powf(legacy_lfo_semitones / 12.0);
+            self.base_frequency * mult
+        } else {
+            self.base_frequency
+        };
+
+        // Apply matrix: compute pitch delta and amplitude multiplier
+        let (pitch_semitones, amp_mult) = matrix.apply(self.velocity, self.aftertouch, &[lfo_value]);
+
+        if pitch_semitones != 0.0 {
+            let mult = 2_f32.powf(pitch_semitones / 12.0);
+            frequency *= mult;
+        }
+
+        // Update oscillator frequency
+        self.oscillator.set_frequency(frequency);
+
+        // Process envelope
+        let envelope_value = self.envelope.process();
+
+        // Generate oscillator sample
+        let mut sample = self.oscillator.next_sample();
+
+        // Apply legacy LFO volume modulation if selected
+        if matches!(self.lfo.destination(), LfoDestination::Volume) {
+            let volume_multiplier = 1.0 + lfo_value;
+            sample *= volume_multiplier;
+        }
+
+        // Apply envelope and velocity
+        sample *= self.velocity * envelope_value;
+
+        // Apply matrix amplitude multiplier
+        sample *= amp_mult;
 
         sample
     }
