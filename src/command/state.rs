@@ -5,7 +5,10 @@
 
 use crate::messaging::channels::CommandProducer;
 use crate::synth::envelope::AdsrParams;
+use crate::synth::lfo::LfoParams;
 use crate::synth::oscillator::WaveformType;
+use crate::synth::poly_mode::PolyMode;
+use crate::synth::portamento::PortamentoParams;
 use std::sync::{Arc, Mutex};
 
 /// Central state of the DAW that can be modified by commands
@@ -23,12 +26,20 @@ pub struct DawState {
     /// ADSR envelope parameters
     pub adsr: AdsrParams,
 
+    /// LFO parameters
+    pub lfo: LfoParams,
+
+    /// Polyphony mode
+    pub poly_mode: PolyMode,
+
+    /// Portamento parameters
+    pub portamento: PortamentoParams,
+
     /// Command sender to communicate with audio thread (UI channel)
     /// Wrapped in Arc<Mutex<>> to allow sharing between DawApp and commands
     pub command_sender: Arc<Mutex<CommandProducer>>,
 
     // Future parameters will be added here:
-    // pub lfo: LfoParams,
     // pub filter: FilterParams,
     // etc.
 }
@@ -40,6 +51,9 @@ impl DawState {
             volume: 0.5,
             waveform: WaveformType::Sine,
             adsr: AdsrParams::default(),
+            lfo: LfoParams::default(),
+            poly_mode: PolyMode::default(),
+            portamento: PortamentoParams::default(),
             command_sender,
         }
     }

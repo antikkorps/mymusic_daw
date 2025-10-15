@@ -412,6 +412,15 @@ impl AudioEngine {
                             Command::SetAdsr(adsr_params) => {
                                 vm.set_adsr(adsr_params);
                             }
+                            Command::SetLfo(lfo_params) => {
+                                vm.set_lfo(lfo_params);
+                            }
+                            Command::SetPolyMode(poly_mode) => {
+                                vm.set_poly_mode(poly_mode);
+                            }
+                            Command::SetPortamento(portamento_params) => {
+                                vm.set_portamento(portamento_params);
+                            }
                             Command::Quit => {}
                         }
                     };

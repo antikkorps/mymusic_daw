@@ -4,8 +4,11 @@ use crate::audio::cpu_monitor::{CpuLoad, CpuMonitor};
 use crate::audio::device::{AudioDeviceInfo, AudioDeviceManager};
 use crate::audio::parameters::AtomicF32;
 use crate::command::{CommandManager, DawState};
-use crate::command::commands::{SetVolumeCommand, SetWaveformCommand, SetAdsrCommand};
+use crate::command::commands::{SetVolumeCommand, SetWaveformCommand, SetAdsrCommand, SetLfoCommand, SetPolyModeCommand, SetPortamentoCommand};
 use crate::synth::envelope::AdsrParams;
+use crate::synth::lfo::{LfoParams, LfoDestination};
+use crate::synth::poly_mode::PolyMode;
+use crate::synth::portamento::PortamentoParams;
 use crate::connection::status::DeviceStatus;
 use crate::messaging::channels::{CommandProducer, NotificationConsumer};
 use crate::messaging::command::Command;
@@ -43,6 +46,15 @@ pub struct DawApp {
     adsr_decay: f32,
     adsr_sustain: f32,
     adsr_release: f32,
+    // LFO UI state
+    lfo_waveform: WaveformType,
+    lfo_rate: f32,
+    lfo_depth: f32,
+    lfo_destination: LfoDestination,
+    // Polyphony mode UI state
+    poly_mode: PolyMode,
+    // Portamento UI state
+    portamento_time: f32,
     // CPU monitoring
     cpu_monitor: CpuMonitor,
     last_cpu_load: CpuLoad,
@@ -112,6 +124,12 @@ impl DawApp {
             adsr_decay: 0.1,
             adsr_sustain: 0.7,
             adsr_release: 0.2,
+            lfo_waveform: WaveformType::Sine,
+            lfo_rate: 5.0,
+            lfo_depth: 0.5,
+            lfo_destination: LfoDestination::None,
+            poly_mode: PolyMode::default(),
+            portamento_time: 0.0,
             cpu_monitor,
             last_cpu_load: CpuLoad::Low,
             notification_rx,
@@ -348,6 +366,12 @@ impl eframe::App for DawApp {
                             self.adsr_decay = self.daw_state.adsr.decay;
                             self.adsr_sustain = self.daw_state.adsr.sustain;
                             self.adsr_release = self.daw_state.adsr.release;
+                            self.lfo_waveform = self.daw_state.lfo.waveform;
+                            self.lfo_rate = self.daw_state.lfo.rate;
+                            self.lfo_depth = self.daw_state.lfo.depth;
+                            self.lfo_destination = self.daw_state.lfo.destination;
+                            self.poly_mode = self.daw_state.poly_mode;
+                            self.portamento_time = self.daw_state.portamento.time;
                             self.volume_atomic.set(self.daw_state.volume);
                             println!("Undo: {}", description);
                         }
@@ -370,6 +394,12 @@ impl eframe::App for DawApp {
                             self.adsr_decay = self.daw_state.adsr.decay;
                             self.adsr_sustain = self.daw_state.adsr.sustain;
                             self.adsr_release = self.daw_state.adsr.release;
+                            self.lfo_waveform = self.daw_state.lfo.waveform;
+                            self.lfo_rate = self.daw_state.lfo.rate;
+                            self.lfo_depth = self.daw_state.lfo.depth;
+                            self.lfo_destination = self.daw_state.lfo.destination;
+                            self.poly_mode = self.daw_state.poly_mode;
+                            self.portamento_time = self.daw_state.portamento.time;
                             self.volume_atomic.set(self.daw_state.volume);
                             println!("Redo: {}", description);
                         }
@@ -582,6 +612,165 @@ impl eframe::App for DawApp {
                     }
                 }
             });
+
+            ui.add_space(10.0);
+            ui.separator();
+
+            // === LFO (Low Frequency Oscillator) Section ===
+            ui.heading("LFO (Modulation)");
+
+            ui.horizontal(|ui| {
+                ui.label("LFO Waveform:");
+                let previous_lfo_waveform = self.lfo_waveform;
+                egui::ComboBox::from_id_salt("lfo_waveform_selector")
+                    .selected_text(match self.lfo_waveform {
+                        WaveformType::Sine => "Sine",
+                        WaveformType::Square => "Square",
+                        WaveformType::Saw => "Saw",
+                        WaveformType::Triangle => "Triangle",
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut self.lfo_waveform, WaveformType::Sine, "Sine");
+                        ui.selectable_value(&mut self.lfo_waveform, WaveformType::Square, "Square");
+                        ui.selectable_value(&mut self.lfo_waveform, WaveformType::Saw, "Saw");
+                        ui.selectable_value(&mut self.lfo_waveform, WaveformType::Triangle, "Triangle");
+                    });
+
+                if previous_lfo_waveform != self.lfo_waveform {
+                    let params = LfoParams::new(
+                        self.lfo_waveform,
+                        self.lfo_rate,
+                        self.lfo_depth,
+                        self.lfo_destination,
+                    );
+                    let cmd = Box::new(SetLfoCommand::new(params));
+                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                        eprintln!("Failed to execute LFO command: {}", e);
+                    }
+                }
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("LFO Rate:");
+                if ui.add(egui::Slider::new(&mut self.lfo_rate, 0.1..=20.0)
+                    .text("Hz")
+                    .logarithmic(true))
+                    .changed()
+                {
+                    let params = LfoParams::new(
+                        self.lfo_waveform,
+                        self.lfo_rate,
+                        self.lfo_depth,
+                        self.lfo_destination,
+                    );
+                    let cmd = Box::new(SetLfoCommand::new(params));
+                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                        eprintln!("Failed to execute LFO command: {}", e);
+                    }
+                }
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("LFO Depth:");
+                if ui.add(egui::Slider::new(&mut self.lfo_depth, 0.0..=1.0))
+                    .changed()
+                {
+                    let params = LfoParams::new(
+                        self.lfo_waveform,
+                        self.lfo_rate,
+                        self.lfo_depth,
+                        self.lfo_destination,
+                    );
+                    let cmd = Box::new(SetLfoCommand::new(params));
+                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                        eprintln!("Failed to execute LFO command: {}", e);
+                    }
+                }
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("LFO Destination:");
+                let previous_destination = self.lfo_destination;
+                egui::ComboBox::from_id_salt("lfo_destination_selector")
+                    .selected_text(match self.lfo_destination {
+                        LfoDestination::None => "None",
+                        LfoDestination::Pitch => "Pitch (Vibrato)",
+                        LfoDestination::Volume => "Volume (Tremolo)",
+                        LfoDestination::FilterCutoff => "Filter Cutoff (Phase 3a)",
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut self.lfo_destination, LfoDestination::None, "None");
+                        ui.selectable_value(&mut self.lfo_destination, LfoDestination::Pitch, "Pitch (Vibrato)");
+                        ui.selectable_value(&mut self.lfo_destination, LfoDestination::Volume, "Volume (Tremolo)");
+                        ui.selectable_value(&mut self.lfo_destination, LfoDestination::FilterCutoff, "Filter Cutoff (Phase 3a)");
+                    });
+
+                if previous_destination != self.lfo_destination {
+                    let params = LfoParams::new(
+                        self.lfo_waveform,
+                        self.lfo_rate,
+                        self.lfo_depth,
+                        self.lfo_destination,
+                    );
+                    let cmd = Box::new(SetLfoCommand::new(params));
+                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                        eprintln!("Failed to execute LFO command: {}", e);
+                    }
+                }
+            });
+
+            ui.add_space(10.0);
+            ui.separator();
+
+            // === Polyphony Mode Section ===
+            ui.heading("Polyphony Mode");
+
+            ui.horizontal(|ui| {
+                ui.label("Mode:");
+                let previous_mode = self.poly_mode;
+                egui::ComboBox::from_id_salt("poly_mode_selector")
+                    .selected_text(match self.poly_mode {
+                        PolyMode::Poly => "Poly (Multiple notes)",
+                        PolyMode::Mono => "Mono (One note, retriggered)",
+                        PolyMode::Legato => "Legato (Smooth pitch slide)",
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut self.poly_mode, PolyMode::Poly, "Poly (Multiple notes)");
+                        ui.selectable_value(&mut self.poly_mode, PolyMode::Mono, "Mono (One note, retriggered)");
+                        ui.selectable_value(&mut self.poly_mode, PolyMode::Legato, "Legato (Smooth pitch slide)");
+                    });
+
+                if previous_mode != self.poly_mode {
+                    let cmd = Box::new(SetPolyModeCommand::new(self.poly_mode));
+                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                        eprintln!("Failed to execute PolyMode command: {}", e);
+                    }
+                }
+            });
+
+            ui.add_space(10.0);
+            ui.separator();
+
+            // === Portamento Section ===
+            ui.heading("Portamento/Glide");
+
+            ui.horizontal(|ui| {
+                ui.label("Glide Time:");
+                if ui.add(egui::Slider::new(&mut self.portamento_time, 0.0..=2.0)
+                    .text("s")
+                    .logarithmic(false))
+                    .changed()
+                {
+                    let params = PortamentoParams::new(self.portamento_time);
+                    let cmd = Box::new(SetPortamentoCommand::new(params));
+                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                        eprintln!("Failed to execute Portamento command: {}", e);
+                    }
+                }
+            });
+
+            ui.label("Set to 0 for instant pitch changes, >0 for smooth glides.");
+            ui.label("Works best in Mono/Legato modes.");
 
             ui.add_space(10.0);
             ui.separator();

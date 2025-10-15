@@ -4,7 +4,10 @@ use crate::command::state::DawState;
 use crate::command::trait_def::{UndoableCommand, CommandResult, CommandError};
 use crate::messaging::command::Command;
 use crate::synth::envelope::AdsrParams;
+use crate::synth::lfo::LfoParams;
 use crate::synth::oscillator::WaveformType;
+use crate::synth::poly_mode::PolyMode;
+use crate::synth::portamento::PortamentoParams;
 
 /// Command to set the volume
 ///
@@ -236,6 +239,240 @@ impl UndoableCommand for SetAdsrCommand {
             self.new_params.sustain,
             self.new_params.release
         )
+    }
+}
+
+/// Command to set LFO parameters
+///
+/// This command changes the LFO parameters for all voices and sends the update to the audio thread.
+/// It stores the old parameters to enable undo.
+pub struct SetLfoCommand {
+    new_params: LfoParams,
+    old_params: Option<LfoParams>,
+}
+
+impl SetLfoCommand {
+    /// Create a new SetLfoCommand
+    ///
+    /// # Arguments
+    /// * `params` - The new LFO parameters
+    pub fn new(params: LfoParams) -> Self {
+        Self {
+            new_params: params,
+            old_params: None,
+        }
+    }
+}
+
+impl UndoableCommand for SetLfoCommand {
+    fn execute(&mut self, state: &mut DawState) -> CommandResult<()> {
+        // Store old value for undo
+        self.old_params = Some(state.lfo);
+
+        // Update state
+        state.lfo = self.new_params;
+
+        // Send to audio thread
+        if !state.send_to_audio(Command::SetLfo(self.new_params)) {
+            return Err(CommandError::ExecutionFailed(
+                "Failed to send LFO command to audio thread (ringbuffer full)".into()
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn undo(&mut self, state: &mut DawState) -> CommandResult<()> {
+        let old_params = self.old_params
+            .ok_or_else(|| CommandError::UndoFailed("No previous LFO parameters stored".into()))?;
+
+        // Restore old value
+        state.lfo = old_params;
+
+        // Send to audio thread
+        if !state.send_to_audio(Command::SetLfo(old_params)) {
+            return Err(CommandError::UndoFailed(
+                "Failed to send LFO command to audio thread (ringbuffer full)".into()
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn description(&self) -> String {
+        format!(
+            "Set LFO ({:?} {:.1}Hz depth:{:.2} → {:?})",
+            self.new_params.waveform,
+            self.new_params.rate,
+            self.new_params.depth,
+            self.new_params.destination
+        )
+    }
+
+    fn can_merge_with(&self, other: &dyn UndoableCommand) -> bool {
+        // We can merge with other SetLfoCommand to avoid cluttering history
+        // when user adjusts LFO parameters
+        other.description().starts_with("Set LFO")
+    }
+
+    fn merge_with(&mut self, other: Box<dyn UndoableCommand>) -> CommandResult<()> {
+        // Downcast to SetLfoCommand
+        let other_any = Box::into_raw(other) as *mut dyn UndoableCommand as *mut SetLfoCommand;
+
+        unsafe {
+            let other_cmd = Box::from_raw(other_any);
+            // Update to the new value but keep the original old_params
+            self.new_params = other_cmd.new_params;
+        }
+
+        Ok(())
+    }
+}
+
+/// Command to set polyphony mode
+///
+/// This command changes the polyphony mode (Poly, Mono, Legato) and sends the update to the audio thread.
+/// It stores the old mode to enable undo.
+pub struct SetPolyModeCommand {
+    new_mode: PolyMode,
+    old_mode: Option<PolyMode>,
+}
+
+impl SetPolyModeCommand {
+    /// Create a new SetPolyModeCommand
+    ///
+    /// # Arguments
+    /// * `mode` - The new polyphony mode
+    pub fn new(mode: PolyMode) -> Self {
+        Self {
+            new_mode: mode,
+            old_mode: None,
+        }
+    }
+}
+
+impl UndoableCommand for SetPolyModeCommand {
+    fn execute(&mut self, state: &mut DawState) -> CommandResult<()> {
+        // Store old value for undo
+        self.old_mode = Some(state.poly_mode);
+
+        // Update state
+        state.poly_mode = self.new_mode;
+
+        // Send to audio thread
+        if !state.send_to_audio(Command::SetPolyMode(self.new_mode)) {
+            return Err(CommandError::ExecutionFailed(
+                "Failed to send PolyMode command to audio thread (ringbuffer full)".into()
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn undo(&mut self, state: &mut DawState) -> CommandResult<()> {
+        let old_mode = self.old_mode
+            .ok_or_else(|| CommandError::UndoFailed("No previous polyphony mode stored".into()))?;
+
+        // Restore old value
+        state.poly_mode = old_mode;
+
+        // Send to audio thread
+        if !state.send_to_audio(Command::SetPolyMode(old_mode)) {
+            return Err(CommandError::UndoFailed(
+                "Failed to send PolyMode command to audio thread (ringbuffer full)".into()
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn description(&self) -> String {
+        format!("Set Polyphony Mode to {:?}", self.new_mode)
+    }
+}
+
+/// Command to set portamento parameters
+///
+/// This command changes the portamento glide time for all voices and sends the update to the audio thread.
+/// It stores the old parameters to enable undo.
+pub struct SetPortamentoCommand {
+    new_params: PortamentoParams,
+    old_params: Option<PortamentoParams>,
+}
+
+impl SetPortamentoCommand {
+    /// Create a new SetPortamentoCommand
+    ///
+    /// # Arguments
+    /// * `params` - The new portamento parameters
+    pub fn new(params: PortamentoParams) -> Self {
+        Self {
+            new_params: params,
+            old_params: None,
+        }
+    }
+}
+
+impl UndoableCommand for SetPortamentoCommand {
+    fn execute(&mut self, state: &mut DawState) -> CommandResult<()> {
+        // Store old value for undo
+        self.old_params = Some(state.portamento);
+
+        // Update state
+        state.portamento = self.new_params;
+
+        // Send to audio thread
+        if !state.send_to_audio(Command::SetPortamento(self.new_params)) {
+            return Err(CommandError::ExecutionFailed(
+                "Failed to send Portamento command to audio thread (ringbuffer full)".into()
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn undo(&mut self, state: &mut DawState) -> CommandResult<()> {
+        let old_params = self.old_params
+            .ok_or_else(|| CommandError::UndoFailed("No previous portamento parameters stored".into()))?;
+
+        // Restore old value
+        state.portamento = old_params;
+
+        // Send to audio thread
+        if !state.send_to_audio(Command::SetPortamento(old_params)) {
+            return Err(CommandError::UndoFailed(
+                "Failed to send Portamento command to audio thread (ringbuffer full)".into()
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn description(&self) -> String {
+        if self.new_params.time == 0.0 {
+            "Set Portamento (Off)".to_string()
+        } else {
+            format!("Set Portamento ({:.2}s)", self.new_params.time)
+        }
+    }
+
+    fn can_merge_with(&self, other: &dyn UndoableCommand) -> bool {
+        // We can merge with other SetPortamentoCommand to avoid cluttering history
+        // when user adjusts the portamento slider
+        other.description().starts_with("Set Portamento")
+    }
+
+    fn merge_with(&mut self, other: Box<dyn UndoableCommand>) -> CommandResult<()> {
+        // Downcast to SetPortamentoCommand
+        let other_any = Box::into_raw(other) as *mut dyn UndoableCommand as *mut SetPortamentoCommand;
+
+        unsafe {
+            let other_cmd = Box::from_raw(other_any);
+            // Update to the new value but keep the original old_params
+            self.new_params = other_cmd.new_params;
+        }
+
+        Ok(())
     }
 }
 

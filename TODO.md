@@ -195,7 +195,7 @@
   - [x] Métriques de performance documentées
   - [x] Commandes pour lancer tests et benchmarks
 
-**Total tests : 84 tests passent** 🎉 (55 tests Phase 1.5 + 13 tests Command Pattern + 10 tests ADSR + 2 tests Voice Stealing + 4 tests intégration mis à jour)
+**Total tests : 114 tests passent** 🎉 (55 tests Phase 1.5 + 13 tests Command Pattern + 10 tests ADSR + 11 tests LFO + 2 tests Voice Stealing + 14 tests Polyphony Modes + 9 tests Portamento)
 
 ### Documentation et communauté - **REPORTÉ POST-v1.0** ⏭️
 
@@ -228,7 +228,7 @@
 - [x] Tests unitaires (13 tests, 68 total avec intégration)
 - [x] Documentation du pattern (doc/COMMAND_PATTERN.md)
 - [x] Tester avec les paramètres ADSR ✅
-- [ ] **À FAIRE** : Tester avec les paramètres LFO (Phase 2 prochaine étape)
+- [x] Tester avec les paramètres LFO ✅
 
 ### Enveloppes ✅ (TERMINÉ)
 
@@ -241,19 +241,40 @@
 - [x] UI pour contrôles ADSR (4 sliders avec undo/redo)
 - [x] Tests unitaires ADSR (10 tests - timing, courbes, retriggering)
 
-### Polyphonie avancée
+### Polyphonie avancée ✅ (TERMINÉ)
 
 - [x] Améliorer le voice stealing (priorité par âge + releasing voices d'abord)
-- [ ] Modes de polyphonie (mono, legato, poly)
-- [ ] Portamento/glide
+- [x] Modes de polyphonie (mono, legato, poly)
+  - [x] Enum `PolyMode` (Poly, Mono, Legato)
+  - [x] Implémentation dans `VoiceManager` (3 méthodes de note_on)
+  - [x] Mode Poly : polyphonie complète (comportement par défaut)
+  - [x] Mode Mono : monophonique avec retriggering de l'enveloppe
+  - [x] Mode Legato : transitions de pitch fluides sans retriggering
+  - [x] Méthode `force_stop()` pour couper les voix immédiatement (mono mode)
+  - [x] UI avec ComboBox de sélection
+  - [x] Intégration avec Command Pattern (undo/redo)
+  - [x] Tests unitaires (14 tests - 11 voice_manager + 3 poly_mode)
+- [x] Portamento/glide ✅ (TERMINÉ)
+  - [x] Module `portamento.rs` avec `PortamentoGlide` et `PortamentoParams`
+  - [x] Utilise `OnePoleSmoother` pour des glides fluides
+  - [x] Intégration dans Voice (transitions de fréquence progressives)
+  - [x] Méthode `force_stop()` pour compatibilité mono/legato
+  - [x] Portamento + LFO combinés (portamento → base freq → LFO modulation)
+  - [x] Command Pattern : `SetPortamentoCommand` avec undo/redo et merge
+  - [x] UI : Slider "Glide Time" (0-2 secondes)
+  - [x] Tests unitaires (9 tests couvrant tous les cas d'usage)
+  - [x] Compatible tous les modes (Poly, Mono, Legato)
 
-### Modulation
+### Modulation ✅ (TERMINÉ)
 
-- [ ] LFO (Low Frequency Oscillator)
-  - [ ] Formes d'onde LFO (sine, square, saw, triangle)
-  - [ ] Routing LFO → paramètres (pitch, cutoff)
-  - [ ] Sync LFO au tempo (optionnel)
-- [ ] Vélocité → intensité
+- [x] LFO (Low Frequency Oscillator)
+  - [x] Formes d'onde LFO (sine, square, saw, triangle)
+  - [x] Routing LFO → paramètres (pitch vibrato, volume tremolo)
+  - [x] UI pour contrôler le LFO (waveform, rate, depth, destination)
+  - [x] Intégration avec Command Pattern (undo/redo)
+  - [x] Tests unitaires LFO (11 tests)
+  - [ ] Sync LFO au tempo (optionnel - Phase 4+)
+- [ ] Vélocité → intensité (déjà partiellement implémentée)
 - [ ] Aftertouch support
 
 ### Architecture de modulation avancée
