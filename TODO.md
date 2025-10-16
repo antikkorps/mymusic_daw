@@ -199,6 +199,85 @@
 
 ### Documentation et communauté - **REPORTÉ POST-v1.0** ⏭️
 
+---
+
+## Phase 2 : Panning & Modulation Sources (Planned)
+
+### Goals
+
+- Expand panning capabilities (global pan + per‑voice spread).
+- Extend modulation sources beyond Velocity/Aftertouch/Envelope/LFO0.
+- Prepare for multiple LFOs without runtime allocations.
+- Keep audio callback RT‑safe (no allocs, no I/O, no blocking).
+
+### Panning Enhancements
+
+- [ ] Global Pan parameter
+  - [ ] Add `Command::SetPan(f32)` (range `[-1.0, 1.0]`).
+  - [ ] Store `global_pan` in `VoiceManager` and propagate to voices (`Voice.pan`).
+  - [ ] Add smoothing (One‑pole) for pan to avoid zipper noise (like volume).
+  - [ ] UI: Synth tab slider “Pan” with undo/redo (`SetPanCommand`).
+  - [ ] Tests: constant‑power panning (energy roughly stable at L/C/R).
+
+- [ ] Pan Spread across polyphony
+  - [ ] Add `Command::SetPanSpread(f32)` (range `[0.0, 1.0]`).
+  - [ ] On `note_on`, assign per‑voice base pan in `[-spread, +spread]` (e.g., even distribution or simple alternating pattern).
+  - [ ] UI: Synth tab slider “Pan Spread”.
+  - [ ] Tests: distribution across N voices, ensures stereo widening without clipping.
+
+### Modulation Sources Extensions
+
+- [ ] Add common MIDI sources to `ModSource`
+  - [ ] `ModSource::ModWheel` (CC1), `ModSource::Expression` (CC11), `ModSource::PitchBend`.
+  - [ ] (Optional) `ModSource::Cc(u8)` for generic CC mapping (future‑proof).
+
+- [ ] Engine handling (callback‑safe)
+  - [ ] In `process_midi_event`, handle `ControlChange` (CC1/CC11) and `PitchBend`.
+  - [ ] Normalize to `[0.0, 1.0]` (or `[-1.0, 1.0]` where appropriate) and store in `VoiceManager` atomics/fields.
+  - [ ] Expose these normalized values to modulation evaluation without locks.
+
+- [ ] Modulation Matrix API
+  - [ ] Introduce a pre‑allocated `ModValues` struct passed to `apply()` containing: `velocity, aftertouch, envelope, pitch_bend, mod_wheel, expression, lfo: [f32; MAX_LFOS]`.
+  - [ ] Keep current `apply` temporarily (compat) or migrate all call‑sites.
+  - [ ] Bounds and clamping consistent with current behavior.
+
+- [ ] UI updates (Modulation tab)
+  - [ ] Add sources in the ComboBox: “ModWheel”, “Expression”, “Pitch Bend”.
+  - [ ] Increase visible slots from 4 → 8 to match `MAX_ROUTINGS` (still pre‑allocated, no runtime allocs).
+  - [ ] Tooltips indicating ranges and semantics (pitch amount = semitones; pan = −1..1; amp adds to 1.0 and clamps ≥ 0).
+
+### Multiple LFOs (MVP)
+
+- [ ] Support `MAX_LFOS = 2..4`
+  - [ ] Store `[Lfo; MAX_LFOS]` in `Voice` (pre‑allocated) with identical API as current LFO.
+  - [ ] Compute per‑sample LFO values once per voice and pass into `ModValues`.
+  - [ ] Update `ModSource::Lfo(i)` to read `lfo[i]` (ignore out‑of‑range safely).
+
+- [ ] UI for multiple LFOs
+  - [ ] Add selector for LFO index (1..MAX_LFOS) when editing LFO params.
+  - [ ] Allow routing selection to `Lfo(0..MAX_LFOS-1)` in the matrix.
+
+### DSP/RT Safety
+
+- [ ] No allocations or logging in callback; keep `try_lock` usage and ringbuffers.
+- [ ] Smoothing for continuous params (pan, spread‑derived changes) to avoid zipper noise.
+- [ ] Clamp outputs: amplitude ≥ 0, pan in [−1, 1], maintain constant‑power panning law.
+
+### Tests
+
+- [ ] Panning: constant‑power behavior and clamping.
+- [ ] Pan Spread: stereo distribution across multiple voices.
+- [ ] Sources: end‑to‑end routing for CC1/CC11/PitchBend to Pitch/Amplitude/Pan destinations.
+- [ ] Multi‑LFO: ensure `Lfo(1)` affects destinations independently from `Lfo(0)`; bounds respected.
+- [ ] Backward compatibility: legacy LFO destination and existing single‑LFO paths keep working.
+
+### Acceptance Criteria
+
+- Global pan + spread adjustable from UI with smooth, click‑free audio.
+- New sources (ModWheel/Expression/PitchBend) routable in the matrix with predictable ranges.
+- Two LFOs minimum routable independently; UI exposes routing and basic params.
+- All changes respect real‑time constraints (no allocs/locks contention) and pass added tests.
+
 **Décision** : Trop tôt pour ouvrir aux contributeurs externes. L'API et l'architecture vont encore beaucoup évoluer jusqu'à v1.0 (Phase 4). Cette section sera réactivée après avoir atteint le milestone v1.0.0 avec un DAW fonctionnel et stable.
 
 **Reporté à** : Phase 6a (Performance et stabilité) - Quand le projet sera "production-ready"
