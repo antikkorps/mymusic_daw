@@ -230,15 +230,19 @@ impl VoiceManager {
         }
     }
 
-    pub fn next_sample(&mut self) -> f32 {
+    pub fn next_sample(&mut self) -> (f32, f32) {
         // Copy matrix locally to avoid borrowing conflicts
         let matrix = self.mod_matrix;
         // Mix all the active voices using the modulation matrix
-        self.voices
+        let (left, right) = self.voices
             .iter_mut()
             .map(|v| v.next_sample_with_matrix(&matrix))
-            .sum::<f32>()
-            / 4.0 // simple headroom
+            .fold((0.0, 0.0), |(acc_l, acc_r), (voice_l, voice_r)| {
+                (acc_l + voice_l, acc_r + voice_r)
+            });
+
+        // simple headroom
+        (left / 4.0, right / 4.0)
     }
 
     pub fn active_voice_count(&self) -> usize {
@@ -425,7 +429,7 @@ mod tests {
 
         // Sans voix actives, doit retourner 0
         let sample = vm.next_sample();
-        assert_eq!(sample, 0.0);
+        assert_eq!(sample, (0.0, 0.0));
 
         // Avec voix actives
         vm.note_on(60, 100);
@@ -434,7 +438,8 @@ mod tests {
         for _ in 0..1000 {
             let sample = vm.next_sample();
             // Sample doit être fini (pas NaN ou infinity)
-            assert!(sample.is_finite());
+            assert!(sample.0.is_finite());
+            assert!(sample.1.is_finite());
         }
     }
 
@@ -452,9 +457,14 @@ mod tests {
             let sample = vm.next_sample();
             // Avec le gain /4.0, ça devrait rester raisonnable
             assert!(
-                sample.abs() < 10.0,
+                sample.0.abs() < 10.0,
                 "Sample amplitude trop élevée: {}",
-                sample
+                sample.0
+            );
+            assert!(
+                sample.1.abs() < 10.0,
+                "Sample amplitude trop élevée: {}",
+                sample.1
             );
         }
     }
@@ -650,7 +660,7 @@ mod tests {
         // Generate more samples - envelope should continue from where it was
         for _ in 0..1000 {
             let sample = vm.next_sample();
-            assert!(sample.is_finite(), "Sample should be valid during legato transition");
+            assert!(sample.0.is_finite() && sample.1.is_finite(), "Sample should be valid during legato transition");
         }
     }
 

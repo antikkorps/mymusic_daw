@@ -96,6 +96,35 @@ pub fn write_mono_to_interleaved_frame<T>(
     }
 }
 
+/// Process interleaved audio buffer for stereo samples
+///
+/// Takes an internal f32 stereo sample and writes it to the first two channels
+/// of an interleaved output buffer (e.g., [L, R, L, R, L, R...])
+///
+/// # Arguments
+/// * `(left_sample, right_sample)` - The stereo f32 sample to write
+/// * `output_frame` - A slice representing one audio frame (e.g., [L, R] for stereo)
+#[inline]
+pub fn write_stereo_to_interleaved_frame<T>(
+    (left_sample, right_sample): (f32, f32),
+    output_frame: &mut [T],
+) where
+    T: Sample + FromSample<f32>,
+{
+    if output_frame.len() >= 2 {
+        output_frame[0] = Sample::from_sample::<f32>(left_sample);
+        output_frame[1] = Sample::from_sample::<f32>(right_sample);
+        // For > 2 channels, we could either write silence or duplicate L/R
+        for channel_sample in output_frame.iter_mut().skip(2) {
+            *channel_sample = Sample::from_sample::<f32>(0.0);
+        }
+    } else if let Some(channel_sample) = output_frame.first_mut() {
+        // Fallback for mono output: mix L and R
+        let mono_sample = (left_sample + right_sample) * 0.5;
+        *channel_sample = Sample::from_sample::<f32>(mono_sample);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

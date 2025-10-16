@@ -563,8 +563,8 @@ impl eframe::App for DawApp {
                     // Modulation tab
                     ui.heading("Modulation Matrix (MVP)");
 
-            let src_labels = ["LFO 1", "Velocity", "Aftertouch"]; // UI-only mapping
-            let dst_labels = ["Pitch", "Amplitude"]; // UI-only mapping
+            let src_labels = ["LFO 1", "Velocity", "Aftertouch", "Envelope"];
+            let dst_labels = ["Pitch", "Amplitude", "Pan"];
 
             for (i, routing) in self.mod_routings_ui.iter_mut().enumerate() {
                 ui.horizontal(|ui| {
@@ -586,12 +586,14 @@ impl eframe::App for DawApp {
                             ModSource::Lfo(0) => src_labels[0],
                             ModSource::Velocity => src_labels[1],
                             ModSource::Aftertouch => src_labels[2],
+                            ModSource::Envelope => src_labels[3],
                             _ => "Unused",
                         })
                         .show_ui(ui, |ui| {
                             ui.selectable_value(&mut routing.source, ModSource::Lfo(0), src_labels[0]);
                             ui.selectable_value(&mut routing.source, ModSource::Velocity, src_labels[1]);
                             ui.selectable_value(&mut routing.source, ModSource::Aftertouch, src_labels[2]);
+                            ui.selectable_value(&mut routing.source, ModSource::Envelope, src_labels[3]);
                         });
                     if routing.source != prev_source {
                         let old = ModRouting { source: prev_source, ..*routing };
@@ -605,11 +607,13 @@ impl eframe::App for DawApp {
                         .selected_text(match routing.destination {
                             ModDestination::OscillatorPitch(0) => dst_labels[0],
                             ModDestination::Amplitude => dst_labels[1],
+                            ModDestination::Pan => dst_labels[2],
                             _ => "Unused",
                         })
                         .show_ui(ui, |ui| {
                             ui.selectable_value(&mut routing.destination, ModDestination::OscillatorPitch(0), dst_labels[0]);
                             ui.selectable_value(&mut routing.destination, ModDestination::Amplitude, dst_labels[1]);
+                            ui.selectable_value(&mut routing.destination, ModDestination::Pan, dst_labels[2]);
                         });
                     if routing.destination != prev_dest {
                         let old = ModRouting { destination: prev_dest, ..*routing };
@@ -622,13 +626,15 @@ impl eframe::App for DawApp {
                     let range = match routing.destination {
                         ModDestination::OscillatorPitch(_) => -12.0..=12.0, // semitones
                         ModDestination::Amplitude => -1.0..=1.0,            // multiplier delta
+                        ModDestination::Pan => -1.0..=1.0,                  // pan L/R
                     };
                     if ui.add(egui::Slider::new(&mut routing.amount, range).fixed_decimals(2)).changed() {
                         let old = *routing;
                         // Clamp for safety
-                        routing.amount = if matches!(routing.destination, ModDestination::OscillatorPitch(_)) {
-                            routing.amount.clamp(-24.0, 24.0)
-                        } else { routing.amount.clamp(-1.0, 1.0) };
+                        routing.amount = match routing.destination {
+                            ModDestination::OscillatorPitch(_) => routing.amount.clamp(-24.0, 24.0),
+                            _ => routing.amount.clamp(-1.0, 1.0), // For Amplitude and Pan
+                        };
                         let cmd = Box::new(SetModRoutingCommand::new_with_old(i as u8, *routing, old));
                         let _ = self.command_manager.execute(cmd, &mut self.daw_state);
                     } else if (routing.amount - prev_amount).abs() > 0.0 {

@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::audio::cpu_monitor::CpuMonitor;
 use crate::audio::dsp_utils::{flush_denormals_to_zero, soft_clip, OnePoleSmoother};
-use crate::audio::format_conversion::write_mono_to_interleaved_frame;
+use crate::audio::format_conversion::write_stereo_to_interleaved_frame;
 use crate::audio::parameters::AtomicF32;
 use crate::connection::status::{AtomicDeviceStatus, DeviceStatus};
 use crate::messaging::channels::{CommandConsumer, NotificationProducer};
@@ -490,32 +490,40 @@ impl AudioEngine {
                                 // Smooth volume pour éviter clics/pops
                                 let smoothed_volume = smoother.process(target_volume);
 
-                                // Generate raw sample
-                                let mut sample = vm.next_sample();
+                                // Generate stereo sample
+                                let (mut left, mut right) = vm.next_sample();
 
                                 // Anti-denormals (flush tiny values to zero)
-                                sample = flush_denormals_to_zero(sample);
+                                left = flush_denormals_to_zero(left);
+                                right = flush_denormals_to_zero(right);
 
                                 // Apply volume
-                                sample *= smoothed_volume;
+                                left *= smoothed_volume;
+                                right *= smoothed_volume;
 
                                 // Soft saturation (protection contre clipping dur)
-                                sample = soft_clip(sample);
+                                left = soft_clip(left);
+                                right = soft_clip(right);
 
-                                // Write to all channels with automatic format conversion
-                                write_mono_to_interleaved_frame(sample, frame);
+                                // Write stereo sample to frame
+                                write_stereo_to_interleaved_frame((left, right), frame);
                             }
                         } else {
                             // Fallback sans smoother (toujours mieux que silence)
                             let current_volume = volume.get();
                             for frame in data.chunks_mut(channels) {
-                                let mut sample = vm.next_sample();
-                                sample = flush_denormals_to_zero(sample);
-                                sample *= current_volume;
-                                sample = soft_clip(sample);
+                                let (mut left, mut right) = vm.next_sample();
 
-                                // Write to all channels with automatic format conversion
-                                write_mono_to_interleaved_frame(sample, frame);
+                                left = flush_denormals_to_zero(left);
+                                right = flush_denormals_to_zero(right);
+
+                                left *= current_volume;
+                                right *= current_volume;
+
+                                left = soft_clip(left);
+                                right = soft_clip(right);
+
+                                write_stereo_to_interleaved_frame((left, right), frame);
                             }
                         }
                     } else {

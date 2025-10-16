@@ -10,6 +10,7 @@ pub enum ModSource {
     Lfo(usize),
     Velocity,
     Aftertouch,
+    Envelope,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,6 +19,8 @@ pub enum ModDestination {
     OscillatorPitch(usize),
     /// Output amplitude (multiplier)
     Amplitude,
+    /// Stereo panning (-1.0 for left, 1.0 for right)
+    Pan,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -80,10 +83,12 @@ impl ModulationMatrix {
     /// - `velocity`: 0..1
     /// - `aftertouch`: 0..1 (channel pressure)
     /// - `lfo_values`: current LFO outputs; for MVP, [lfo0]
-    /// Returns deltas to apply: pitch in semitones, amplitude multiplier (>=0)
-    pub fn apply(&self, velocity: f32, aftertouch: f32, lfo_values: &[f32; 1]) -> (f32, f32) {
+    /// - `envelope_value`: current envelope output 0..1
+    /// Returns deltas to apply: pitch in semitones, amplitude multiplier (>=0), pan (-1..1)
+    pub fn apply(&self, velocity: f32, aftertouch: f32, lfo_values: &[f32; 1], envelope_value: f32) -> (f32, f32, f32) {
         let mut pitch_semitones = 0.0f32;
         let mut amp_mult = 1.0f32;
+        let mut pan = 0.0f32;
 
         // Evaluate all enabled routings
         for r in &self.routings {
@@ -95,6 +100,7 @@ impl ModulationMatrix {
                 ModSource::Lfo(_) => 0.0, // not used yet
                 ModSource::Velocity => (velocity * 2.0 - 1.0).clamp(-1.0, 1.0),
                 ModSource::Aftertouch => (aftertouch * 2.0 - 1.0).clamp(-1.0, 1.0),
+                ModSource::Envelope => (envelope_value * 2.0 - 1.0).clamp(-1.0, 1.0),
             };
 
             match r.destination {
@@ -106,12 +112,17 @@ impl ModulationMatrix {
                     // Amplitude multiplier = 1.0 + amount * src
                     amp_mult += r.amount * src;
                 }
+                ModDestination::Pan => {
+                    // Pan position = amount * src
+                    pan += r.amount * src;
+                }
             }
         }
 
-        // Clamp amplitude multiplier to a sane range (non-negative, modest upper bound)
+        // Clamp outputs to a sane range
         let amp_mult = amp_mult.clamp(0.0, 2.0);
-        (pitch_semitones, amp_mult)
+        let pan = pan.clamp(-1.0, 1.0);
+        (pitch_semitones, amp_mult, pan)
     }
 }
 
@@ -122,9 +133,10 @@ mod tests {
     #[test]
     fn test_empty_matrix() {
         let m = ModulationMatrix::new_empty();
-        let (p, a) = m.apply(0.8, 0.2, &[0.0]);
+        let (p, a, pan) = m.apply(0.8, 0.2, &[0.0], 0.5);
         assert_eq!(p, 0.0);
         assert!((a - 1.0).abs() < 1e-6);
+        assert_eq!(pan, 0.0);
     }
 
     #[test]
@@ -132,7 +144,7 @@ mod tests {
         let mut m = ModulationMatrix::new_empty();
         m.set_routing(0, ModRouting { source: ModSource::Lfo(0), destination: ModDestination::OscillatorPitch(0), amount: 2.0, enabled: true });
         // LFO value +1 → +2 semitones
-        let (p, _a) = m.apply(0.5, 0.5, &[1.0]);
+        let (p, _a, _pan) = m.apply(0.5, 0.5, &[1.0], 0.5);
         assert!((p - 2.0).abs() < 1e-6);
     }
 
@@ -141,7 +153,7 @@ mod tests {
         let mut m = ModulationMatrix::new_empty();
         m.set_routing(0, ModRouting { source: ModSource::Velocity, destination: ModDestination::Amplitude, amount: 0.5, enabled: true });
         // velocity 1.0 → src = +1.0 → amp = 1 + 0.5*1 = 1.5
-        let (_p, a) = m.apply(1.0, 0.0, &[0.0]);
+        let (_p, a, _pan) = m.apply(1.0, 0.0, &[0.0], 0.5);
         assert!((a - 1.5).abs() < 1e-6);
     }
 }

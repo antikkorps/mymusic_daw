@@ -5,6 +5,7 @@ use super::lfo::{Lfo, LfoParams};
 use super::modulation::ModulationMatrix;
 use super::oscillator::{Oscillator, SimpleOscillator, WaveformType};
 use super::portamento::{PortamentoGlide, PortamentoParams};
+use std::f32::consts::FRAC_PI_2;
 
 pub struct Voice {
     oscillator: SimpleOscillator,
@@ -17,6 +18,8 @@ pub struct Voice {
     active: bool,
     waveform: WaveformType,
     sample_rate: f32,
+    /// Pan, from -1.0 (left) to 1.0 (right)
+    pan: f32,
     /// Age counter for voice stealing priority (higher = older)
     age: u64,
     /// Base frequency for the current note (before modulation and portamento)
@@ -44,6 +47,7 @@ impl Voice {
             active: false,
             waveform,
             sample_rate,
+            pan: 0.0, // Center pan by default
             age: 0,
             base_frequency: initial_frequency,
             target_frequency: initial_frequency,
@@ -57,7 +61,7 @@ impl Voice {
         self.age = age;
 
         // Convert MIDI note to frequency: 440 * 2^((note - 69) / 12)
-        self.target_frequency = 440.0 * 2_f32.powf((note as f32 - 69.0) / 12.0);
+        self.target_frequency = 440.0 * 2_f32.powf((self.note as f32 - 69.0) / 12.0);
 
         // Set portamento target (will glide if portamento is active)
         self.portamento.set_target(self.target_frequency);
@@ -83,7 +87,7 @@ impl Voice {
         self.age = age;
 
         // Convert MIDI note to frequency
-        self.target_frequency = 440.0 * 2_f32.powf((note as f32 - 69.0) / 12.0);
+        self.target_frequency = 440.0 * 2_f32.powf((self.note as f32 - 69.0) / 12.0);
 
         // Set portamento target (will glide if portamento is active)
         self.portamento.set_target(self.target_frequency);
@@ -167,7 +171,8 @@ impl Voice {
         self.portamento.params()
     }
 
-    pub fn next_sample(&mut self) -> f32 {
+    /// Returns a stereo sample `(left, right)`
+    pub fn next_sample(&mut self) -> (f32, f32) {
         use super::lfo::LfoDestination;
 
         // Process portamento to get current (glided) frequency
@@ -219,16 +224,17 @@ impl Voice {
         // Apply envelope and velocity
         sample *= self.velocity * envelope_value;
 
-        sample
+        // Apply panning
+        let angle = (self.pan.clamp(-1.0, 1.0) * 0.5 + 0.5) * FRAC_PI_2;
+        let left = sample * angle.cos();
+        let right = sample * angle.sin();
+
+        (left, right)
     }
 
     /// Render next sample using the modulation matrix (MVP)
-    ///
-    /// This path evaluates the fixed modulation matrix with sources
-    /// (LFO0, Velocity, Aftertouch) and destinations (Pitch, Amplitude).
-    /// For backward compatibility, existing LFO destination behavior still applies
-    /// and is combined with matrix outputs (final result is clamped via output stage).
-    pub fn next_sample_with_matrix(&mut self, matrix: &ModulationMatrix) -> f32 {
+    /// Returns a stereo sample `(left, right)`
+    pub fn next_sample_with_matrix(&mut self, matrix: &ModulationMatrix) -> (f32, f32) {
         use super::lfo::LfoDestination;
 
         // Process portamento to get base (glided) frequency
@@ -236,6 +242,9 @@ impl Voice {
 
         // Process LFO and cache value for this sample
         let lfo_value = self.lfo.process(); // in [-depth, +depth]
+
+        // Process envelope and cache value
+        let envelope_value = self.envelope.process();
 
         // Legacy LFO destination: compute semitone offset if targeting pitch
         let legacy_lfo_semitones = if matches!(self.lfo.destination(), LfoDestination::Pitch) {
@@ -253,8 +262,13 @@ impl Voice {
             self.base_frequency
         };
 
-        // Apply matrix: compute pitch delta and amplitude multiplier
-        let (pitch_semitones, amp_mult) = matrix.apply(self.velocity, self.aftertouch, &[lfo_value]);
+        // Apply matrix: compute pitch delta, amplitude multiplier, and pan
+        let (pitch_semitones, amp_mult, pan_mod) = matrix.apply(
+            self.velocity,
+            self.aftertouch,
+            &[lfo_value],
+            self.envelope.current_value(),
+        );
 
         if pitch_semitones != 0.0 {
             let mult = 2_f32.powf(pitch_semitones / 12.0);
@@ -263,9 +277,6 @@ impl Voice {
 
         // Update oscillator frequency
         self.oscillator.set_frequency(frequency);
-
-        // Process envelope
-        let envelope_value = self.envelope.process();
 
         // Generate oscillator sample
         let mut sample = self.oscillator.next_sample();
@@ -282,6 +293,15 @@ impl Voice {
         // Apply matrix amplitude multiplier
         sample *= amp_mult;
 
-        sample
+        // Apply base pan + pan modulation
+        let final_pan = (self.pan + pan_mod).clamp(-1.0, 1.0);
+
+        // Apply constant-power panning law
+        let angle = (final_pan * 0.5 + 0.5) * FRAC_PI_2;
+        let left = sample * angle.cos();
+        let right = sample * angle.sin();
+
+        (left, right)
     }
 }
+

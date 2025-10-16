@@ -18,7 +18,7 @@ fn test_midi_to_audio_pipeline() {
     let mut silent = true;
     for _ in 0..BUFFER_SIZE {
         let sample = voice_manager.next_sample();
-        if sample.abs() > 0.0001 {
+        if sample.0.abs() > 0.0001 {
             silent = false;
             break;
         }
@@ -31,7 +31,7 @@ fn test_midi_to_audio_pipeline() {
     let mut has_audio = false;
     for _ in 0..BUFFER_SIZE {
         let sample = voice_manager.next_sample();
-        if sample.abs() > 0.01 {
+        if sample.0.abs() > 0.01 {
             has_audio = true;
             break;
         }
@@ -54,7 +54,7 @@ fn test_midi_to_audio_pipeline() {
     silent = true;
     for _ in 0..BUFFER_SIZE {
         let sample = voice_manager.next_sample();
-        if sample.abs() > 0.0001 {
+        if sample.0.abs() > 0.0001 {
             silent = false;
             break;
         }
@@ -76,7 +76,7 @@ fn test_midi_polyphony() {
     let mut has_audio = false;
     for _ in 0..512 {
         let sample = voice_manager.next_sample();
-        if sample.abs() > 0.01 {
+        if sample.0.abs() > 0.01 {
             has_audio = true;
             break;
         }
@@ -89,7 +89,7 @@ fn test_midi_polyphony() {
     has_audio = false;
     for _ in 0..512 {
         let sample = voice_manager.next_sample();
-        if sample.abs() > 0.01 {
+        if sample.0.abs() > 0.01 {
             has_audio = true;
             break;
         }
@@ -112,7 +112,7 @@ fn test_midi_polyphony() {
     let mut silent = true;
     for _ in 0..512 {
         let sample = voice_manager.next_sample();
-        if sample.abs() > 0.0001 {
+        if sample.0.abs() > 0.0001 {
             silent = false;
             break;
         }
@@ -154,16 +154,21 @@ fn test_audio_output_range() {
 
         // Audio should be finite (not NaN or infinity)
         assert!(
-            sample.is_finite(),
-            "Audio sample should be finite: {}",
+            sample.0.is_finite() && sample.1.is_finite(),
+            "Audio sample should be finite: {:?}",
             sample
         );
 
         // Audio should be within reasonable range (with some headroom)
         // The /4.0 gain in VoiceManager should keep this under control
         assert!(
-            sample.abs() < 10.0,
-            "Audio sample too loud: {}",
+            sample.0.abs() < 10.0,
+            "Audio sample too loud: {:?}",
+            sample
+        );
+        assert!(
+            sample.1.abs() < 10.0,
+            "Audio sample too loud: {:?}",
             sample
         );
     }

@@ -285,7 +285,9 @@
   - [x] Destinations (MVP): OscillatorPitch(0), Amplitude
   - [x] Assignation source → destination + amount [-1..1] (semitones pour Pitch)
   - [x] UI minimale (4 slots) + commandes `SetModRouting`/`ClearModRouting`
-  - [ ] Étendre sources (Enveloppes), destinations (FilterCutoff, Pan)
+  - [x] Étendre sources (Enveloppes)
+  - [x] Étendre destinations (Pan)
+  - [ ] Étendre destinations (FilterCutoff) - **Bloqué par Phase 3a**
   - [ ] Éditeur UI avancé (drag & drop, presets)
 
 ---
