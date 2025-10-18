@@ -171,6 +171,7 @@
   - [x] Benchmarks MIDI processing
   - [x] Benchmarks latence MIDI → Audio
   - [x] Benchmarks timing conversions
+  - [x] Benchmarks filtres (6 benchmarks - types, resonance, modulation, polyphony)
 - [x] Tests unitaires
   - [x] Tests oscillateurs (fréquence, amplitude, phase) - 8 tests
   - [x] Tests Voice Manager (allocation, voice stealing) - 8 tests
@@ -195,7 +196,7 @@
   - [x] Métriques de performance documentées
   - [x] Commandes pour lancer tests et benchmarks
 
-**Total tests : 114 tests passent** 🎉 (55 tests Phase 1.5 + 13 tests Command Pattern + 10 tests ADSR + 11 tests LFO + 2 tests Voice Stealing + 14 tests Polyphony Modes + 9 tests Portamento)
+**Total tests : 141 tests passent** 🎉 (55 tests Phase 1.5 + 13 tests Command Pattern + 10 tests ADSR + 11 tests LFO + 2 tests Voice Stealing + 14 tests Polyphony Modes + 9 tests Portamento + 18 tests Filter + 4 tests Filter Integration + 1 test Modulation Matrix + 4 tests Voice)
 
 ### Documentation et communauté - **REPORTÉ POST-v1.0** ⏭️
 
@@ -291,10 +292,10 @@
 
 ---
 
-## Phase 2 : Enrichissement du son 🎛️
+## Phase 2 : Enrichissement du son 🎛️ ✅ (TERMINÉ)
 
 **Objectif** : Synth expressif avec modulation
-**Release** : v0.3.0
+**Release** : v0.3.0 🎉
 
 **⚠️ ARCHITECTURE CRITIQUE** : Implémenter le **Command Pattern** dès cette phase pour l'Undo/Redo (voir "Décisions Architecturales"). Toutes les modifications de paramètres (ADSR, LFO, etc.) doivent passer par des `UndoableCommand`.
 
@@ -366,7 +367,7 @@
   - [x] UI minimale (4 slots) + commandes `SetModRouting`/`ClearModRouting`
   - [x] Étendre sources (Enveloppes)
   - [x] Étendre destinations (Pan)
-  - [ ] Étendre destinations (FilterCutoff) - **Bloqué par Phase 3a**
+  - [x] Étendre destinations (FilterCutoff) ✅
   - [ ] Éditeur UI avancé (drag & drop, presets)
 
 ---
@@ -405,14 +406,20 @@
 **Release** : v0.4.0
 **Durée** : 3-4 semaines
 
-### Filtres
+### Filtres ✅ (TERMINÉ)
 
-- [ ] Low-pass filter (Moog-style)
-  - [ ] Implémentation algorithme (State Variable Filter ou Moog Ladder)
-  - [ ] Cutoff control
-  - [ ] Résonance control
-  - [ ] Cutoff modulation (envelope, LFO)
-  - [ ] Tests audio (pas d'artefacts, stabilité)
+- [x] State Variable Filter (Chamberlin) - 4 modes
+  - [x] Implémentation algorithme State Variable Filter (12dB/octave)
+  - [x] 4 types de filtres : LowPass, HighPass, BandPass, Notch
+  - [x] Cutoff control (20Hz - 8kHz, avec smoothing)
+  - [x] Résonance control (Q 0.5 - 20.0, self-oscillation capable)
+  - [x] Cutoff modulation via matrice (envelope, LFO) avec `process_modulated()`
+  - [x] Command Pattern : `SetFilterCommand` avec undo/redo
+  - [x] UI complète (enable/disable, type selector, cutoff/resonance sliders)
+  - [x] Tests unitaires (18 tests - frequency response, stability, resonance)
+  - [x] Tests d'intégration (4 tests - envelope/LFO modulation, bypass)
+  - [x] Benchmarks performance (6 benchmarks - ~11 ns/sample, excellent scaling)
+  - [x] Documentation complète (commentaires, formules mathématiques)
 
 ### Effets prioritaires
 
@@ -849,9 +856,9 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 |-------|----------|-------|---------|-------|
 | **Phase 1** ✅ | MVP - Synth polyphonique | TERMINÉ | v0.1.0 | - |
 | **Phase 1.5** ✅ | Robustesse + Tests | TERMINÉ | v0.2.0 | ~3 sem |
-| **Phase 2** | ADSR, LFO, Modulation | 3-4 sem | v0.3.0 | ~7 sem |
+| **Phase 2** ✅ | ADSR, LFO, Modulation | TERMINÉ | v0.3.0 | ~7 sem |
 | **Phase 2.5** | UX Design | 1-2 sem | - | ~9 sem |
-| **Phase 3a** | Filtres + 2 Effets | 3-4 sem | v0.4.0 | ~13 sem |
+| **Phase 3a** 🔊 | Filtres + 2 Effets | 3-4 sem | v0.4.0 | ~13 sem |
 | **Phase 3b** 🐕 | Dogfooding (créer morceau) | 1 sem | - | ~14 sem |
 | **Phase 4** | Séquenceur + MIDI Clock | 6-8 sem | **v1.0.0** 🎉 | ~22 sem |
 | **Phase 5** | CLAP plugins + Routing | 4-6 sem | v1.1.0 | ~28 sem |
@@ -868,30 +875,34 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 
 ### Milestones clés
 
-- **v0.2.0** (Phase 1.5) : DAW partageable avec d'autres devs
-- **v1.0.0** (Phase 4) : 🎉 DAW fonctionnel avec séquenceur (MILESTONE MAJEUR)
+- **v0.2.0** ✅ (Phase 1.5) : DAW partageable avec d'autres devs
+- **v0.3.0** ✅ (Phase 2) : Synth expressif avec ADSR, LFO, Modulation
+- **v0.4.0** 🔊 (Phase 3a) : Filtres et effets essentiels (EN COURS)
+- **v1.0.0** 🎉 (Phase 4) : DAW fonctionnel avec séquenceur (MILESTONE MAJEUR)
 - **v1.1.0** (Phase 5) : Support plugins CLAP (ouverture écosystème)
 - **v1.5.0** (Phase 6b) : Support VST3 (optionnel, complexe)
 - **v2.0.0** (Phase 7) : UI moderne + Distribution publique
 
 ---
 
-**Priorité actuelle** : Phase 1.5 - Robustesse et UX de base ✅ **TERMINÉE**
-**Objectif** : Rendre le DAW utilisable par d'autres personnes
-**Progrès Phase 1.5** :
-  - ✅ Gestion des périphériques audio/MIDI
-  - ✅ Reconnexion automatique MIDI
-  - ✅ Gestion des erreurs Audio (CPAL)
-  - ✅ Timing et précision audio/MIDI
-  - ✅ Monitoring CPU
-  - ✅ Compatibilité formats CPAL (F32/I16/U16)
-  - ✅ Tests d'intégration (66 tests passent)
-  - ✅ Benchmarks Criterion (latence < 10ms atteinte)
-  - ⏭️ Documentation (reportée post-v1.0)
+**Priorité actuelle** : Phase 3a - Filtres et effets essentiels (EN COURS) 🔊
+**Objectif** : 1 filtre + 2 effets de qualité
+**Progrès Phase 3a** :
+  - ✅ **Filtres terminés** (State Variable Filter avec 4 modes)
+    - ✅ Implementation complète (LowPass, HighPass, BandPass, Notch)
+    - ✅ Modulation cutoff via matrice (Envelope, LFO)
+    - ✅ Command Pattern avec undo/redo
+    - ✅ UI complète avec contrôles
+    - ✅ 22 tests (18 unitaires + 4 intégration)
+    - ✅ 6 benchmarks (performance: ~11 ns/sample)
+  - [ ] Delay (buffer circulaire, feedback, mix)
+  - [ ] Reverb (Freeverb ou Schroeder)
+  - [ ] Architecture effets (Trait Effect, chain, bypass)
 
-**Release v0.2.0 prête** 🎉
+**Phase 1.5** ✅ : Robustesse et tests - **TERMINÉE** (v0.2.0)
+**Phase 2** ✅ : ADSR, LFO, Modulation - **TERMINÉE** (v0.3.0)
 
-**Next milestone** : Phase 2 - Enrichissement du son (ADSR, LFO, Command Pattern)
+**Next milestone** : Terminer Phase 3a (Delay + Reverb) → v0.4.0
 
 ---
 

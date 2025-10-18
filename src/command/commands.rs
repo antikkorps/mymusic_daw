@@ -4,6 +4,7 @@ use crate::command::state::DawState;
 use crate::command::trait_def::{UndoableCommand, CommandResult, CommandError};
 use crate::messaging::command::Command;
 use crate::synth::envelope::AdsrParams;
+use crate::synth::filter::FilterParams;
 use crate::synth::lfo::LfoParams;
 use crate::synth::modulation::ModRouting;
 use crate::synth::oscillator::WaveformType;
@@ -551,6 +552,92 @@ impl UndoableCommand for SetPortamentoCommand {
     fn merge_with(&mut self, other: Box<dyn UndoableCommand>) -> CommandResult<()> {
         // Downcast to SetPortamentoCommand
         let other_any = Box::into_raw(other) as *mut dyn UndoableCommand as *mut SetPortamentoCommand;
+
+        unsafe {
+            let other_cmd = Box::from_raw(other_any);
+            // Update to the new value but keep the original old_params
+            self.new_params = other_cmd.new_params;
+        }
+
+        Ok(())
+    }
+}
+
+/// Command to set filter parameters
+///
+/// This command changes the filter parameters for all voices and sends the update to the audio thread.
+/// It stores the old parameters to enable undo.
+pub struct SetFilterCommand {
+    new_params: FilterParams,
+    old_params: Option<FilterParams>,
+}
+
+impl SetFilterCommand {
+    /// Create a new SetFilterCommand
+    ///
+    /// # Arguments
+    /// * `params` - The new filter parameters
+    pub fn new(params: FilterParams) -> Self {
+        Self {
+            new_params: params,
+            old_params: None,
+        }
+    }
+}
+
+impl UndoableCommand for SetFilterCommand {
+    fn execute(&mut self, state: &mut DawState) -> CommandResult<()> {
+        // Store old value for undo
+        self.old_params = Some(state.filter);
+
+        // Update state
+        state.filter = self.new_params;
+
+        // Send to audio thread
+        if !state.send_to_audio(Command::SetFilter(self.new_params)) {
+            return Err(CommandError::ExecutionFailed(
+                "Failed to send Filter command to audio thread (ringbuffer full)".into()
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn undo(&mut self, state: &mut DawState) -> CommandResult<()> {
+        let old_params = self.old_params
+            .ok_or_else(|| CommandError::UndoFailed("No previous filter parameters stored".into()))?;
+
+        // Restore old value
+        state.filter = old_params;
+
+        // Send to audio thread
+        if !state.send_to_audio(Command::SetFilter(old_params)) {
+            return Err(CommandError::UndoFailed(
+                "Failed to send Filter command to audio thread (ringbuffer full)".into()
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn description(&self) -> String {
+        format!(
+            "Set Filter ({:?} cutoff:{:.0}Hz Q:{:.2})",
+            self.new_params.filter_type,
+            self.new_params.cutoff,
+            self.new_params.resonance
+        )
+    }
+
+    fn can_merge_with(&self, other: &dyn UndoableCommand) -> bool {
+        // We can merge with other SetFilterCommand to avoid cluttering history
+        // when user adjusts filter parameters
+        other.description().starts_with("Set Filter")
+    }
+
+    fn merge_with(&mut self, other: Box<dyn UndoableCommand>) -> CommandResult<()> {
+        // Downcast to SetFilterCommand
+        let other_any = Box::into_raw(other) as *mut dyn UndoableCommand as *mut SetFilterCommand;
 
         unsafe {
             let other_cmd = Box::from_raw(other_any);

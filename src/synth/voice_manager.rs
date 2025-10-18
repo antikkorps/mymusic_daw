@@ -199,6 +199,18 @@ impl VoiceManager {
         self.voices[0].get_portamento_params()
     }
 
+    pub fn set_filter(&mut self, params: super::filter::FilterParams) {
+        // Change filter parameters for all voices
+        for voice in &mut self.voices {
+            voice.set_filter(params);
+        }
+    }
+
+    pub fn get_filter_params(&self) -> super::filter::FilterParams {
+        // Get filter params from first voice (all voices share same params)
+        self.voices[0].get_filter_params()
+    }
+
     pub fn set_poly_mode(&mut self, mode: PolyMode) {
         self.poly_mode = mode;
     }

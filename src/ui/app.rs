@@ -4,7 +4,8 @@ use crate::audio::cpu_monitor::{CpuLoad, CpuMonitor};
 use crate::audio::device::{AudioDeviceInfo, AudioDeviceManager};
 use crate::audio::parameters::AtomicF32;
 use crate::command::{CommandManager, DawState};
-use crate::command::commands::{SetVolumeCommand, SetWaveformCommand, SetAdsrCommand, SetLfoCommand, SetPolyModeCommand, SetPortamentoCommand, SetModRoutingCommand};
+use crate::command::commands::{SetVolumeCommand, SetWaveformCommand, SetAdsrCommand, SetLfoCommand, SetPolyModeCommand, SetPortamentoCommand, SetModRoutingCommand, SetFilterCommand};
+use crate::synth::filter::{FilterParams, FilterType};
 use crate::synth::envelope::AdsrParams;
 use crate::synth::lfo::{LfoParams, LfoDestination};
 use crate::synth::poly_mode::PolyMode;
@@ -627,6 +628,7 @@ impl eframe::App for DawApp {
                         ModDestination::OscillatorPitch(_) => -12.0..=12.0, // semitones
                         ModDestination::Amplitude => -1.0..=1.0,            // multiplier delta
                         ModDestination::Pan => -1.0..=1.0,                  // pan L/R
+                        ModDestination::FilterCutoff => 0.0..=10.0,         // cutoff multiplier (0.1x to 10x)
                     };
                     if ui.add(egui::Slider::new(&mut routing.amount, range).fixed_decimals(2)).changed() {
                         let old = *routing;
@@ -908,6 +910,68 @@ impl eframe::App for DawApp {
             });
                     ui.label("Set to 0 for instant pitch changes, >0 for smooth glides.");
                     ui.label("Works best in Mono/Legato modes.");
+
+                    ui.add_space(10.0);
+                    ui.separator();
+
+                    // Filter Section
+                    ui.heading("Filter");
+                    let mut filter_params = self.daw_state.filter;
+
+                    // Filter enable/disable
+                    if ui.checkbox(&mut filter_params.enabled, "Enable").changed() {
+                        let cmd = Box::new(SetFilterCommand::new(filter_params));
+                        let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                    }
+
+                    // Filter type
+                    ui.horizontal(|ui| {
+                        ui.label("Type:");
+                        let filter_type_changed = egui::ComboBox::from_id_salt("filter_type")
+                            .selected_text(format!("{:?}", filter_params.filter_type))
+                            .show_ui(ui, |ui| {
+                                let mut changed = false;
+                                changed |= ui.selectable_value(&mut filter_params.filter_type, FilterType::LowPass, "LowPass").changed();
+                                changed |= ui.selectable_value(&mut filter_params.filter_type, FilterType::HighPass, "HighPass").changed();
+                                changed |= ui.selectable_value(&mut filter_params.filter_type, FilterType::BandPass, "BandPass").changed();
+                                changed |= ui.selectable_value(&mut filter_params.filter_type, FilterType::Notch, "Notch").changed();
+                                changed
+                            })
+                            .inner
+                            .unwrap_or(false);
+
+                        if filter_type_changed {
+                            let cmd = Box::new(SetFilterCommand::new(filter_params));
+                            let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                        }
+                    });
+
+                    // Cutoff frequency
+                    ui.horizontal(|ui| {
+                        ui.label("Cutoff:");
+                        if ui.add(egui::Slider::new(&mut filter_params.cutoff, 20.0..=10000.0)
+                            .text("Hz")
+                            .logarithmic(true))
+                            .changed()
+                        {
+                            let cmd = Box::new(SetFilterCommand::new(filter_params));
+                            let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                        }
+                    });
+
+                    // Resonance (Q factor)
+                    ui.horizontal(|ui| {
+                        ui.label("Resonance (Q):");
+                        if ui.add(egui::Slider::new(&mut filter_params.resonance, 0.5..=20.0)
+                            .logarithmic(true))
+                            .changed()
+                        {
+                            let cmd = Box::new(SetFilterCommand::new(filter_params));
+                            let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                        }
+                    });
+
+                    ui.label("Cutoff can be modulated via the Modulation Matrix (Envelope → FilterCutoff).");
                 }
                 UiTab::Play => {
                     // Play tab: virtual keyboard

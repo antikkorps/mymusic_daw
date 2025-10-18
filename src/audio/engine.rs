@@ -232,6 +232,9 @@ impl AudioEngine {
                             Command::SetPortamento(portamento_params) => {
                                 vm.set_portamento(portamento_params);
                             }
+                            Command::SetFilter(filter_params) => {
+                                vm.set_filter(filter_params);
+                            }
                             Command::SetModRouting { index, routing } => {
                                 vm.set_mod_routing(index as usize, routing);
                             }
@@ -450,6 +453,9 @@ impl AudioEngine {
                             }
                             Command::SetPortamento(portamento_params) => {
                                 vm.set_portamento(portamento_params);
+                            }
+                            Command::SetFilter(filter_params) => {
+                                vm.set_filter(filter_params);
                             }
                             Command::SetModRouting { index, routing } => {
                                 vm.set_mod_routing(index as usize, routing);

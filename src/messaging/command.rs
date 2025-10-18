@@ -2,6 +2,7 @@
 
 use crate::midi::event::MidiEventTimed;
 use crate::synth::envelope::AdsrParams;
+use crate::synth::filter::FilterParams;
 use crate::synth::lfo::LfoParams;
 use crate::synth::oscillator::WaveformType;
 use crate::synth::poly_mode::PolyMode;
@@ -17,6 +18,7 @@ pub enum Command {
     SetLfo(LfoParams),
     SetPolyMode(PolyMode),
     SetPortamento(PortamentoParams),
+    SetFilter(FilterParams),
     /// Update a modulation routing slot (UI → Audio)
     SetModRouting { index: u8, routing: ModRouting },
     /// Clear a modulation routing slot

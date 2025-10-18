@@ -1,6 +1,7 @@
 // Voice - Une note jouée
 
 use super::envelope::{AdsrEnvelope, AdsrParams};
+use super::filter::{FilterParams, StateVariableFilter};
 use super::lfo::{Lfo, LfoParams};
 use super::modulation::ModulationMatrix;
 use super::oscillator::{Oscillator, SimpleOscillator, WaveformType};
@@ -12,6 +13,7 @@ pub struct Voice {
     envelope: AdsrEnvelope,
     lfo: Lfo,
     portamento: PortamentoGlide,
+    filter: StateVariableFilter,
     note: u8,
     velocity: f32,
     aftertouch: f32,
@@ -34,6 +36,7 @@ impl Voice {
         let adsr_params = AdsrParams::default();
         let lfo_params = LfoParams::default();
         let portamento_params = PortamentoParams::default();
+        let filter_params = FilterParams::default();
         let initial_frequency = 440.0;
 
         Self {
@@ -41,6 +44,7 @@ impl Voice {
             envelope: AdsrEnvelope::new(adsr_params, sample_rate),
             lfo: Lfo::new(lfo_params, sample_rate),
             portamento: PortamentoGlide::new(portamento_params, initial_frequency, sample_rate),
+            filter: StateVariableFilter::new(filter_params, sample_rate),
             note: 0,
             velocity: 0.0,
             aftertouch: 0.0,
@@ -74,6 +78,9 @@ impl Voice {
 
         // Reset LFO phase for consistent modulation
         self.lfo.reset();
+
+        // Reset filter state to avoid clicks
+        self.filter.reset();
     }
 
     /// Change pitch without retriggering envelope (for legato mode)
@@ -111,6 +118,7 @@ impl Voice {
     pub fn force_stop(&mut self) {
         self.active = false;
         self.envelope.reset();
+        self.filter.reset();
     }
 
     pub fn is_active(&self) -> bool {
@@ -171,6 +179,14 @@ impl Voice {
         self.portamento.params()
     }
 
+    pub fn set_filter(&mut self, params: FilterParams) {
+        self.filter.set_params(params);
+    }
+
+    pub fn get_filter_params(&self) -> FilterParams {
+        self.filter.params()
+    }
+
     /// Returns a stereo sample `(left, right)`
     pub fn next_sample(&mut self) -> (f32, f32) {
         use super::lfo::LfoDestination;
@@ -211,6 +227,9 @@ impl Voice {
 
         // Generate oscillator sample
         let mut sample = self.oscillator.next_sample();
+
+        // Apply filter
+        sample = self.filter.process(sample);
 
         // Apply volume modulation if selected
         if matches!(self.lfo.destination(), LfoDestination::Volume) {
@@ -262,8 +281,8 @@ impl Voice {
             self.base_frequency
         };
 
-        // Apply matrix: compute pitch delta, amplitude multiplier, and pan
-        let (pitch_semitones, amp_mult, pan_mod) = matrix.apply(
+        // Apply matrix: compute pitch delta, amplitude multiplier, pan, and filter cutoff
+        let (pitch_semitones, amp_mult, pan_mod, filter_cutoff_mult) = matrix.apply(
             self.velocity,
             self.aftertouch,
             &[lfo_value],
@@ -280,6 +299,11 @@ impl Voice {
 
         // Generate oscillator sample
         let mut sample = self.oscillator.next_sample();
+
+        // Apply filter with modulated cutoff
+        let base_cutoff = self.filter.params().cutoff;
+        let modulated_cutoff = base_cutoff * filter_cutoff_mult;
+        sample = self.filter.process_modulated(sample, modulated_cutoff);
 
         // Apply legacy LFO volume modulation if selected
         if matches!(self.lfo.destination(), LfoDestination::Volume) {
@@ -302,6 +326,282 @@ impl Voice {
         let right = sample * angle.sin();
 
         (left, right)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::synth::filter::FilterType;
+    use crate::synth::lfo::LfoDestination;
+    use crate::synth::modulation::{ModDestination, ModRouting, ModSource, ModulationMatrix};
+    use crate::synth::oscillator::WaveformType;
+
+    #[test]
+    fn test_filter_modulation_with_envelope() {
+        let sample_rate = 44100.0;
+        let mut voice = Voice::new(sample_rate);
+
+        // Set up filter with low-pass mode and low cutoff
+        let mut filter_params = FilterParams::default();
+        filter_params.cutoff = 200.0; // Very low cutoff
+        filter_params.resonance = 2.0; // Some resonance for audible effect
+        filter_params.filter_type = FilterType::LowPass;
+        filter_params.enabled = true;
+        voice.set_filter(filter_params);
+
+        // Set up fast envelope (short attack/decay for quick test)
+        let envelope_params = AdsrParams {
+            attack: 0.05,   // 50ms attack
+            decay: 0.1,     // 100ms decay
+            sustain: 0.5,
+            release: 0.1,   // 100ms release
+        };
+        voice.set_adsr(envelope_params);
+
+        // Create modulation matrix with Envelope → FilterCutoff routing
+        let mut matrix = ModulationMatrix::new_empty();
+        matrix.set_routing(
+            0,
+            ModRouting {
+                source: ModSource::Envelope,
+                destination: ModDestination::FilterCutoff,
+                amount: 10.0, // Strong modulation: cutoff can go up to 10x
+                enabled: true,
+            },
+        );
+
+        // Trigger a note
+        voice.note_on(60, 100, 0); // Middle C, velocity 100
+
+        // Process samples during attack phase
+        // During attack, envelope should rise from 0 to 1.0
+        // Filter cutoff should rise from 200Hz to 200Hz * 11.0 = 2200Hz (1.0 + 10.0)
+        let attack_samples = (0.05 * sample_rate) as usize; // 50ms
+
+        let mut attack_outputs = Vec::new();
+        for _ in 0..attack_samples {
+            let (left, _right) = voice.next_sample_with_matrix(&matrix);
+            attack_outputs.push(left);
+        }
+
+        // Verify that output is not silent (filter is working)
+        let attack_max_amplitude = attack_outputs
+            .iter()
+            .map(|s| s.abs())
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap();
+        assert!(
+            attack_max_amplitude > 0.01,
+            "Attack phase should produce audible output"
+        );
+
+        // Process samples during decay phase
+        let decay_samples = (0.1 * sample_rate) as usize; // 100ms
+
+        let mut decay_outputs = Vec::new();
+        for _ in 0..decay_samples {
+            let (left, _right) = voice.next_sample_with_matrix(&matrix);
+            decay_outputs.push(left);
+        }
+
+        // Verify that output continues during decay
+        let decay_max_amplitude = decay_outputs
+            .iter()
+            .map(|s| s.abs())
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap();
+        assert!(
+            decay_max_amplitude > 0.01,
+            "Decay phase should produce audible output"
+        );
+
+        // Verify that all samples are finite (no NaN or Inf from filter instability)
+        for sample in attack_outputs.iter().chain(decay_outputs.iter()) {
+            assert!(sample.is_finite(), "All samples should be finite");
+        }
+    }
+
+    #[test]
+    fn test_filter_modulation_with_lfo() {
+        let sample_rate = 44100.0;
+        let mut voice = Voice::new(sample_rate);
+
+        // Set up filter with low-pass mode
+        let mut filter_params = FilterParams::default();
+        filter_params.cutoff = 500.0;
+        filter_params.resonance = 2.0;
+        filter_params.filter_type = FilterType::LowPass;
+        filter_params.enabled = true;
+        voice.set_filter(filter_params);
+
+        // Set up LFO with moderate speed
+        let lfo_params = LfoParams {
+            waveform: WaveformType::Sine,
+            rate: 5.0, // 5Hz LFO
+            depth: 1.0,
+            destination: LfoDestination::None, // Using matrix instead
+        };
+        voice.set_lfo(lfo_params);
+
+        // Set up envelope with sustain to keep note playing
+        let envelope_params = AdsrParams {
+            attack: 0.01,
+            decay: 0.01,
+            sustain: 1.0,
+            release: 0.1,
+        };
+        voice.set_adsr(envelope_params);
+
+        // Create modulation matrix with LFO → FilterCutoff routing
+        let mut matrix = ModulationMatrix::new_empty();
+        matrix.set_routing(
+            0,
+            ModRouting {
+                source: ModSource::Lfo(0), // First (and only) LFO
+                destination: ModDestination::FilterCutoff,
+                amount: 3.0, // Moderate modulation
+                enabled: true,
+            },
+        );
+
+        // Trigger a note
+        voice.note_on(60, 100, 0);
+
+        // Process samples for one LFO cycle (200ms @ 5Hz)
+        let cycle_samples = (0.2 * sample_rate) as usize;
+
+        let mut outputs = Vec::new();
+        for _ in 0..cycle_samples {
+            let (left, _right) = voice.next_sample_with_matrix(&matrix);
+            outputs.push(left);
+        }
+
+        // Verify that output is not silent
+        let max_amplitude = outputs
+            .iter()
+            .map(|s| s.abs())
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap();
+        assert!(max_amplitude > 0.01, "Should produce audible output");
+
+        // Verify all samples are finite
+        for sample in outputs.iter() {
+            assert!(sample.is_finite(), "All samples should be finite");
+        }
+
+        // Verify that there's variation in the output (LFO is modulating)
+        // Compute variance of absolute values
+        let mean: f32 = outputs.iter().map(|s| s.abs()).sum::<f32>() / outputs.len() as f32;
+        let variance: f32 = outputs
+            .iter()
+            .map(|s| {
+                let diff = s.abs() - mean;
+                diff * diff
+            })
+            .sum::<f32>()
+            / outputs.len() as f32;
+
+        // There should be some variation due to LFO modulation
+        assert!(variance > 0.0001, "LFO modulation should create variance in output");
+    }
+
+    #[test]
+    fn test_filter_without_modulation() {
+        let sample_rate = 44100.0;
+        let mut voice = Voice::new(sample_rate);
+
+        // Set up filter
+        let mut filter_params = FilterParams::default();
+        filter_params.cutoff = 1000.0;
+        filter_params.resonance = 1.0;
+        filter_params.filter_type = FilterType::LowPass;
+        filter_params.enabled = true;
+        voice.set_filter(filter_params);
+
+        // Set up simple envelope
+        let envelope_params = AdsrParams {
+            attack: 0.01,
+            decay: 0.01,
+            sustain: 1.0,
+            release: 0.1,
+        };
+        voice.set_adsr(envelope_params);
+
+        // Empty modulation matrix (no modulation)
+        let matrix = ModulationMatrix::new_empty();
+
+        // Trigger a note
+        voice.note_on(60, 100, 0);
+
+        // Process some samples
+        let mut outputs = Vec::new();
+        for _ in 0..1000 {
+            let (left, _right) = voice.next_sample_with_matrix(&matrix);
+            outputs.push(left);
+        }
+
+        // Verify that output is audible
+        let max_amplitude = outputs
+            .iter()
+            .map(|s| s.abs())
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap();
+        assert!(max_amplitude > 0.01, "Should produce audible output");
+
+        // Verify all samples are finite
+        for sample in outputs.iter() {
+            assert!(sample.is_finite(), "All samples should be finite");
+        }
+    }
+
+    #[test]
+    fn test_filter_bypass() {
+        let sample_rate = 44100.0;
+        let mut voice = Voice::new(sample_rate);
+
+        // Set up filter but disable it
+        let mut filter_params = FilterParams::default();
+        filter_params.enabled = false; // Bypass filter
+        voice.set_filter(filter_params);
+
+        // Set up simple envelope
+        let envelope_params = AdsrParams {
+            attack: 0.01,
+            decay: 0.01,
+            sustain: 1.0,
+            release: 0.1,
+        };
+        voice.set_adsr(envelope_params);
+
+        // Empty modulation matrix
+        let matrix = ModulationMatrix::new_empty();
+
+        // Trigger a note
+        voice.note_on(60, 100, 0);
+
+        // Process some samples
+        let mut outputs = Vec::new();
+        for _ in 0..1000 {
+            let (left, _right) = voice.next_sample_with_matrix(&matrix);
+            outputs.push(left);
+        }
+
+        // Verify that output is audible even with filter bypassed
+        let max_amplitude = outputs
+            .iter()
+            .map(|s| s.abs())
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap();
+        assert!(
+            max_amplitude > 0.01,
+            "Should produce audible output even with filter bypassed"
+        );
+
+        // Verify all samples are finite
+        for sample in outputs.iter() {
+            assert!(sample.is_finite(), "All samples should be finite");
+        }
     }
 }
 
