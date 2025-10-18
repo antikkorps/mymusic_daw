@@ -171,6 +171,7 @@
   - [x] Benchmarks MIDI processing
   - [x] Benchmarks latence MIDI → Audio
   - [x] Benchmarks timing conversions
+  - [x] Benchmarks filtres (6 benchmarks - types, resonance, modulation, polyphony)
 - [x] Tests unitaires
   - [x] Tests oscillateurs (fréquence, amplitude, phase) - 8 tests
   - [x] Tests Voice Manager (allocation, voice stealing) - 8 tests
@@ -195,9 +196,88 @@
   - [x] Métriques de performance documentées
   - [x] Commandes pour lancer tests et benchmarks
 
-**Total tests : 84 tests passent** 🎉 (55 tests Phase 1.5 + 13 tests Command Pattern + 10 tests ADSR + 2 tests Voice Stealing + 4 tests intégration mis à jour)
+**Total tests : 141 tests passent** 🎉 (55 tests Phase 1.5 + 13 tests Command Pattern + 10 tests ADSR + 11 tests LFO + 2 tests Voice Stealing + 14 tests Polyphony Modes + 9 tests Portamento + 18 tests Filter + 4 tests Filter Integration + 1 test Modulation Matrix + 4 tests Voice)
 
 ### Documentation et communauté - **REPORTÉ POST-v1.0** ⏭️
+
+---
+
+## Phase 2 : Panning & Modulation Sources (Planned)
+
+### Goals
+
+- Expand panning capabilities (global pan + per‑voice spread).
+- Extend modulation sources beyond Velocity/Aftertouch/Envelope/LFO0.
+- Prepare for multiple LFOs without runtime allocations.
+- Keep audio callback RT‑safe (no allocs, no I/O, no blocking).
+
+### Panning Enhancements
+
+- [ ] Global Pan parameter
+  - [ ] Add `Command::SetPan(f32)` (range `[-1.0, 1.0]`).
+  - [ ] Store `global_pan` in `VoiceManager` and propagate to voices (`Voice.pan`).
+  - [ ] Add smoothing (One‑pole) for pan to avoid zipper noise (like volume).
+  - [ ] UI: Synth tab slider “Pan” with undo/redo (`SetPanCommand`).
+  - [ ] Tests: constant‑power panning (energy roughly stable at L/C/R).
+
+- [ ] Pan Spread across polyphony
+  - [ ] Add `Command::SetPanSpread(f32)` (range `[0.0, 1.0]`).
+  - [ ] On `note_on`, assign per‑voice base pan in `[-spread, +spread]` (e.g., even distribution or simple alternating pattern).
+  - [ ] UI: Synth tab slider “Pan Spread”.
+  - [ ] Tests: distribution across N voices, ensures stereo widening without clipping.
+
+### Modulation Sources Extensions
+
+- [ ] Add common MIDI sources to `ModSource`
+  - [ ] `ModSource::ModWheel` (CC1), `ModSource::Expression` (CC11), `ModSource::PitchBend`.
+  - [ ] (Optional) `ModSource::Cc(u8)` for generic CC mapping (future‑proof).
+
+- [ ] Engine handling (callback‑safe)
+  - [ ] In `process_midi_event`, handle `ControlChange` (CC1/CC11) and `PitchBend`.
+  - [ ] Normalize to `[0.0, 1.0]` (or `[-1.0, 1.0]` where appropriate) and store in `VoiceManager` atomics/fields.
+  - [ ] Expose these normalized values to modulation evaluation without locks.
+
+- [ ] Modulation Matrix API
+  - [ ] Introduce a pre‑allocated `ModValues` struct passed to `apply()` containing: `velocity, aftertouch, envelope, pitch_bend, mod_wheel, expression, lfo: [f32; MAX_LFOS]`.
+  - [ ] Keep current `apply` temporarily (compat) or migrate all call‑sites.
+  - [ ] Bounds and clamping consistent with current behavior.
+
+- [ ] UI updates (Modulation tab)
+  - [ ] Add sources in the ComboBox: “ModWheel”, “Expression”, “Pitch Bend”.
+  - [ ] Increase visible slots from 4 → 8 to match `MAX_ROUTINGS` (still pre‑allocated, no runtime allocs).
+  - [ ] Tooltips indicating ranges and semantics (pitch amount = semitones; pan = −1..1; amp adds to 1.0 and clamps ≥ 0).
+
+### Multiple LFOs (MVP)
+
+- [ ] Support `MAX_LFOS = 2..4`
+  - [ ] Store `[Lfo; MAX_LFOS]` in `Voice` (pre‑allocated) with identical API as current LFO.
+  - [ ] Compute per‑sample LFO values once per voice and pass into `ModValues`.
+  - [ ] Update `ModSource::Lfo(i)` to read `lfo[i]` (ignore out‑of‑range safely).
+
+- [ ] UI for multiple LFOs
+  - [ ] Add selector for LFO index (1..MAX_LFOS) when editing LFO params.
+  - [ ] Allow routing selection to `Lfo(0..MAX_LFOS-1)` in the matrix.
+
+### DSP/RT Safety
+
+- [ ] No allocations or logging in callback; keep `try_lock` usage and ringbuffers.
+- [ ] Smoothing for continuous params (pan, spread‑derived changes) to avoid zipper noise.
+- [ ] Clamp outputs: amplitude ≥ 0, pan in [−1, 1], maintain constant‑power panning law.
+
+### Tests
+
+- [ ] Panning: constant‑power behavior and clamping.
+- [ ] Pan Spread: stereo distribution across multiple voices.
+- [ ] Sources: end‑to‑end routing for CC1/CC11/PitchBend to Pitch/Amplitude/Pan destinations.
+- [ ] Multi‑LFO: ensure `Lfo(1)` affects destinations independently from `Lfo(0)`; bounds respected.
+- [ ] Backward compatibility: legacy LFO destination and existing single‑LFO paths keep working.
+
+### Acceptance Criteria
+
+- Global pan + spread adjustable from UI with smooth, click‑free audio.
+- New sources (ModWheel/Expression/PitchBend) routable in the matrix with predictable ranges.
+- Two LFOs minimum routable independently; UI exposes routing and basic params.
+- All changes respect real‑time constraints (no allocs/locks contention) and pass added tests.
 
 **Décision** : Trop tôt pour ouvrir aux contributeurs externes. L'API et l'architecture vont encore beaucoup évoluer jusqu'à v1.0 (Phase 4). Cette section sera réactivée après avoir atteint le milestone v1.0.0 avec un DAW fonctionnel et stable.
 
@@ -212,10 +292,10 @@
 
 ---
 
-## Phase 2 : Enrichissement du son 🎛️
+## Phase 2 : Enrichissement du son 🎛️ ✅ (TERMINÉ)
 
 **Objectif** : Synth expressif avec modulation
-**Release** : v0.3.0
+**Release** : v0.3.0 🎉
 
 **⚠️ ARCHITECTURE CRITIQUE** : Implémenter le **Command Pattern** dès cette phase pour l'Undo/Redo (voir "Décisions Architecturales"). Toutes les modifications de paramètres (ADSR, LFO, etc.) doivent passer par des `UndoableCommand`.
 
@@ -228,7 +308,7 @@
 - [x] Tests unitaires (13 tests, 68 total avec intégration)
 - [x] Documentation du pattern (doc/COMMAND_PATTERN.md)
 - [x] Tester avec les paramètres ADSR ✅
-- [ ] **À FAIRE** : Tester avec les paramètres LFO (Phase 2 prochaine étape)
+- [x] Tester avec les paramètres LFO ✅
 
 ### Enveloppes ✅ (TERMINÉ)
 
@@ -241,29 +321,54 @@
 - [x] UI pour contrôles ADSR (4 sliders avec undo/redo)
 - [x] Tests unitaires ADSR (10 tests - timing, courbes, retriggering)
 
-### Polyphonie avancée
+### Polyphonie avancée ✅ (TERMINÉ)
 
 - [x] Améliorer le voice stealing (priorité par âge + releasing voices d'abord)
-- [ ] Modes de polyphonie (mono, legato, poly)
-- [ ] Portamento/glide
+- [x] Modes de polyphonie (mono, legato, poly)
+  - [x] Enum `PolyMode` (Poly, Mono, Legato)
+  - [x] Implémentation dans `VoiceManager` (3 méthodes de note_on)
+  - [x] Mode Poly : polyphonie complète (comportement par défaut)
+  - [x] Mode Mono : monophonique avec retriggering de l'enveloppe
+  - [x] Mode Legato : transitions de pitch fluides sans retriggering
+  - [x] Méthode `force_stop()` pour couper les voix immédiatement (mono mode)
+  - [x] UI avec ComboBox de sélection
+  - [x] Intégration avec Command Pattern (undo/redo)
+  - [x] Tests unitaires (14 tests - 11 voice_manager + 3 poly_mode)
+- [x] Portamento/glide ✅ (TERMINÉ)
+  - [x] Module `portamento.rs` avec `PortamentoGlide` et `PortamentoParams`
+  - [x] Utilise `OnePoleSmoother` pour des glides fluides
+  - [x] Intégration dans Voice (transitions de fréquence progressives)
+  - [x] Méthode `force_stop()` pour compatibilité mono/legato
+  - [x] Portamento + LFO combinés (portamento → base freq → LFO modulation)
+  - [x] Command Pattern : `SetPortamentoCommand` avec undo/redo et merge
+  - [x] UI : Slider "Glide Time" (0-2 secondes)
+  - [x] Tests unitaires (9 tests couvrant tous les cas d'usage)
+  - [x] Compatible tous les modes (Poly, Mono, Legato)
 
-### Modulation
+### Modulation ✅ (TERMINÉ)
 
-- [ ] LFO (Low Frequency Oscillator)
-  - [ ] Formes d'onde LFO (sine, square, saw, triangle)
-  - [ ] Routing LFO → paramètres (pitch, cutoff)
-  - [ ] Sync LFO au tempo (optionnel)
-- [ ] Vélocité → intensité
-- [ ] Aftertouch support
+- [x] LFO (Low Frequency Oscillator)
+  - [x] Formes d'onde LFO (sine, square, saw, triangle)
+  - [x] Routing LFO → paramètres (pitch vibrato, volume tremolo)
+  - [x] UI pour contrôler le LFO (waveform, rate, depth, destination)
+  - [x] Intégration avec Command Pattern (undo/redo)
+  - [x] Tests unitaires LFO (11 tests)
+  - [ ] Sync LFO au tempo (optionnel - Phase 4+)
+  - [x] Vélocité → intensité (étendu via matrice de modulation)
+  - [x] Aftertouch (Channel Pressure) support
 
 ### Architecture de modulation avancée
 
 - [ ] Matrice de modulation générique
-  - [ ] Sources de modulation (LFO, Enveloppes, Vélocité, Aftertouch, etc.)
-  - [ ] Destinations de modulation (Pitch, Cutoff, Amplitude, Pan, etc.)
-  - [ ] Système d'assignation flexible source → destination
-  - [ ] Quantité de modulation réglable par routing
-  - [ ] UI pour visualiser et éditer la matrice
+  - [x] MVP: matrice pré‑allouée (8 slots) sans allocations runtime
+  - [x] Sources (MVP): LFO(0), Vélocité, Aftertouch
+  - [x] Destinations (MVP): OscillatorPitch(0), Amplitude
+  - [x] Assignation source → destination + amount [-1..1] (semitones pour Pitch)
+  - [x] UI minimale (4 slots) + commandes `SetModRouting`/`ClearModRouting`
+  - [x] Étendre sources (Enveloppes)
+  - [x] Étendre destinations (Pan)
+  - [x] Étendre destinations (FilterCutoff) ✅
+  - [ ] Éditeur UI avancé (drag & drop, presets)
 
 ---
 
@@ -301,14 +406,20 @@
 **Release** : v0.4.0
 **Durée** : 3-4 semaines
 
-### Filtres
+### Filtres ✅ (TERMINÉ)
 
-- [ ] Low-pass filter (Moog-style)
-  - [ ] Implémentation algorithme (State Variable Filter ou Moog Ladder)
-  - [ ] Cutoff control
-  - [ ] Résonance control
-  - [ ] Cutoff modulation (envelope, LFO)
-  - [ ] Tests audio (pas d'artefacts, stabilité)
+- [x] State Variable Filter (Chamberlin) - 4 modes
+  - [x] Implémentation algorithme State Variable Filter (12dB/octave)
+  - [x] 4 types de filtres : LowPass, HighPass, BandPass, Notch
+  - [x] Cutoff control (20Hz - 8kHz, avec smoothing)
+  - [x] Résonance control (Q 0.5 - 20.0, self-oscillation capable)
+  - [x] Cutoff modulation via matrice (envelope, LFO) avec `process_modulated()`
+  - [x] Command Pattern : `SetFilterCommand` avec undo/redo
+  - [x] UI complète (enable/disable, type selector, cutoff/resonance sliders)
+  - [x] Tests unitaires (18 tests - frequency response, stability, resonance)
+  - [x] Tests d'intégration (4 tests - envelope/LFO modulation, bypass)
+  - [x] Benchmarks performance (6 benchmarks - ~11 ns/sample, excellent scaling)
+  - [x] Documentation complète (commentaires, formules mathématiques)
 
 ### Effets prioritaires
 
@@ -745,9 +856,9 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 |-------|----------|-------|---------|-------|
 | **Phase 1** ✅ | MVP - Synth polyphonique | TERMINÉ | v0.1.0 | - |
 | **Phase 1.5** ✅ | Robustesse + Tests | TERMINÉ | v0.2.0 | ~3 sem |
-| **Phase 2** | ADSR, LFO, Modulation | 3-4 sem | v0.3.0 | ~7 sem |
+| **Phase 2** ✅ | ADSR, LFO, Modulation | TERMINÉ | v0.3.0 | ~7 sem |
 | **Phase 2.5** | UX Design | 1-2 sem | - | ~9 sem |
-| **Phase 3a** | Filtres + 2 Effets | 3-4 sem | v0.4.0 | ~13 sem |
+| **Phase 3a** 🔊 | Filtres + 2 Effets | 3-4 sem | v0.4.0 | ~13 sem |
 | **Phase 3b** 🐕 | Dogfooding (créer morceau) | 1 sem | - | ~14 sem |
 | **Phase 4** | Séquenceur + MIDI Clock | 6-8 sem | **v1.0.0** 🎉 | ~22 sem |
 | **Phase 5** | CLAP plugins + Routing | 4-6 sem | v1.1.0 | ~28 sem |
@@ -764,30 +875,34 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 
 ### Milestones clés
 
-- **v0.2.0** (Phase 1.5) : DAW partageable avec d'autres devs
-- **v1.0.0** (Phase 4) : 🎉 DAW fonctionnel avec séquenceur (MILESTONE MAJEUR)
+- **v0.2.0** ✅ (Phase 1.5) : DAW partageable avec d'autres devs
+- **v0.3.0** ✅ (Phase 2) : Synth expressif avec ADSR, LFO, Modulation
+- **v0.4.0** 🔊 (Phase 3a) : Filtres et effets essentiels (EN COURS)
+- **v1.0.0** 🎉 (Phase 4) : DAW fonctionnel avec séquenceur (MILESTONE MAJEUR)
 - **v1.1.0** (Phase 5) : Support plugins CLAP (ouverture écosystème)
 - **v1.5.0** (Phase 6b) : Support VST3 (optionnel, complexe)
 - **v2.0.0** (Phase 7) : UI moderne + Distribution publique
 
 ---
 
-**Priorité actuelle** : Phase 1.5 - Robustesse et UX de base ✅ **TERMINÉE**
-**Objectif** : Rendre le DAW utilisable par d'autres personnes
-**Progrès Phase 1.5** :
-  - ✅ Gestion des périphériques audio/MIDI
-  - ✅ Reconnexion automatique MIDI
-  - ✅ Gestion des erreurs Audio (CPAL)
-  - ✅ Timing et précision audio/MIDI
-  - ✅ Monitoring CPU
-  - ✅ Compatibilité formats CPAL (F32/I16/U16)
-  - ✅ Tests d'intégration (66 tests passent)
-  - ✅ Benchmarks Criterion (latence < 10ms atteinte)
-  - ⏭️ Documentation (reportée post-v1.0)
+**Priorité actuelle** : Phase 3a - Filtres et effets essentiels (EN COURS) 🔊
+**Objectif** : 1 filtre + 2 effets de qualité
+**Progrès Phase 3a** :
+  - ✅ **Filtres terminés** (State Variable Filter avec 4 modes)
+    - ✅ Implementation complète (LowPass, HighPass, BandPass, Notch)
+    - ✅ Modulation cutoff via matrice (Envelope, LFO)
+    - ✅ Command Pattern avec undo/redo
+    - ✅ UI complète avec contrôles
+    - ✅ 22 tests (18 unitaires + 4 intégration)
+    - ✅ 6 benchmarks (performance: ~11 ns/sample)
+  - [ ] Delay (buffer circulaire, feedback, mix)
+  - [ ] Reverb (Freeverb ou Schroeder)
+  - [ ] Architecture effets (Trait Effect, chain, bypass)
 
-**Release v0.2.0 prête** 🎉
+**Phase 1.5** ✅ : Robustesse et tests - **TERMINÉE** (v0.2.0)
+**Phase 2** ✅ : ADSR, LFO, Modulation - **TERMINÉE** (v0.3.0)
 
-**Next milestone** : Phase 2 - Enrichissement du son (ADSR, LFO, Command Pattern)
+**Next milestone** : Terminer Phase 3a (Delay + Reverb) → v0.4.0
 
 ---
 

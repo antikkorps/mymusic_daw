@@ -65,6 +65,7 @@ impl OnePoleSmoother {
     ///
     /// # Exemple
     /// ```
+    /// use mymusic_daw::audio::dsp_utils::OnePoleSmoother;
     /// // Smoothing de 10ms à 44.1kHz
     /// let smoother = OnePoleSmoother::new(0.5, 10.0, 44100.0);
     /// ```

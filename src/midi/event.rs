@@ -6,6 +6,10 @@ pub enum MidiEvent {
     NoteOff { note: u8 },
     ControlChange { controller: u8, value: u8 },
     PitchBend { value: i16 },
+    /// Channel Aftertouch (Channel Pressure) - applies to the whole channel
+    ChannelAftertouch { value: u8 },
+    /// Polyphonic Key Pressure (Poly Aftertouch) - pressure per note
+    PolyAftertouch { note: u8, value: u8 },
 }
 
 /// MIDI event with sample-accurate timing
@@ -69,6 +73,24 @@ impl MidiEvent {
                     let msb = bytes[2] as i16;
                     let value = (msb << 7) | lsb;
                     Some(MidiEvent::PitchBend { value })
+                } else {
+                    None
+                }
+            }
+            0xD0 => {
+                // Channel Aftertouch (Channel Pressure)
+                // Status 0xDn, 1 data byte (pressure 0..127)
+                if bytes.len() >= 2 {
+                    Some(MidiEvent::ChannelAftertouch { value: bytes[1] })
+                } else {
+                    None
+                }
+            }
+            0xA0 => {
+                // Polyphonic Key Pressure (Poly Aftertouch)
+                // Status 0xAn, 2 data bytes: note number, pressure
+                if bytes.len() >= 3 {
+                    Some(MidiEvent::PolyAftertouch { note: bytes[1], value: bytes[2] })
                 } else {
                     None
                 }
@@ -148,6 +170,29 @@ mod tests {
                 assert_eq!(value, 8192);
             }
             _ => panic!("Expected PitchBend event"),
+        }
+    }
+
+    #[test]
+    fn test_channel_aftertouch() {
+        let bytes = [0xD0, 100]; // Channel Aftertouch, pressure 100
+        let event = MidiEvent::from_bytes(&bytes).unwrap();
+        match event {
+            MidiEvent::ChannelAftertouch { value } => assert_eq!(value, 100),
+            _ => panic!("Expected ChannelAftertouch event"),
+        }
+    }
+
+    #[test]
+    fn test_poly_aftertouch() {
+        let bytes = [0xA0, 60, 90]; // Poly Aftertouch, note 60, pressure 90
+        let event = MidiEvent::from_bytes(&bytes).unwrap();
+        match event {
+            MidiEvent::PolyAftertouch { note, value } => {
+                assert_eq!(note, 60);
+                assert_eq!(value, 90);
+            }
+            _ => panic!("Expected PolyAftertouch event"),
         }
     }
 

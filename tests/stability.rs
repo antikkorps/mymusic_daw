@@ -71,13 +71,13 @@ fn run_stability_test(duration: Duration, test_name: &str) {
 
             // Check for audio artifacts
             assert!(
-                sample.is_finite(),
+                sample.0.is_finite() && sample.1.is_finite(),
                 "Audio sample is not finite (NaN or Inf) at sample {}",
                 total_samples
             );
 
             // Track statistics
-            let abs_sample = sample.abs();
+            let abs_sample = sample.0.abs();
             if abs_sample > max_amplitude {
                 max_amplitude = abs_sample;
             }
@@ -168,7 +168,7 @@ fn test_stability_polyphonic_stress() {
             total_samples += 1;
 
             assert!(
-                sample.is_finite(),
+                sample.0.is_finite() && sample.1.is_finite(),
                 "Audio sample not finite at sample {}",
                 total_samples
             );
@@ -194,7 +194,7 @@ fn test_stability_rapid_notes() {
         // Generate a few samples
         for _ in 0..10 {
             let sample = voice_manager.next_sample();
-            assert!(sample.is_finite(), "Sample not finite at cycle {}", cycle);
+            assert!(sample.0.is_finite() && sample.1.is_finite(), "Sample not finite at cycle {}", cycle);
         }
 
         voice_manager.note_off(60 + (cycle % 12) as u8);

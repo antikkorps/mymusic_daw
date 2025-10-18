@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::audio::cpu_monitor::CpuMonitor;
 use crate::audio::dsp_utils::{flush_denormals_to_zero, soft_clip, OnePoleSmoother};
-use crate::audio::format_conversion::write_mono_to_interleaved_frame;
+use crate::audio::format_conversion::write_stereo_to_interleaved_frame;
 use crate::audio::parameters::AtomicF32;
 use crate::connection::status::{AtomicDeviceStatus, DeviceStatus};
 use crate::messaging::channels::{CommandConsumer, NotificationProducer};
@@ -195,6 +195,12 @@ impl AudioEngine {
                                 MidiEvent::NoteOff { note } => {
                                     vm.note_off(note);
                                 }
+                                MidiEvent::ChannelAftertouch { value } => {
+                                    vm.set_aftertouch(value);
+                                }
+                                MidiEvent::PolyAftertouch { note: _n, value: _v } => {
+                                    // TODO: Poly aftertouch per-note support (Phase 2+)
+                                }
                                 _ => {} // Ignore other events for now
                             }
                         }
@@ -213,6 +219,27 @@ impl AudioEngine {
                             }
                             Command::SetWaveform(waveform) => {
                                 vm.set_waveform(waveform);
+                            }
+                            Command::SetAdsr(adsr_params) => {
+                                vm.set_adsr(adsr_params);
+                            }
+                            Command::SetLfo(lfo_params) => {
+                                vm.set_lfo(lfo_params);
+                            }
+                            Command::SetPolyMode(poly_mode) => {
+                                vm.set_poly_mode(poly_mode);
+                            }
+                            Command::SetPortamento(portamento_params) => {
+                                vm.set_portamento(portamento_params);
+                            }
+                            Command::SetFilter(filter_params) => {
+                                vm.set_filter(filter_params);
+                            }
+                            Command::SetModRouting { index, routing } => {
+                                vm.set_mod_routing(index as usize, routing);
+                            }
+                            Command::ClearModRouting { index } => {
+                                vm.clear_mod_routing(index as usize);
                             }
                             Command::Quit => {}
                         }
@@ -390,6 +417,12 @@ impl AudioEngine {
                                 MidiEvent::NoteOff { note } => {
                                     vm.note_off(note);
                                 }
+                                MidiEvent::ChannelAftertouch { value } => {
+                                    vm.set_aftertouch(value);
+                                }
+                                MidiEvent::PolyAftertouch { note: _n, value: _v } => {
+                                    // TODO: Poly aftertouch per-note support (Phase 2+)
+                                }
                                 _ => {} // Ignore other events for now
                             }
                         }
@@ -411,6 +444,24 @@ impl AudioEngine {
                             }
                             Command::SetAdsr(adsr_params) => {
                                 vm.set_adsr(adsr_params);
+                            }
+                            Command::SetLfo(lfo_params) => {
+                                vm.set_lfo(lfo_params);
+                            }
+                            Command::SetPolyMode(poly_mode) => {
+                                vm.set_poly_mode(poly_mode);
+                            }
+                            Command::SetPortamento(portamento_params) => {
+                                vm.set_portamento(portamento_params);
+                            }
+                            Command::SetFilter(filter_params) => {
+                                vm.set_filter(filter_params);
+                            }
+                            Command::SetModRouting { index, routing } => {
+                                vm.set_mod_routing(index as usize, routing);
+                            }
+                            Command::ClearModRouting { index } => {
+                                vm.clear_mod_routing(index as usize);
                             }
                             Command::Quit => {}
                         }
@@ -445,32 +496,40 @@ impl AudioEngine {
                                 // Smooth volume pour éviter clics/pops
                                 let smoothed_volume = smoother.process(target_volume);
 
-                                // Generate raw sample
-                                let mut sample = vm.next_sample();
+                                // Generate stereo sample
+                                let (mut left, mut right) = vm.next_sample();
 
                                 // Anti-denormals (flush tiny values to zero)
-                                sample = flush_denormals_to_zero(sample);
+                                left = flush_denormals_to_zero(left);
+                                right = flush_denormals_to_zero(right);
 
                                 // Apply volume
-                                sample *= smoothed_volume;
+                                left *= smoothed_volume;
+                                right *= smoothed_volume;
 
                                 // Soft saturation (protection contre clipping dur)
-                                sample = soft_clip(sample);
+                                left = soft_clip(left);
+                                right = soft_clip(right);
 
-                                // Write to all channels with automatic format conversion
-                                write_mono_to_interleaved_frame(sample, frame);
+                                // Write stereo sample to frame
+                                write_stereo_to_interleaved_frame((left, right), frame);
                             }
                         } else {
                             // Fallback sans smoother (toujours mieux que silence)
                             let current_volume = volume.get();
                             for frame in data.chunks_mut(channels) {
-                                let mut sample = vm.next_sample();
-                                sample = flush_denormals_to_zero(sample);
-                                sample *= current_volume;
-                                sample = soft_clip(sample);
+                                let (mut left, mut right) = vm.next_sample();
 
-                                // Write to all channels with automatic format conversion
-                                write_mono_to_interleaved_frame(sample, frame);
+                                left = flush_denormals_to_zero(left);
+                                right = flush_denormals_to_zero(right);
+
+                                left *= current_volume;
+                                right *= current_volume;
+
+                                left = soft_clip(left);
+                                right = soft_clip(right);
+
+                                write_stereo_to_interleaved_frame((left, right), frame);
                             }
                         }
                     } else {

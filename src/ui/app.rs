@@ -4,8 +4,12 @@ use crate::audio::cpu_monitor::{CpuLoad, CpuMonitor};
 use crate::audio::device::{AudioDeviceInfo, AudioDeviceManager};
 use crate::audio::parameters::AtomicF32;
 use crate::command::{CommandManager, DawState};
-use crate::command::commands::{SetVolumeCommand, SetWaveformCommand, SetAdsrCommand};
+use crate::command::commands::{SetVolumeCommand, SetWaveformCommand, SetAdsrCommand, SetLfoCommand, SetPolyModeCommand, SetPortamentoCommand, SetModRoutingCommand, SetFilterCommand};
+use crate::synth::filter::{FilterParams, FilterType};
 use crate::synth::envelope::AdsrParams;
+use crate::synth::lfo::{LfoParams, LfoDestination};
+use crate::synth::poly_mode::PolyMode;
+use crate::synth::portamento::PortamentoParams;
 use crate::connection::status::DeviceStatus;
 use crate::messaging::channels::{CommandProducer, NotificationConsumer};
 use crate::messaging::command::Command;
@@ -14,9 +18,19 @@ use crate::midi::device::{MidiDeviceInfo, MidiDeviceManager};
 use crate::midi::event::{MidiEvent, MidiEventTimed};
 use crate::midi::manager::MidiConnectionManager;
 use crate::synth::oscillator::WaveformType;
+use crate::synth::modulation::{ModSource, ModDestination, ModRouting};
 use eframe::egui;
 use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UiTab {
+    Devices,
+    Synth,
+    Modulation,
+    Play,
+    Performance,
+}
 
 pub struct DawApp {
     // Command Pattern for undo/redo
@@ -43,6 +57,15 @@ pub struct DawApp {
     adsr_decay: f32,
     adsr_sustain: f32,
     adsr_release: f32,
+    // LFO UI state
+    lfo_waveform: WaveformType,
+    lfo_rate: f32,
+    lfo_depth: f32,
+    lfo_destination: LfoDestination,
+    // Polyphony mode UI state
+    poly_mode: PolyMode,
+    // Portamento UI state
+    portamento_time: f32,
     // CPU monitoring
     cpu_monitor: CpuMonitor,
     last_cpu_load: CpuLoad,
@@ -50,6 +73,10 @@ pub struct DawApp {
     notification_rx: NotificationConsumer,
     notification_queue: VecDeque<Notification>,
     max_notifications: usize,
+    // Modulation Matrix UI (MVP) - 4 slots
+    mod_routings_ui: [ModRouting; 4],
+    // Active UI tab
+    active_tab: UiTab,
 }
 
 impl DawApp {
@@ -112,11 +139,24 @@ impl DawApp {
             adsr_decay: 0.1,
             adsr_sustain: 0.7,
             adsr_release: 0.2,
+            lfo_waveform: WaveformType::Sine,
+            lfo_rate: 5.0,
+            lfo_depth: 0.5,
+            lfo_destination: LfoDestination::None,
+            poly_mode: PolyMode::default(),
+            portamento_time: 0.0,
             cpu_monitor,
             last_cpu_load: CpuLoad::Low,
             notification_rx,
             notification_queue: VecDeque::new(),
             max_notifications: 10,
+            mod_routings_ui: [
+                ModRouting { source: ModSource::Lfo(0), destination: ModDestination::OscillatorPitch(0), amount: 2.0, enabled: false },
+                ModRouting { source: ModSource::Lfo(0), destination: ModDestination::Amplitude, amount: 0.5, enabled: false },
+                ModRouting { source: ModSource::Velocity, destination: ModDestination::Amplitude, amount: 0.5, enabled: false },
+                ModRouting { source: ModSource::Aftertouch, destination: ModDestination::Amplitude, amount: 0.5, enabled: false },
+            ],
+            active_tab: UiTab::Synth,
         }
     }
 
@@ -199,7 +239,46 @@ impl DawApp {
         }
     }
 
-    fn draw_keyboard(&mut self, ui: &mut egui::Ui) {
+    /// Handle PC keyboard input globally (independent of the current tab)
+    ///
+    /// This allows playing notes while editing other sections.
+    /// Does not render any UI.
+    fn process_pc_keyboard_input(&mut self, ctx: &egui::Context) {
+        // Avoid capturing keys when UI requests text input (e.g., text fields)
+        if ctx.wants_keyboard_input() {
+            return;
+        }
+
+        // Mapping QWERTY keyboard → MIDI notes (C4 = 60)
+        let key_map = [
+            ('a', 60), // C4
+            ('w', 61), // C#4
+            ('s', 62), // D4
+            ('e', 63), // D#4
+            ('d', 64), // E4
+            ('f', 65), // F4
+            ('t', 66), // F#4
+            ('g', 67), // G4
+            ('y', 68), // G#4
+            ('h', 69), // A4
+            ('u', 70), // A#4
+            ('j', 71), // B4
+            ('k', 72), // C5
+        ];
+
+        for (key, note) in &key_map {
+            let key_code = egui::Key::from_name(&key.to_string().to_uppercase()).unwrap_or(egui::Key::A);
+            if ctx.input(|i| i.key_pressed(key_code)) {
+                self.send_note_on(*note);
+            }
+            if ctx.input(|i| i.key_released(key_code)) {
+                self.send_note_off(*note);
+            }
+        }
+    }
+
+    /// Render the visual virtual keyboard (no input handling)
+    fn draw_keyboard_ui(&mut self, ui: &mut egui::Ui) {
         ui.heading("Virtual keyboard");
         ui.label("Use the keyboard keys to play the notes:");
         ui.label("A W S E D F T G Y H U J K = notes (Do to Do)");
@@ -222,22 +301,7 @@ impl DawApp {
             ('k', 72), // C5
         ];
 
-        // Handle pressed and release keys
-        let ctx = ui.ctx();
-
-        for (key, note) in &key_map {
-            let key_code =
-                egui::Key::from_name(&key.to_string().to_uppercase()).unwrap_or(egui::Key::A);
-
-            if ctx.input(|i| i.key_pressed(key_code)) {
-                self.send_note_on(*note);
-            }
-            if ctx.input(|i| i.key_released(key_code)) {
-                self.send_note_off(*note);
-            }
-        }
-
-        // Display the visual keyboard
+        // Display the visual keyboard only
         ui.horizontal(|ui| {
             for (key, note) in &key_map {
                 let is_active = self.active_notes.contains(note);
@@ -334,49 +398,72 @@ impl eframe::App for DawApp {
         // Ask for a refresh to capture keyboard events
         ctx.request_repaint();
 
-        // Handle Undo/Redo keyboard shortcuts
-        ctx.input(|i| {
-            // Ctrl+Z for Undo
-            if i.modifiers.command && i.key_pressed(egui::Key::Z) && !i.modifiers.shift {
-                if self.command_manager.can_undo() {
-                    match self.command_manager.undo(&mut self.daw_state) {
-                        Ok(description) => {
-                            // Update UI state from DawState after undo
-                            self.volume_ui = self.daw_state.volume;
-                            self.selected_waveform = self.daw_state.waveform;
-                            self.adsr_attack = self.daw_state.adsr.attack;
-                            self.adsr_decay = self.daw_state.adsr.decay;
-                            self.adsr_sustain = self.daw_state.adsr.sustain;
-                            self.adsr_release = self.daw_state.adsr.release;
-                            self.volume_atomic.set(self.daw_state.volume);
-                            println!("Undo: {}", description);
+        // Always process PC keyboard input, regardless of the current tab
+        self.process_pc_keyboard_input(ctx);
+
+            // Handle Undo/Redo keyboard shortcuts
+            ctx.input(|i| {
+                // Ctrl+Z for Undo
+                if i.modifiers.command && i.key_pressed(egui::Key::Z) && !i.modifiers.shift {
+                    if self.command_manager.can_undo() {
+                        match self.command_manager.undo(&mut self.daw_state) {
+                            Ok(description) => {
+                                // Update UI state from DawState after undo
+                                self.volume_ui = self.daw_state.volume;
+                                self.selected_waveform = self.daw_state.waveform;
+                                self.adsr_attack = self.daw_state.adsr.attack;
+                                self.adsr_decay = self.daw_state.adsr.decay;
+                                self.adsr_sustain = self.daw_state.adsr.sustain;
+                                self.adsr_release = self.daw_state.adsr.release;
+                                self.lfo_waveform = self.daw_state.lfo.waveform;
+                                self.lfo_rate = self.daw_state.lfo.rate;
+                                self.lfo_depth = self.daw_state.lfo.depth;
+                                self.lfo_destination = self.daw_state.lfo.destination;
+                                self.poly_mode = self.daw_state.poly_mode;
+                                self.portamento_time = self.daw_state.portamento.time;
+                                // Sync modulation UI from state mirror
+                                for idx in 0..self.mod_routings_ui.len() {
+                                    self.mod_routings_ui[idx] = self.daw_state.mod_routings[idx];
+                                }
+                                self.volume_atomic.set(self.daw_state.volume);
+                                println!("Undo: {}", description);
+                            }
+                            Err(e) => eprintln!("Undo failed: {}", e),
                         }
-                        Err(e) => eprintln!("Undo failed: {}", e),
                     }
                 }
-            }
 
             // Ctrl+Shift+Z or Ctrl+Y for Redo
-            if (i.modifiers.command && i.key_pressed(egui::Key::Z) && i.modifiers.shift)
-                || (i.modifiers.command && i.key_pressed(egui::Key::Y))
-            {
-                if self.command_manager.can_redo() {
-                    match self.command_manager.redo(&mut self.daw_state) {
-                        Ok(description) => {
-                            // Update UI state from DawState after redo
-                            self.volume_ui = self.daw_state.volume;
-                            self.selected_waveform = self.daw_state.waveform;
-                            self.adsr_attack = self.daw_state.adsr.attack;
-                            self.adsr_decay = self.daw_state.adsr.decay;
-                            self.adsr_sustain = self.daw_state.adsr.sustain;
-                            self.adsr_release = self.daw_state.adsr.release;
-                            self.volume_atomic.set(self.daw_state.volume);
-                            println!("Redo: {}", description);
+                if (i.modifiers.command && i.key_pressed(egui::Key::Z) && i.modifiers.shift)
+                    || (i.modifiers.command && i.key_pressed(egui::Key::Y))
+                {
+                    if self.command_manager.can_redo() {
+                        match self.command_manager.redo(&mut self.daw_state) {
+                            Ok(description) => {
+                                // Update UI state from DawState after redo
+                                self.volume_ui = self.daw_state.volume;
+                                self.selected_waveform = self.daw_state.waveform;
+                                self.adsr_attack = self.daw_state.adsr.attack;
+                                self.adsr_decay = self.daw_state.adsr.decay;
+                                self.adsr_sustain = self.daw_state.adsr.sustain;
+                                self.adsr_release = self.daw_state.adsr.release;
+                                self.lfo_waveform = self.daw_state.lfo.waveform;
+                                self.lfo_rate = self.daw_state.lfo.rate;
+                                self.lfo_depth = self.daw_state.lfo.depth;
+                                self.lfo_destination = self.daw_state.lfo.destination;
+                                self.poly_mode = self.daw_state.poly_mode;
+                                self.portamento_time = self.daw_state.portamento.time;
+                                // Sync modulation UI from state mirror
+                                for idx in 0..self.mod_routings_ui.len() {
+                                    self.mod_routings_ui[idx] = self.daw_state.mod_routings[idx];
+                                }
+                                self.volume_atomic.set(self.daw_state.volume);
+                                println!("Redo: {}", description);
+                            }
+                            Err(e) => eprintln!("Redo failed: {}", e),
                         }
-                        Err(e) => eprintln!("Redo failed: {}", e),
                     }
                 }
-            }
         });
 
         // Update notifications from ringbuffer
@@ -389,10 +476,27 @@ impl eframe::App for DawApp {
             ui.heading("MyMusic DAW - MVP");
             ui.separator();
 
-            ui.add_space(10.0);
+            // Simple tab bar (no scrolling): show one category at a time
+            ui.horizontal(|ui| {
+                let button = |ui: &mut egui::Ui, label: &str, tab: UiTab, current: &mut UiTab| {
+                    let selected = *current == tab;
+                    if ui.selectable_label(selected, label).clicked() {
+                        *current = tab;
+                    }
+                };
+                button(ui, "Devices", UiTab::Devices, &mut self.active_tab);
+                button(ui, "Synth", UiTab::Synth, &mut self.active_tab);
+                button(ui, "Modulation", UiTab::Modulation, &mut self.active_tab);
+                button(ui, "Play", UiTab::Play, &mut self.active_tab);
+                button(ui, "Performance", UiTab::Performance, &mut self.active_tab);
+            });
 
-            // === Device Selection Section ===
-            ui.heading("Devices");
+            ui.separator();
+
+            match self.active_tab {
+                UiTab::Devices => {
+                    // Devices tab
+                    ui.heading("Devices");
 
             ui.horizontal(|ui| {
                 ui.label("MIDI Input:");
@@ -455,55 +559,233 @@ impl eframe::App for DawApp {
                     });
             });
 
-            ui.add_space(10.0);
-            ui.separator();
-
-            // Volume control (using undoable commands)
-            ui.horizontal(|ui| {
-                ui.label("Volume:");
-                if ui.add(egui::Slider::new(&mut self.volume_ui, 0.0..=1.0)).changed() {
-                    // Use undoable command for volume changes
-                    let cmd = Box::new(SetVolumeCommand::new(self.volume_ui));
-                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
-                        eprintln!("Failed to execute volume command: {}", e);
-                    }
-                    // Also update atomic for backward compatibility
-                    self.volume_atomic.set(self.volume_ui);
                 }
-            });
+                UiTab::Modulation => {
+                    // Modulation tab
+                    ui.heading("Modulation Matrix (MVP)");
 
-            // Waveform selection
-            ui.horizontal(|ui| {
-                ui.label("Waveform:");
-                let previous_waveform = self.selected_waveform;
-                egui::ComboBox::from_id_salt("waveform_selector")
-                    .selected_text(match self.selected_waveform {
-                        WaveformType::Sine => "Sine",
-                        WaveformType::Square => "Square",
-                        WaveformType::Saw => "Saw",
-                        WaveformType::Triangle => "Triangle",
-                    })
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut self.selected_waveform, WaveformType::Sine, "Sine");
-                        ui.selectable_value(&mut self.selected_waveform, WaveformType::Square, "Square");
-                        ui.selectable_value(&mut self.selected_waveform, WaveformType::Saw, "Saw");
-                        ui.selectable_value(&mut self.selected_waveform, WaveformType::Triangle, "Triangle");
+            let src_labels = ["LFO 1", "Velocity", "Aftertouch", "Envelope"];
+            let dst_labels = ["Pitch", "Amplitude", "Pan"];
+
+            for (i, routing) in self.mod_routings_ui.iter_mut().enumerate() {
+                ui.horizontal(|ui| {
+                    ui.label(format!("Slot {}:", i + 1));
+
+                    // Enabled toggle
+                    let mut enabled = routing.enabled;
+                    if ui.checkbox(&mut enabled, "On").changed() {
+                        let old = *routing;
+                        routing.enabled = enabled;
+                        let cmd = Box::new(SetModRoutingCommand::new_with_old(i as u8, *routing, old));
+                        let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                    }
+
+                    // Source selector
+                    let prev_source = routing.source;
+                    egui::ComboBox::from_id_salt(format!("mod_src_{}", i))
+                        .selected_text(match routing.source {
+                            ModSource::Lfo(0) => src_labels[0],
+                            ModSource::Velocity => src_labels[1],
+                            ModSource::Aftertouch => src_labels[2],
+                            ModSource::Envelope => src_labels[3],
+                            _ => "Unused",
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut routing.source, ModSource::Lfo(0), src_labels[0]);
+                            ui.selectable_value(&mut routing.source, ModSource::Velocity, src_labels[1]);
+                            ui.selectable_value(&mut routing.source, ModSource::Aftertouch, src_labels[2]);
+                            ui.selectable_value(&mut routing.source, ModSource::Envelope, src_labels[3]);
+                        });
+                    if routing.source != prev_source {
+                        let old = ModRouting { source: prev_source, ..*routing };
+                        let cmd = Box::new(SetModRoutingCommand::new_with_old(i as u8, *routing, old));
+                        let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                    }
+
+                    // Destination selector
+                    let prev_dest = routing.destination;
+                    egui::ComboBox::from_id_salt(format!("mod_dst_{}", i))
+                        .selected_text(match routing.destination {
+                            ModDestination::OscillatorPitch(0) => dst_labels[0],
+                            ModDestination::Amplitude => dst_labels[1],
+                            ModDestination::Pan => dst_labels[2],
+                            _ => "Unused",
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut routing.destination, ModDestination::OscillatorPitch(0), dst_labels[0]);
+                            ui.selectable_value(&mut routing.destination, ModDestination::Amplitude, dst_labels[1]);
+                            ui.selectable_value(&mut routing.destination, ModDestination::Pan, dst_labels[2]);
+                        });
+                    if routing.destination != prev_dest {
+                        let old = ModRouting { destination: prev_dest, ..*routing };
+                        let cmd = Box::new(SetModRoutingCommand::new_with_old(i as u8, *routing, old));
+                        let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                    }
+
+                    // Amount slider
+                    let prev_amount = routing.amount;
+                    let range = match routing.destination {
+                        ModDestination::OscillatorPitch(_) => -12.0..=12.0, // semitones
+                        ModDestination::Amplitude => -1.0..=1.0,            // multiplier delta
+                        ModDestination::Pan => -1.0..=1.0,                  // pan L/R
+                        ModDestination::FilterCutoff => 0.0..=10.0,         // cutoff multiplier (0.1x to 10x)
+                    };
+                    if ui.add(egui::Slider::new(&mut routing.amount, range).fixed_decimals(2)).changed() {
+                        let old = *routing;
+                        // Clamp for safety
+                        routing.amount = match routing.destination {
+                            ModDestination::OscillatorPitch(_) => routing.amount.clamp(-24.0, 24.0),
+                            _ => routing.amount.clamp(-1.0, 1.0), // For Amplitude and Pan
+                        };
+                        let cmd = Box::new(SetModRoutingCommand::new_with_old(i as u8, *routing, old));
+                        let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                    } else if (routing.amount - prev_amount).abs() > 0.0 {
+                        // no-op
+                    }
+                });
+            }
+
+                    ui.label("Sources are normalized to [-1,1]; pitch amount is semitones.");
+                    ui.label("Aftertouch requires a controller that sends Channel Pressure.");
+
+                    ui.add_space(10.0);
+                    ui.separator();
+
+                    // LFO controls
+                    ui.heading("LFO (Modulation)");
+                    ui.horizontal(|ui| {
+                        ui.label("LFO Waveform:");
+                        let previous_lfo_waveform = self.lfo_waveform;
+                        egui::ComboBox::from_id_salt("lfo_waveform_selector")
+                            .selected_text(match self.lfo_waveform {
+                                WaveformType::Sine => "Sine",
+                                WaveformType::Square => "Square",
+                                WaveformType::Saw => "Saw",
+                                WaveformType::Triangle => "Triangle",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.lfo_waveform, WaveformType::Sine, "Sine");
+                                ui.selectable_value(&mut self.lfo_waveform, WaveformType::Square, "Square");
+                                ui.selectable_value(&mut self.lfo_waveform, WaveformType::Saw, "Saw");
+                                ui.selectable_value(&mut self.lfo_waveform, WaveformType::Triangle, "Triangle");
+                            });
+
+                        if previous_lfo_waveform != self.lfo_waveform {
+                            let params = LfoParams::new(
+                                self.lfo_waveform,
+                                self.lfo_rate,
+                                self.lfo_depth,
+                                self.lfo_destination,
+                            );
+                            let cmd = Box::new(SetLfoCommand::new(params));
+                            let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                        }
                     });
 
-                // Send undoable command if waveform changed
-                if previous_waveform != self.selected_waveform {
-                    let cmd = Box::new(SetWaveformCommand::new(self.selected_waveform));
-                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
-                        eprintln!("Failed to execute waveform command: {}", e);
-                    }
+                    ui.horizontal(|ui| {
+                        ui.label("LFO Rate:");
+                        if ui.add(egui::Slider::new(&mut self.lfo_rate, 0.1..=20.0).text("Hz").logarithmic(true)).changed() {
+                            let params = LfoParams::new(
+                                self.lfo_waveform,
+                                self.lfo_rate,
+                                self.lfo_depth,
+                                self.lfo_destination,
+                            );
+                            let cmd = Box::new(SetLfoCommand::new(params));
+                            let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("LFO Depth:");
+                        if ui.add(egui::Slider::new(&mut self.lfo_depth, 0.0..=1.0)).changed() {
+                            let params = LfoParams::new(
+                                self.lfo_waveform,
+                                self.lfo_rate,
+                                self.lfo_depth,
+                                self.lfo_destination,
+                            );
+                            let cmd = Box::new(SetLfoCommand::new(params));
+                            let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("LFO Destination:");
+                        let previous_destination = self.lfo_destination;
+                        egui::ComboBox::from_id_salt("lfo_destination_selector")
+                            .selected_text(match self.lfo_destination {
+                                LfoDestination::None => "None",
+                                LfoDestination::Pitch => "Pitch (Vibrato)",
+                                LfoDestination::Volume => "Volume (Tremolo)",
+                                LfoDestination::FilterCutoff => "Filter Cutoff (Phase 3a)",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.lfo_destination, LfoDestination::None, "None");
+                                ui.selectable_value(&mut self.lfo_destination, LfoDestination::Pitch, "Pitch (Vibrato)");
+                                ui.selectable_value(&mut self.lfo_destination, LfoDestination::Volume, "Volume (Tremolo)");
+                                ui.selectable_value(&mut self.lfo_destination, LfoDestination::FilterCutoff, "Filter Cutoff (Phase 3a)");
+                            });
+
+                        if previous_destination != self.lfo_destination {
+                            let params = LfoParams::new(
+                                self.lfo_waveform,
+                                self.lfo_rate,
+                                self.lfo_depth,
+                                self.lfo_destination,
+                            );
+                            let cmd = Box::new(SetLfoCommand::new(params));
+                            let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                        }
+                    });
                 }
-            });
+                UiTab::Synth => {
+                    // Synth tab
+                    ui.heading("Synth");
 
-            ui.add_space(10.0);
-            ui.separator();
+                    // Volume control (using undoable commands)
+                    ui.horizontal(|ui| {
+                        ui.label("Volume:");
+                        if ui.add(egui::Slider::new(&mut self.volume_ui, 0.0..=1.0)).changed() {
+                            let cmd = Box::new(SetVolumeCommand::new(self.volume_ui));
+                            if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                                eprintln!("Failed to execute volume command: {}", e);
+                            }
+                            self.volume_atomic.set(self.volume_ui);
+                        }
+                    });
 
-            // === ADSR Envelope Section ===
-            ui.heading("ADSR Envelope");
+                    // Waveform selection
+                    ui.horizontal(|ui| {
+                        ui.label("Waveform:");
+                        let previous_waveform = self.selected_waveform;
+                        egui::ComboBox::from_id_salt("waveform_selector")
+                            .selected_text(match self.selected_waveform {
+                                WaveformType::Sine => "Sine",
+                                WaveformType::Square => "Square",
+                                WaveformType::Saw => "Saw",
+                                WaveformType::Triangle => "Triangle",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.selected_waveform, WaveformType::Sine, "Sine");
+                                ui.selectable_value(&mut self.selected_waveform, WaveformType::Square, "Square");
+                                ui.selectable_value(&mut self.selected_waveform, WaveformType::Saw, "Saw");
+                                ui.selectable_value(&mut self.selected_waveform, WaveformType::Triangle, "Triangle");
+                            });
+
+                        if previous_waveform != self.selected_waveform {
+                            let cmd = Box::new(SetWaveformCommand::new(self.selected_waveform));
+                            if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                                eprintln!("Failed to execute waveform command: {}", e);
+                            }
+                        }
+                    });
+
+                    ui.add_space(10.0);
+                    ui.separator();
+
+                    // ADSR Envelope Section
+                    ui.heading("ADSR Envelope");
 
             ui.horizontal(|ui| {
                 ui.label("Attack:");
@@ -583,40 +865,140 @@ impl eframe::App for DawApp {
                 }
             });
 
-            ui.add_space(10.0);
-            ui.separator();
+                    ui.add_space(10.0);
+                    ui.separator();
 
-            // CPU Monitor
+                    // Polyphony Mode Section
+                    ui.heading("Polyphony Mode");
+
             ui.horizontal(|ui| {
-                let cpu_percentage = self.cpu_monitor.get_cpu_percentage();
-                let load_level = self.cpu_monitor.get_load_level();
+                ui.label("Mode:");
+                let previous_mode = self.poly_mode;
+                egui::ComboBox::from_id_salt("poly_mode_selector")
+                    .selected_text(match self.poly_mode {
+                        PolyMode::Poly => "Poly (Multiple notes)",
+                        PolyMode::Mono => "Mono (One note, retriggered)",
+                        PolyMode::Legato => "Legato (Smooth pitch slide)",
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut self.poly_mode, PolyMode::Poly, "Poly (Multiple notes)");
+                        ui.selectable_value(&mut self.poly_mode, PolyMode::Mono, "Mono (One note, retriggered)");
+                        ui.selectable_value(&mut self.poly_mode, PolyMode::Legato, "Legato (Smooth pitch slide)");
+                    });
 
-                ui.label("CPU:");
-
-                // Color based on load level
-                let (cpu_color, status_text) = match load_level {
-                    crate::audio::cpu_monitor::CpuLoad::Low => (egui::Color32::GREEN, "●"),
-                    crate::audio::cpu_monitor::CpuLoad::Medium => (egui::Color32::from_rgb(255, 165, 0), "●"), // Orange
-                    crate::audio::cpu_monitor::CpuLoad::High => (egui::Color32::RED, "●"),
-                };
-
-                ui.colored_label(cpu_color, status_text);
-                ui.label(format!("{:.1}%", cpu_percentage));
-
-                // Show warning if CPU is high
-                if matches!(load_level, crate::audio::cpu_monitor::CpuLoad::High) {
-                    ui.colored_label(egui::Color32::RED, "⚠ High CPU load!");
+                if previous_mode != self.poly_mode {
+                    let cmd = Box::new(SetPolyModeCommand::new(self.poly_mode));
+                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                        eprintln!("Failed to execute PolyMode command: {}", e);
+                    }
                 }
             });
 
-            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                ui.label("Glide Time:");
+                if ui.add(egui::Slider::new(&mut self.portamento_time, 0.0..=2.0)
+                    .text("s")
+                    .logarithmic(false))
+                    .changed()
+                {
+                    let params = PortamentoParams::new(self.portamento_time);
+                    let cmd = Box::new(SetPortamentoCommand::new(params));
+                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                        eprintln!("Failed to execute Portamento command: {}", e);
+                    }
+                }
+            });
+                    ui.label("Set to 0 for instant pitch changes, >0 for smooth glides.");
+                    ui.label("Works best in Mono/Legato modes.");
 
-            // Virtual Keyboard
-            self.draw_keyboard(ui);
+                    ui.add_space(10.0);
+                    ui.separator();
 
-            ui.add_space(20.0);
-            ui.separator();
-            ui.label("Info : Play with your computer keyboard or an external MIDI Keyboard");
+                    // Filter Section
+                    ui.heading("Filter");
+                    let mut filter_params = self.daw_state.filter;
+
+                    // Filter enable/disable
+                    if ui.checkbox(&mut filter_params.enabled, "Enable").changed() {
+                        let cmd = Box::new(SetFilterCommand::new(filter_params));
+                        let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                    }
+
+                    // Filter type
+                    ui.horizontal(|ui| {
+                        ui.label("Type:");
+                        let filter_type_changed = egui::ComboBox::from_id_salt("filter_type")
+                            .selected_text(format!("{:?}", filter_params.filter_type))
+                            .show_ui(ui, |ui| {
+                                let mut changed = false;
+                                changed |= ui.selectable_value(&mut filter_params.filter_type, FilterType::LowPass, "LowPass").changed();
+                                changed |= ui.selectable_value(&mut filter_params.filter_type, FilterType::HighPass, "HighPass").changed();
+                                changed |= ui.selectable_value(&mut filter_params.filter_type, FilterType::BandPass, "BandPass").changed();
+                                changed |= ui.selectable_value(&mut filter_params.filter_type, FilterType::Notch, "Notch").changed();
+                                changed
+                            })
+                            .inner
+                            .unwrap_or(false);
+
+                        if filter_type_changed {
+                            let cmd = Box::new(SetFilterCommand::new(filter_params));
+                            let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                        }
+                    });
+
+                    // Cutoff frequency
+                    ui.horizontal(|ui| {
+                        ui.label("Cutoff:");
+                        if ui.add(egui::Slider::new(&mut filter_params.cutoff, 20.0..=10000.0)
+                            .text("Hz")
+                            .logarithmic(true))
+                            .changed()
+                        {
+                            let cmd = Box::new(SetFilterCommand::new(filter_params));
+                            let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                        }
+                    });
+
+                    // Resonance (Q factor)
+                    ui.horizontal(|ui| {
+                        ui.label("Resonance (Q):");
+                        if ui.add(egui::Slider::new(&mut filter_params.resonance, 0.5..=20.0)
+                            .logarithmic(true))
+                            .changed()
+                        {
+                            let cmd = Box::new(SetFilterCommand::new(filter_params));
+                            let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                        }
+                    });
+
+                    ui.label("Cutoff can be modulated via the Modulation Matrix (Envelope → FilterCutoff).");
+                }
+                UiTab::Play => {
+                    // Play tab: virtual keyboard
+                    self.draw_keyboard_ui(ui);
+                    ui.add_space(10.0);
+                    ui.label("Info : Play with your computer keyboard or an external MIDI Keyboard");
+                }
+                UiTab::Performance => {
+                    // Performance tab: CPU + notifications
+                    ui.heading("Performance");
+                    ui.horizontal(|ui| {
+                        let cpu_percentage = self.cpu_monitor.get_cpu_percentage();
+                        let load_level = self.cpu_monitor.get_load_level();
+                        ui.label("CPU:");
+                        let (cpu_color, status_text) = match load_level {
+                            crate::audio::cpu_monitor::CpuLoad::Low => (egui::Color32::GREEN, "●"),
+                            crate::audio::cpu_monitor::CpuLoad::Medium => (egui::Color32::from_rgb(255, 165, 0), "●"),
+                            crate::audio::cpu_monitor::CpuLoad::High => (egui::Color32::RED, "●"),
+                        };
+                        ui.colored_label(cpu_color, status_text);
+                        ui.label(format!("{:.1}%", cpu_percentage));
+                        if matches!(load_level, crate::audio::cpu_monitor::CpuLoad::High) {
+                            ui.colored_label(egui::Color32::RED, "⚠ High CPU load!");
+                        }
+                    });
+                }
+            }
 
             // Status bar at the bottom
             ui.add_space(10.0);

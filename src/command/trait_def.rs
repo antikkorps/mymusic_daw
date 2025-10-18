@@ -39,7 +39,8 @@ impl std::error::Error for CommandError {}
 ///
 /// # Example
 /// ```no_run
-/// use mymusic_daw::command::{UndoableCommand, DawState, CommandResult};
+/// use mymusic_daw::command::trait_def::{UndoableCommand, CommandResult, CommandError};
+/// use mymusic_daw::command::state::DawState;
 ///
 /// struct SetVolumeCommand {
 ///     new_volume: f32,

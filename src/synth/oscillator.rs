@@ -20,7 +20,7 @@ pub struct SimpleOscillator {
     waveform: WaveformType,
     phase: f32,
     phase_increment: f32,
-    sample_rate: f32,
+    pub(crate) sample_rate: f32,  // Made pub(crate) for LFO access
 }
 
 impl SimpleOscillator {

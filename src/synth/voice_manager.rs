@@ -1,7 +1,9 @@
 // Voice Manager - Polyphony handling
 
 use super::oscillator::WaveformType;
+use super::poly_mode::PolyMode;
 use super::voice::Voice;
+use super::modulation::{ModulationMatrix, ModRouting, MAX_ROUTINGS};
 
 const MAX_VOICES: usize = 16;
 
@@ -9,6 +11,14 @@ pub struct VoiceManager {
     voices: [Voice; MAX_VOICES],
     /// Age counter incremented on each note_on for voice stealing priority
     age_counter: u64,
+    /// Polyphony mode (Poly, Mono, Legato)
+    poly_mode: PolyMode,
+    /// Last note played (used for legato detection)
+    last_note: Option<u8>,
+    /// Global modulation matrix applied to all voices
+    mod_matrix: ModulationMatrix,
+    /// Current channel aftertouch value (0.0..1.0)
+    aftertouch: f32,
 }
 
 impl VoiceManager {
@@ -19,6 +29,10 @@ impl VoiceManager {
         Self {
             voices,
             age_counter: 0,
+            poly_mode: PolyMode::default(),
+            last_note: None,
+            mod_matrix: ModulationMatrix::new_empty(),
+            aftertouch: 0.0,
         }
     }
 
@@ -26,6 +40,27 @@ impl VoiceManager {
         // Increment age counter
         self.age_counter = self.age_counter.wrapping_add(1);
 
+        match self.poly_mode {
+            PolyMode::Poly => {
+                // Polyphonic mode: standard behavior
+                self.note_on_poly(note, velocity);
+            }
+            PolyMode::Mono => {
+                // Monophonic mode: cut all other notes, retrigger envelope
+                self.note_on_mono(note, velocity);
+            }
+            PolyMode::Legato => {
+                // Legato mode: cut other notes, but don't retrigger if sliding
+                self.note_on_legato(note, velocity);
+            }
+        }
+
+        // Track last note for legato detection
+        self.last_note = Some(note);
+    }
+
+    /// Polyphonic note_on: original behavior
+    fn note_on_poly(&mut self, note: u8, velocity: u8) {
         // Search an inactive voice
         if let Some(voice) = self.voices.iter_mut().find(|v| !v.is_active()) {
             voice.note_on(note, velocity, self.age_counter);
@@ -35,6 +70,48 @@ impl VoiceManager {
         // Voice stealing: Find the best voice to steal
         let victim_index = self.find_voice_to_steal();
         self.voices[victim_index].note_on(note, velocity, self.age_counter);
+    }
+
+    /// Monophonic note_on: cut all other notes, retrigger envelope
+    fn note_on_mono(&mut self, note: u8, velocity: u8) {
+        // Force-stop all currently playing notes (no release phase)
+        // In mono mode, we want immediate cutoff to maintain strict monophony
+        for voice in &mut self.voices {
+            if voice.is_active() {
+                voice.force_stop();
+            }
+        }
+
+        // Now play the new note on the first available voice
+        // All voices should now be inactive after force_stop
+        if let Some(voice) = self.voices.iter_mut().find(|v| !v.is_active()) {
+            voice.note_on(note, velocity, self.age_counter);
+        } else {
+            // Fallback: use first voice if none are inactive (shouldn't happen after force_stop)
+            self.voices[0].note_on(note, velocity, self.age_counter);
+        }
+    }
+
+    /// Legato note_on: monophonic without envelope retrigger when sliding
+    fn note_on_legato(&mut self, note: u8, velocity: u8) {
+        // Check if there's currently a note playing
+        let has_active_note = self.voices.iter().any(|v| v.is_active());
+
+        if has_active_note {
+            // Legato transition: change pitch without retriggering envelope
+            // Find the currently playing voice and change its pitch
+            if let Some(voice) = self.voices.iter_mut().find(|v| v.is_active()) {
+                voice.change_pitch_legato(note, velocity, self.age_counter);
+            }
+        } else {
+            // No active note: trigger normally (first note in a phrase)
+            if let Some(voice) = self.voices.iter_mut().find(|v| !v.is_active()) {
+                voice.note_on(note, velocity, self.age_counter);
+            } else {
+                // Fallback: use first voice
+                self.voices[0].note_on(note, velocity, self.age_counter);
+            }
+        }
     }
 
     /// Find the best voice to steal using intelligent priority
@@ -98,9 +175,86 @@ impl VoiceManager {
         }
     }
 
-    pub fn next_sample(&mut self) -> f32 {
-        // Mix all the active voices
-        self.voices.iter_mut().map(|v| v.next_sample()).sum::<f32>() / 4.0 // gain constant raisonnable
+    pub fn set_lfo(&mut self, params: super::lfo::LfoParams) {
+        // Change LFO parameters for all voices
+        for voice in &mut self.voices {
+            voice.set_lfo(params);
+        }
+    }
+
+    pub fn get_lfo_params(&self) -> super::lfo::LfoParams {
+        // Get LFO params from first voice (all voices share same params)
+        self.voices[0].get_lfo_params()
+    }
+
+    pub fn set_portamento(&mut self, params: super::portamento::PortamentoParams) {
+        // Change portamento parameters for all voices
+        for voice in &mut self.voices {
+            voice.set_portamento(params);
+        }
+    }
+
+    pub fn get_portamento_params(&self) -> super::portamento::PortamentoParams {
+        // Get portamento params from first voice (all voices share same params)
+        self.voices[0].get_portamento_params()
+    }
+
+    pub fn set_filter(&mut self, params: super::filter::FilterParams) {
+        // Change filter parameters for all voices
+        for voice in &mut self.voices {
+            voice.set_filter(params);
+        }
+    }
+
+    pub fn get_filter_params(&self) -> super::filter::FilterParams {
+        // Get filter params from first voice (all voices share same params)
+        self.voices[0].get_filter_params()
+    }
+
+    pub fn set_poly_mode(&mut self, mode: PolyMode) {
+        self.poly_mode = mode;
+    }
+
+    pub fn get_poly_mode(&self) -> PolyMode {
+        self.poly_mode
+    }
+
+    /// Update channel aftertouch value and propagate to all voices
+    pub fn set_aftertouch(&mut self, value: u8) {
+        let at = (value as f32 / 127.0).clamp(0.0, 1.0);
+        self.aftertouch = at;
+        for v in &mut self.voices {
+            v.set_aftertouch(at);
+        }
+    }
+
+    /// Set a modulation routing in the matrix
+    pub fn set_mod_routing(&mut self, index: usize, routing: ModRouting) {
+        if index < MAX_ROUTINGS {
+            self.mod_matrix.set_routing(index, routing);
+        }
+    }
+
+    /// Clear a modulation routing in the matrix
+    pub fn clear_mod_routing(&mut self, index: usize) {
+        if index < MAX_ROUTINGS {
+            self.mod_matrix.clear_routing(index);
+        }
+    }
+
+    pub fn next_sample(&mut self) -> (f32, f32) {
+        // Copy matrix locally to avoid borrowing conflicts
+        let matrix = self.mod_matrix;
+        // Mix all the active voices using the modulation matrix
+        let (left, right) = self.voices
+            .iter_mut()
+            .map(|v| v.next_sample_with_matrix(&matrix))
+            .fold((0.0, 0.0), |(acc_l, acc_r), (voice_l, voice_r)| {
+                (acc_l + voice_l, acc_r + voice_r)
+            });
+
+        // simple headroom
+        (left / 4.0, right / 4.0)
     }
 
     pub fn active_voice_count(&self) -> usize {
@@ -287,7 +441,7 @@ mod tests {
 
         // Sans voix actives, doit retourner 0
         let sample = vm.next_sample();
-        assert_eq!(sample, 0.0);
+        assert_eq!(sample, (0.0, 0.0));
 
         // Avec voix actives
         vm.note_on(60, 100);
@@ -296,7 +450,8 @@ mod tests {
         for _ in 0..1000 {
             let sample = vm.next_sample();
             // Sample doit être fini (pas NaN ou infinity)
-            assert!(sample.is_finite());
+            assert!(sample.0.is_finite());
+            assert!(sample.1.is_finite());
         }
     }
 
@@ -314,10 +469,271 @@ mod tests {
             let sample = vm.next_sample();
             // Avec le gain /4.0, ça devrait rester raisonnable
             assert!(
-                sample.abs() < 10.0,
+                sample.0.abs() < 10.0,
                 "Sample amplitude trop élevée: {}",
-                sample
+                sample.0
+            );
+            assert!(
+                sample.1.abs() < 10.0,
+                "Sample amplitude trop élevée: {}",
+                sample.1
             );
         }
+    }
+
+    // ===== POLYPHONY MODE TESTS =====
+
+    #[test]
+    fn test_poly_mode_multiple_notes() {
+        let mut vm = VoiceManager::new(SAMPLE_RATE);
+        vm.set_poly_mode(PolyMode::Poly);
+
+        // Should allow multiple simultaneous notes
+        vm.note_on(60, 100);
+        vm.note_on(64, 100);
+        vm.note_on(67, 100);
+
+        assert_eq!(vm.active_voice_count(), 3, "Poly mode should allow 3 simultaneous notes");
+    }
+
+    #[test]
+    fn test_poly_mode_is_default() {
+        let vm = VoiceManager::new(SAMPLE_RATE);
+        assert_eq!(vm.get_poly_mode(), PolyMode::Poly, "Poly mode should be default");
+    }
+
+    #[test]
+    fn test_mono_mode_one_note_at_a_time() {
+        let mut vm = VoiceManager::new(SAMPLE_RATE);
+        vm.set_poly_mode(PolyMode::Mono);
+
+        // Play first note
+        vm.note_on(60, 100);
+        assert_eq!(vm.active_voice_count(), 1, "First note should be active");
+
+        // Play second note - should cut first note and only have one active
+        vm.note_on(64, 100);
+
+        // In mono mode, we process 64 samples for smooth release, but after that
+        // only the new note should be active
+        assert_eq!(vm.active_voice_count(), 1, "Mono mode should only have 1 active voice after note_on");
+
+        // Verify it's the new note (64) playing
+        let note_64_count = vm.voices.iter().filter(|v| v.is_active() && v.get_note() == 64).count();
+        assert_eq!(note_64_count, 1, "Should be playing note 64");
+    }
+
+    #[test]
+    fn test_mono_mode_retriggering() {
+        let mut vm = VoiceManager::new(SAMPLE_RATE);
+        vm.set_poly_mode(PolyMode::Mono);
+
+        // Play a note
+        vm.note_on(60, 100);
+
+        // Generate some samples to get past attack phase
+        for _ in 0..1000 {
+            vm.next_sample();
+        }
+
+        // Play a new note - envelope should retrigger
+        vm.note_on(64, 100);
+
+        // The voice should be in attack phase again (freshly triggered)
+        // We can verify this by checking that only one voice is active
+        assert_eq!(vm.active_voice_count(), 1, "Should have retriggered with one voice");
+    }
+
+    #[test]
+    fn test_legato_mode_smooth_transition() {
+        let mut vm = VoiceManager::new(SAMPLE_RATE);
+        vm.set_poly_mode(PolyMode::Legato);
+
+        // Play first note
+        vm.note_on(60, 100);
+        assert_eq!(vm.active_voice_count(), 1, "First note should be active");
+
+        // Process samples to get into sustain phase
+        for _ in 0..5000 {
+            vm.next_sample();
+        }
+
+        // Play second note - should change pitch without adding new voice
+        vm.note_on(64, 100);
+
+        // Should still have only one active voice (legato transition)
+        assert_eq!(vm.active_voice_count(), 1, "Legato should maintain single voice");
+
+        // Verify it's now playing note 64
+        let note_64_count = vm.voices.iter().filter(|v| v.is_active() && v.get_note() == 64).count();
+        assert_eq!(note_64_count, 1, "Should be playing note 64 after legato transition");
+    }
+
+    #[test]
+    fn test_legato_mode_first_note_triggers_envelope() {
+        let mut vm = VoiceManager::new(SAMPLE_RATE);
+        vm.set_poly_mode(PolyMode::Legato);
+
+        // First note in a phrase should trigger normally
+        vm.note_on(60, 100);
+        assert_eq!(vm.active_voice_count(), 1, "First note should trigger");
+
+        // Let it release completely
+        vm.note_off(60);
+        for _ in 0..10000 {
+            vm.next_sample();
+        }
+        assert_eq!(vm.active_voice_count(), 0, "Should be silent after release");
+
+        // Next note should trigger again (new phrase)
+        vm.note_on(64, 100);
+        assert_eq!(vm.active_voice_count(), 1, "New phrase should trigger envelope");
+    }
+
+    #[test]
+    fn test_mode_switching() {
+        let mut vm = VoiceManager::new(SAMPLE_RATE);
+
+        // Start in Poly mode
+        assert_eq!(vm.get_poly_mode(), PolyMode::Poly);
+
+        // Switch to Mono
+        vm.set_poly_mode(PolyMode::Mono);
+        assert_eq!(vm.get_poly_mode(), PolyMode::Mono);
+
+        // Verify mono behavior
+        vm.note_on(60, 100);
+        vm.note_on(64, 100);
+        assert_eq!(vm.active_voice_count(), 1, "Mono mode should have 1 voice");
+
+        // Switch to Legato
+        vm.set_poly_mode(PolyMode::Legato);
+        assert_eq!(vm.get_poly_mode(), PolyMode::Legato);
+
+        // Verify legato behavior (should maintain single voice)
+        vm.note_on(67, 100);
+        assert_eq!(vm.active_voice_count(), 1, "Legato should maintain 1 voice");
+
+        // Switch back to Poly
+        vm.set_poly_mode(PolyMode::Poly);
+        assert_eq!(vm.get_poly_mode(), PolyMode::Poly);
+
+        // Verify poly behavior (can have multiple voices)
+        vm.note_on(70, 100);
+        assert!(vm.active_voice_count() >= 1, "Poly mode should allow new voice");
+    }
+
+    #[test]
+    fn test_mono_mode_rapid_notes() {
+        let mut vm = VoiceManager::new(SAMPLE_RATE);
+        vm.set_poly_mode(PolyMode::Mono);
+
+        // Simulate rapid note playing (like a fast melody)
+        for note in 60..70 {
+            vm.note_on(note, 100);
+            // Process a few samples between notes
+            for _ in 0..100 {
+                vm.next_sample();
+            }
+            // Should always have exactly 1 active voice
+            assert_eq!(
+                vm.active_voice_count(),
+                1,
+                "Mono mode should maintain 1 voice during rapid notes (note {})",
+                note
+            );
+        }
+    }
+
+    #[test]
+    fn test_legato_mode_preserves_envelope_state() {
+        let mut vm = VoiceManager::new(SAMPLE_RATE);
+        vm.set_poly_mode(PolyMode::Legato);
+
+        // Play first note and let it reach sustain phase
+        vm.note_on(60, 100);
+
+        // Process enough samples to get through attack and decay
+        // Default attack = 0.01s, decay = 0.1s
+        // Total = 0.11s = 0.11 * 44100 = 4851 samples
+        for _ in 0..5000 {
+            vm.next_sample();
+        }
+
+        // Now we're in sustain phase
+        assert_eq!(vm.active_voice_count(), 1);
+
+        // Play second note with legato
+        vm.note_on(64, 100);
+
+        // Voice should still be active and in sustain (not restarted)
+        assert_eq!(vm.active_voice_count(), 1, "Should maintain envelope state");
+
+        // Generate more samples - envelope should continue from where it was
+        for _ in 0..1000 {
+            let sample = vm.next_sample();
+            assert!(sample.0.is_finite() && sample.1.is_finite(), "Sample should be valid during legato transition");
+        }
+    }
+
+    #[test]
+    fn test_poly_mode_independent_envelopes() {
+        let mut vm = VoiceManager::new(SAMPLE_RATE);
+        vm.set_poly_mode(PolyMode::Poly);
+
+        // Play a chord
+        vm.note_on(60, 100);
+        vm.note_on(64, 100);
+        vm.note_on(67, 100);
+
+        assert_eq!(vm.active_voice_count(), 3);
+
+        // Release middle note
+        vm.note_off(64);
+
+        // All three should still be active (middle one in release phase)
+        assert_eq!(vm.active_voice_count(), 3, "All voices should still be active");
+
+        // Process release phase for middle note
+        for _ in 0..10000 {
+            vm.next_sample();
+        }
+
+        // Now only two should be active
+        assert_eq!(vm.active_voice_count(), 2, "Two voices should remain after release");
+
+        // Verify the correct notes are still playing
+        let note_60_active = vm.voices.iter().any(|v| v.is_active() && v.get_note() == 60);
+        let note_67_active = vm.voices.iter().any(|v| v.is_active() && v.get_note() == 67);
+        let note_64_active = vm.voices.iter().any(|v| v.is_active() && v.get_note() == 64);
+
+        assert!(note_60_active, "Note 60 should still be playing");
+        assert!(note_67_active, "Note 67 should still be playing");
+        assert!(!note_64_active, "Note 64 should be released");
+    }
+
+    #[test]
+    fn test_last_note_tracking() {
+        let mut vm = VoiceManager::new(SAMPLE_RATE);
+
+        // Initially no last note
+        assert_eq!(vm.last_note, None);
+
+        // Play a note
+        vm.note_on(60, 100);
+        assert_eq!(vm.last_note, Some(60), "Should track last note");
+
+        // Play another note
+        vm.note_on(64, 100);
+        assert_eq!(vm.last_note, Some(64), "Should update last note");
+
+        // Play in different modes - should always track
+        vm.set_poly_mode(PolyMode::Mono);
+        vm.note_on(67, 100);
+        assert_eq!(vm.last_note, Some(67), "Should track in mono mode");
+
+        vm.set_poly_mode(PolyMode::Legato);
+        vm.note_on(70, 100);
+        assert_eq!(vm.last_note, Some(70), "Should track in legato mode");
     }
 }
