@@ -73,11 +73,52 @@ Voir [AGENTS.md](AGENTS.md) pour l'architecture complète.
 - ✅ Target < 10ms : **ATTEINT**
 - ✅ Stabilité : 990M samples sans crash
 
-🚀 **Prochaine phase (Phase 2)** :
-- Command Pattern pour Undo/Redo (architecture critique)
-- Enveloppes ADSR
-- Modulation LFO
-- Polyphonie avancée
+### Phase 2 (Enrichissement du son) ✅ TERMINÉ - v0.3.0 🎉
+✅ **Implémenté** :
+- **Enveloppes ADSR**
+  - Attack, Decay, Sustain, Release
+  - Support vélocité MIDI
+  - Intégration mod matrix (source Envelope)
+- **Modulation complète**
+  - 2 LFOs avec formes d'onde (Sine, Triangle, Saw, Square, Random)
+  - Mod Matrix flexible (6 slots, 8 sources, 9 destinations)
+  - Sources : LFO1, LFO2, Velocity, Aftertouch, ModWheel, Envelope, PitchBend, KeyTracking
+  - Destinations : Pitch, Volume, FilterCutoff, FilterRes, LFO1Rate, LFO1Depth, LFO2Rate, LFO2Depth, Pan
+  - Depth control par slot (-100% à +100%)
+- **Polyphonie avancée**
+  - 3 modes : Poly, Mono, Legato
+  - Voice stealing intelligent (voix la plus ancienne)
+  - Portamento/glide avec contrôle de temps
+  - Note priority pour mode mono
+- **Tests** : 156 tests passent (88 nouveaux pour Phase 2)
+
+### Phase 3a (Filtres et Effets) ✅ TERMINÉ - v0.4.0 🎉
+✅ **Implémenté** :
+- **Architecture d'effets**
+  - Trait générique `Effect` pour tous les effets audio
+  - `EffectChain` pour chaîner plusieurs effets en série
+  - Wrappers : FilterEffect, DelayEffect, ReverbEffect
+  - Real-time safe : pas d'allocations, lock-free
+- **Filtres**
+  - State Variable Filter (SVF) avec LP, HP, BP
+  - Cutoff 20Hz - 20kHz, Resonance 0-10
+  - Modulation cutoff/resonance via mod matrix
+- **Delay**
+  - Circular buffer jusqu'à 1 seconde
+  - Paramètres : time_ms, feedback (0-0.99), mix
+  - Smoothing pour éviter les clicks
+- **Reverb (Freeverb)**
+  - 4 comb filters parallèles avec damping
+  - 2 allpass filters pour diffusion
+  - Paramètres : room_size, damping, mix
+  - Tunings: COMB [1116, 1188, 1277, 1356], ALLPASS [556, 441]
+- **Pipeline audio** : Oscillator → Filter → EffectChain → Envelope → Pan
+- **Tests** : 178 tests passent (22 nouveaux pour Phase 3a)
+
+🚀 **Prochaine phase (Phase 3b)** :
+- Dogfooding : créer une chanson complète avec le DAW
+- UI pour contrôles Delay et Reverb
+- Presets pour effets
 
 ## Utilisation
 
@@ -128,8 +169,17 @@ src/
 │   └── buffer.rs       # Buffers audio (future)
 ├── synth/
 │   ├── oscillator.rs   # Oscillateurs (Sine, Square, Saw, Triangle)
-│   ├── voice.rs        # Système de voix
-│   └── voice_manager.rs # Polyphonie (16 voix)
+│   ├── envelope.rs     # Enveloppes ADSR
+│   ├── lfo.rs          # LFO (Sine, Triangle, Saw, Square, Random)
+│   ├── modulation.rs   # Mod Matrix (6 slots, 8 sources, 9 destinations)
+│   ├── filter.rs       # State Variable Filter (LP, HP, BP)
+│   ├── effect.rs       # Architecture d'effets (Effect trait, EffectChain)
+│   ├── delay.rs        # Delay avec circular buffer
+│   ├── reverb.rs       # Reverb (Freeverb avec comb/allpass)
+│   ├── poly_mode.rs    # Modes de polyphonie (Poly, Mono, Legato)
+│   ├── portamento.rs   # Portamento/glide
+│   ├── voice.rs        # Système de voix avec pipeline complet
+│   └── voice_manager.rs # Polyphonie (16 voix) + voice stealing
 ├── midi/
 │   ├── event.rs        # Types MIDI et MidiEventTimed
 │   ├── input.rs        # Input MIDI de base (legacy)
@@ -192,14 +242,24 @@ Voir [TODO.md](TODO.md) pour la roadmap complète.
 - [x] Benchmarks Criterion avec rapports HTML
 - [x] Documentation tests (TESTING.md)
 
-### Phase 2 (Enrichissement du son)
-- Enveloppes ADSR
-- Modulation (LFO, vélocité)
-- Polyphonie avancée
+### Phase 2 (Enrichissement du son) ✅ TERMINÉ - v0.3.0
+- [x] Enveloppes ADSR
+- [x] Modulation (LFO, vélocité, mod matrix)
+- [x] Polyphonie avancée (Poly, Mono, Legato)
+- [x] Portamento/glide
+- [x] 156 tests (88 nouveaux pour Phase 2)
 
-### Phase 3 (Filtres et effets)
-- Filtres (LP, HP, BP)
-- Effets (delay, reverb)
+### Phase 3a (Filtres et effets) ✅ TERMINÉ - v0.4.0
+- [x] Filtres (SVF : LP, HP, BP)
+- [x] Architecture d'effets (Effect trait, EffectChain)
+- [x] Delay (circular buffer, feedback)
+- [x] Reverb (Freeverb avec comb/allpass)
+- [x] 178 tests (22 nouveaux pour Phase 3a)
+
+### Phase 3b (Dogfooding)
+- [ ] Créer une chanson complète avec le DAW
+- [ ] UI pour Delay et Reverb
+- [ ] Presets pour effets
 
 ### Phase 4 (Séquenceur)
 - Timeline et transport
@@ -232,7 +292,7 @@ cargo run --release  # Release mode (better audio performance)
 ### Tests
 
 ```bash
-# Tous les tests (66 tests : 55 unitaires + 11 intégration)
+# Tous les tests (178 tests : unitaires + intégration)
 cargo test
 
 # Tests unitaires uniquement
