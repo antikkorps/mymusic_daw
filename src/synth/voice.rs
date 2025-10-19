@@ -1,5 +1,6 @@
 // Voice - Une note jouée
 
+use super::effect::EffectChain;
 use super::envelope::{AdsrEnvelope, AdsrParams};
 use super::filter::{FilterParams, StateVariableFilter};
 use super::lfo::{Lfo, LfoParams};
@@ -14,6 +15,9 @@ pub struct Voice {
     lfo: Lfo,
     portamento: PortamentoGlide,
     filter: StateVariableFilter,
+    /// Effect chain for additional effects (delay, reverb, etc.)
+    /// Note: Filter is kept separate for modulation support
+    effect_chain: EffectChain,
     note: u8,
     velocity: f32,
     aftertouch: f32,
@@ -45,6 +49,7 @@ impl Voice {
             lfo: Lfo::new(lfo_params, sample_rate),
             portamento: PortamentoGlide::new(portamento_params, initial_frequency, sample_rate),
             filter: StateVariableFilter::new(filter_params, sample_rate),
+            effect_chain: EffectChain::with_capacity(4), // Pre-allocate for up to 4 effects
             note: 0,
             velocity: 0.0,
             aftertouch: 0.0,
@@ -81,6 +86,9 @@ impl Voice {
 
         // Reset filter state to avoid clicks
         self.filter.reset();
+
+        // Reset effect chain to avoid residual delays/reverb
+        self.effect_chain.reset();
     }
 
     /// Change pitch without retriggering envelope (for legato mode)
@@ -119,6 +127,7 @@ impl Voice {
         self.active = false;
         self.envelope.reset();
         self.filter.reset();
+        self.effect_chain.reset();
     }
 
     pub fn is_active(&self) -> bool {
@@ -187,6 +196,18 @@ impl Voice {
         self.filter.params()
     }
 
+    /// Get mutable reference to the effect chain
+    ///
+    /// Used for adding/removing effects and controlling individual effects.
+    pub fn effect_chain_mut(&mut self) -> &mut EffectChain {
+        &mut self.effect_chain
+    }
+
+    /// Get reference to the effect chain
+    pub fn effect_chain(&self) -> &EffectChain {
+        &self.effect_chain
+    }
+
     /// Returns a stereo sample `(left, right)`
     pub fn next_sample(&mut self) -> (f32, f32) {
         use super::lfo::LfoDestination;
@@ -230,6 +251,9 @@ impl Voice {
 
         // Apply filter
         sample = self.filter.process(sample);
+
+        // Apply effect chain (delay, reverb, etc.)
+        sample = self.effect_chain.process(sample);
 
         // Apply volume modulation if selected
         if matches!(self.lfo.destination(), LfoDestination::Volume) {
@@ -304,6 +328,9 @@ impl Voice {
         let base_cutoff = self.filter.params().cutoff;
         let modulated_cutoff = base_cutoff * filter_cutoff_mult;
         sample = self.filter.process_modulated(sample, modulated_cutoff);
+
+        // Apply effect chain (delay, reverb, etc.)
+        sample = self.effect_chain.process(sample);
 
         // Apply legacy LFO volume modulation if selected
         if matches!(self.lfo.destination(), LfoDestination::Volume) {

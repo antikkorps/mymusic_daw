@@ -400,10 +400,10 @@
 
 ---
 
-## Phase 3a : Filtres et effets essentiels 🔊
+## Phase 3a : Filtres et effets essentiels 🔊 ✅ (TERMINÉ)
 
 **Objectif** : 1 filtre + 2 effets de qualité
-**Release** : v0.4.0
+**Release** : v0.4.0 🎉
 **Durée** : 3-4 semaines
 
 ### Filtres ✅ (TERMINÉ)
@@ -421,58 +421,153 @@
   - [x] Benchmarks performance (6 benchmarks - ~11 ns/sample, excellent scaling)
   - [x] Documentation complète (commentaires, formules mathématiques)
 
-### Effets prioritaires
+### Effets prioritaires ✅ (TERMINÉ)
 
-- [ ] Delay
-  - [ ] Delay line (buffer circulaire pré-alloué)
-  - [ ] Time control (ms ou sync tempo)
-  - [ ] Feedback control
-  - [ ] Mix (dry/wet)
-  - [ ] Tests (pas de clics, feedback stable)
-- [ ] Réverbération (algorithme simple)
-  - [ ] Freeverb ou Schroeder reverb
-  - [ ] Room size
-  - [ ] Damping
-  - [ ] Mix
-  - [ ] Tests (pas de distorsion)
+- [x] Delay ✅
+  - [x] Delay line (buffer circulaire pré-alloué jusqu'à 1 seconde)
+  - [x] Time control (0-1000ms avec smoothing)
+  - [x] Feedback control (0-0.99 avec stabilité garantie)
+  - [x] Mix (dry/wet 0-1)
+  - [x] Tests (12 tests - pas de clics, feedback stable, circular buffer)
+  - [x] Latency reporting précis
+- [x] Réverbération (Freeverb) ✅
+  - [x] Freeverb simplifié (4 comb + 2 allpass filters)
+  - [x] Room size (0-1 avec scaling pour sample rate)
+  - [x] Damping (low-pass filtering dans feedback loop)
+  - [x] Mix (dry/wet 0-1)
+  - [x] Tests (10 tests - pas de distorsion, decay tail, parameter changes)
+  - [x] Tunings optimisés pour 44.1kHz
 
-### Architecture effets
+### Architecture effets ✅ (TERMINÉ)
 
-- [ ] Trait Effect générique
-- [ ] Chain d'effets (Vec pré-allouée)
-- [ ] Bypass individuel
-- [ ] Latency reporting (futur)
+- [x] Trait Effect générique (avec process, reset, enable, latency, name)
+- [x] EffectChain (Vec pré-allouée avec capacité 4 effets)
+  - [x] Wrappers : FilterEffect, DelayEffect, ReverbEffect
+  - [x] Intégration dans Voice (pipeline: Oscillator → Filter → EffectChain → Envelope → Pan)
+- [x] Bypass individuel par effet (click-free)
+- [x] Latency reporting (méthode latency_samples())
+- [x] Tests architecture (15 tests - chain, bypass, latency, multiple effects)
 
 ---
 
-## Phase 3b : Dogfooding et amélioration qualité 🐕
+## Phase 3b : Dogfooding - Performance Live 🐕
 
-**Objectif** : Utiliser le DAW pour créer un morceau complet
+**Objectif** : Tester le synthé en conditions réelles avec une performance live
 **Durée** : 1 semaine
+**Note** : Pas encore de séquenceur/enregistrement, donc focus sur jam session live
 
-### Création d'un morceau
+### Performance Live
 
-- [ ] Créer un morceau complet (2-3 min) avec le DAW
-- [ ] Identifier tous les bugs UX
-- [ ] Lister features manquantes critiques
-- [ ] Améliorer workflow d'après l'expérience
+- [ ] Créer une performance/jam session live (5-10 min) avec le synthé
+  - [ ] Jouer avec MIDI controller ou clavier virtuel
+  - [ ] Tester tous les paramètres (ADSR, LFO, Filtres, Effets)
+  - [ ] Tweaking en temps réel
+  - [ ] Tester les modes polyphonie (Poly, Mono, Legato)
+  - [ ] Enregistrer en audio (via DAW externe ou capture système)
+- [ ] Identifier bugs UX et problèmes de workflow
+- [ ] Lister features manquantes critiques pour l'expressivité
+- [ ] Documenter l'expérience utilisateur
 
 ### Polissage
 
 - [ ] Fixer bugs critiques découverts
 - [ ] Améliorer qualité audio des filtres/effets
 - [ ] Optimiser performance si nécessaire
+- [ ] Améliorer réactivité des contrôles UI
 - [ ] Documenter limitations connues
+
+---
+
+## Phase 3.5 : Sampling 🎵
+
+**Objectif** : Support de samples audio pour enrichir les possibilités sonores
+**Release** : v0.5.0
+**Durée** : 2-3 semaines
+**Justification** : Nécessaire pour créer un morceau complet (Phase 4 - dogfooding réel)
+
+### Lecteur de samples
+
+- [ ] Chargement de fichiers audio (WAV, FLAC)
+  - [ ] Intégration crate `hound` (WAV) et `claxon` (FLAC)
+  - [ ] Parsing des metadata (sample rate, channels, bit depth)
+  - [ ] Resampling automatique si sample rate ≠ audio engine
+  - [ ] Conversion mono/stereo
+- [ ] Structure Sample
+  - [ ] Buffer pré-alloué (Vec<f32>)
+  - [ ] Sample rate, durée, nom
+  - [ ] Loop points (start, end)
+  - [ ] Metadata (BPM original si disponible)
+
+### Sampler Engine
+
+- [ ] Playback de samples
+  - [ ] Lecture linéaire avec interpolation (linear ou cubic)
+  - [ ] Pitch shifting via resampling (semitones MIDI)
+  - [ ] Volume et pan par sample
+  - [ ] Mode one-shot vs loop
+  - [ ] ADSR par sample (optionnel - peut réutiliser Envelope existant)
+- [ ] Sampler Voice
+  - [ ] Similaire à Voice mais lit depuis buffer au lieu d'oscillateur
+  - [ ] Support polyphonie (plusieurs samples simultanés)
+  - [ ] Note-to-sample mapping (ex: kick sur C1, snare sur D1)
+  - [ ] Velocity → volume scaling
+- [ ] Intégration avec VoiceManager
+  - [ ] Choix synth vs sampler par note/channel
+  - [ ] Ou: mode hybride (layers synth + sample)
+
+### UI Sampling
+
+- [ ] Browser de samples
+  - [ ] Liste des samples chargés
+  - [ ] Bouton "Load Sample" (file picker)
+  - [ ] Preview audio (playback du sample)
+  - [ ] Affichage waveform (simple, pas obligatoire MVP)
+- [ ] Mapping MIDI → Sample
+  - [ ] Table note MIDI → sample assigné
+  - [ ] UI pour assigner samples aux notes (drag & drop ou boutons)
+  - [ ] Indication visuelle des notes assignées
+- [ ] Contrôles par sample
+  - [ ] Volume, Pan
+  - [ ] Pitch offset (coarse tuning)
+  - [ ] Loop on/off
+  - [ ] Mode one-shot/loop
+
+### Persistance
+
+- [ ] Save/Load sample banks
+  - [ ] Format JSON pour mapping (note → sample path)
+  - [ ] Chemins relatifs au projet (préparation Phase 4)
+  - [ ] Command Pattern pour undo/redo des assignations
+
+### Tests
+
+- [ ] Tests unitaires sampler
+  - [ ] Playback correct (sample entier lu)
+  - [ ] Pitch shifting précis (± semitones)
+  - [ ] Loop correctement (retour au loop start)
+  - [ ] One-shot s'arrête à la fin
+  - [ ] Polyphonie de samples
+  - [ ] Resampling (44.1kHz → 48kHz etc.)
+- [ ] Tests d'intégration
+  - [ ] MIDI → Sampler end-to-end
+  - [ ] Chargement WAV/FLAC
+  - [ ] Memory safety (pas de leaks)
 
 ---
 
 ## Phase 4 : Séquenceur 🎹
 
-**Objectif** : DAW complet avec séquenceur fonctionnel
+**Objectif** : DAW complet avec séquenceur fonctionnel + création d'un morceau
 **Release** : v1.0.0 🎉 (MILESTONE MAJEUR)
 **Durée** : 6-8 semaines
 
 **⚠️ ARCHITECTURE CRITIQUE** : Format de projet en **ZIP container hybride** (voir "Décisions Architecturales"). JSON/RON pour l'état, binaire pour les samples, extensible et versionné.
+
+**🎯 Dogfooding réel** : À la fin de cette phase, créer un morceau complet (2-3 min) avec :
+- Séquences MIDI (synthé + modulation)
+- Samples (drums, percussions)
+- Automation des effets
+- Export audio final
 
 ### Timeline
 
@@ -826,7 +921,6 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 
 - [ ] Mode spectral/granular synthesis
 - [ ] Wavetable synthesis
-- [ ] Sampling
 - [ ] Arrangement view
 - [ ] Automation curves avancées
 - [ ] Time stretching
@@ -858,51 +952,42 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 | **Phase 1.5** ✅ | Robustesse + Tests | TERMINÉ | v0.2.0 | ~3 sem |
 | **Phase 2** ✅ | ADSR, LFO, Modulation | TERMINÉ | v0.3.0 | ~7 sem |
 | **Phase 2.5** | UX Design | 1-2 sem | - | ~9 sem |
-| **Phase 3a** 🔊 | Filtres + 2 Effets | 3-4 sem | v0.4.0 | ~13 sem |
-| **Phase 3b** 🐕 | Dogfooding (créer morceau) | 1 sem | - | ~14 sem |
-| **Phase 4** | Séquenceur + MIDI Clock | 6-8 sem | **v1.0.0** 🎉 | ~22 sem |
-| **Phase 5** | CLAP plugins + Routing | 4-6 sem | v1.1.0 | ~28 sem |
-| **Phase 6a** | Performance + Stabilité | 3-4 sem | v1.2.0 | ~32 sem |
-| **Phase 6b** ⚠️ | VST3 (OPTIONNEL) | 12-16 sem | v1.5.0 | ~48 sem |
-| **Phase 7** | Tauri + Licensing | 6-8 sem | v2.0.0 | ~40 sem* |
+| **Phase 3a** ✅ | Filtres + 2 Effets | TERMINÉ | v0.4.0 | ~13 sem |
+| **Phase 3b** 🐕 | Dogfooding (performance live) | 1 sem | - | ~14 sem |
+| **Phase 3.5** 🎵 | Sampling | 2-3 sem | v0.5.0 | ~17 sem |
+| **Phase 4** | Séquenceur + Dogfooding réel | 6-8 sem | **v1.0.0** 🎉 | ~25 sem |
+| **Phase 5** | CLAP plugins + Routing | 4-6 sem | v1.1.0 | ~31 sem |
+| **Phase 6a** | Performance + Stabilité | 3-4 sem | v1.2.0 | ~35 sem |
+| **Phase 6b** ⚠️ | VST3 (OPTIONNEL) | 12-16 sem | v1.5.0 | ~51 sem |
+| **Phase 7** | Tauri + Licensing | 6-8 sem | v2.0.0 | ~43 sem* |
 
 \* Sans Phase 6b (VST3)
 
 ### Durées estimées totales
 
-- **Sans VST3** : ~40 semaines (10 mois) → DAW complet avec CLAP + licensing
-- **Avec VST3** : ~52 semaines (13 mois) → DAW + écosystème VST3 + licensing
+- **Sans VST3** : ~43 semaines (11 mois) → DAW complet avec CLAP + licensing
+- **Avec VST3** : ~59 semaines (15 mois) → DAW + écosystème VST3 + licensing
 
 ### Milestones clés
 
 - **v0.2.0** ✅ (Phase 1.5) : DAW partageable avec d'autres devs
 - **v0.3.0** ✅ (Phase 2) : Synth expressif avec ADSR, LFO, Modulation
-- **v0.4.0** 🔊 (Phase 3a) : Filtres et effets essentiels (EN COURS)
-- **v1.0.0** 🎉 (Phase 4) : DAW fonctionnel avec séquenceur (MILESTONE MAJEUR)
+- **v0.4.0** ✅ (Phase 3a) : Filtres et effets essentiels
+- **v0.5.0** 🎵 (Phase 3.5) : Support sampling (À VENIR)
+- **v1.0.0** 🎉 (Phase 4) : DAW fonctionnel avec séquenceur + morceau complet (MILESTONE MAJEUR)
 - **v1.1.0** (Phase 5) : Support plugins CLAP (ouverture écosystème)
 - **v1.5.0** (Phase 6b) : Support VST3 (optionnel, complexe)
 - **v2.0.0** (Phase 7) : UI moderne + Distribution publique
 
 ---
 
-**Priorité actuelle** : Phase 3a - Filtres et effets essentiels (EN COURS) 🔊
-**Objectif** : 1 filtre + 2 effets de qualité
-**Progrès Phase 3a** :
-  - ✅ **Filtres terminés** (State Variable Filter avec 4 modes)
-    - ✅ Implementation complète (LowPass, HighPass, BandPass, Notch)
-    - ✅ Modulation cutoff via matrice (Envelope, LFO)
-    - ✅ Command Pattern avec undo/redo
-    - ✅ UI complète avec contrôles
-    - ✅ 22 tests (18 unitaires + 4 intégration)
-    - ✅ 6 benchmarks (performance: ~11 ns/sample)
-  - [ ] Delay (buffer circulaire, feedback, mix)
-  - [ ] Reverb (Freeverb ou Schroeder)
-  - [ ] Architecture effets (Trait Effect, chain, bypass)
+**Priorité actuelle** : Phase 3b - Dogfooding (performance live) 🐕
 
 **Phase 1.5** ✅ : Robustesse et tests - **TERMINÉE** (v0.2.0)
 **Phase 2** ✅ : ADSR, LFO, Modulation - **TERMINÉE** (v0.3.0)
+**Phase 3a** ✅ : Filtres et effets essentiels - **TERMINÉE** (v0.4.0)
 
-**Next milestone** : Terminer Phase 3a (Delay + Reverb) → v0.4.0
+**Next milestone** : Phase 3b → Performance live + polissage, puis Phase 3.5 (Sampling) → v0.5.0
 
 ---
 
