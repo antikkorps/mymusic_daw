@@ -10,8 +10,9 @@ use crate::synth::modulation::ModRouting;
 use crate::synth::portamento::PortamentoParams;
 
 use crate::synth::voice_manager::VoiceMode;
+use std::sync::Arc;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Command {
     Midi(MidiEventTimed),
     SetVolume(f32),
@@ -22,6 +23,8 @@ pub enum Command {
     SetPortamento(PortamentoParams),
     SetFilter(FilterParams),
     SetVoiceMode(VoiceMode),
+    AddSample(Arc<Vec<f32>>),
+    SetNoteSampleMapping { note: u8, sample_index: usize },
     /// Update a modulation routing slot (UI → Audio)
     SetModRouting { index: u8, routing: ModRouting },
     /// Clear a modulation routing slot

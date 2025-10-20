@@ -6,6 +6,7 @@ use crate::audio::parameters::AtomicF32;
 use crate::command::{CommandManager, DawState};
 use crate::command::commands::{SetVolumeCommand, SetWaveformCommand, SetAdsrCommand, SetLfoCommand, SetPolyModeCommand, SetPortamentoCommand, SetModRoutingCommand, SetFilterCommand, SetVoiceModeCommand};
 use crate::synth::voice_manager::VoiceMode;
+use crate::sampler::loader::{load_sample, Sample};
 use crate::synth::filter::FilterType;
 use crate::synth::envelope::AdsrParams;
 use crate::synth::lfo::{LfoParams, LfoDestination};
@@ -20,6 +21,7 @@ use crate::midi::event::{MidiEvent, MidiEventTimed};
 use crate::midi::manager::MidiConnectionManager;
 use crate::synth::oscillator::WaveformType;
 use crate::synth::modulation::{ModSource, ModDestination, ModRouting};
+use rfd::FileDialog;
 use eframe::egui;
 use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -29,6 +31,7 @@ enum UiTab {
     Devices,
     Synth,
     Modulation,
+    Sampler,
     Play,
     Performance,
 }
@@ -76,6 +79,8 @@ pub struct DawApp {
     max_notifications: usize,
     // Modulation Matrix UI (MVP) - 4 slots
     mod_routings_ui: [ModRouting; 4],
+    // Sampler state
+    loaded_samples: Vec<Sample>,
     // Active UI tab
     active_tab: UiTab,
 }
@@ -157,6 +162,7 @@ impl DawApp {
                 ModRouting { source: ModSource::Velocity, destination: ModDestination::Amplitude, amount: 0.5, enabled: false },
                 ModRouting { source: ModSource::Aftertouch, destination: ModDestination::Amplitude, amount: 0.5, enabled: false },
             ],
+            loaded_samples: Vec::new(),
             active_tab: UiTab::Synth,
         }
     }
@@ -488,6 +494,7 @@ impl eframe::App for DawApp {
                 button(ui, "Devices", UiTab::Devices, &mut self.active_tab);
                 button(ui, "Synth", UiTab::Synth, &mut self.active_tab);
                 button(ui, "Modulation", UiTab::Modulation, &mut self.active_tab);
+                button(ui, "Sampler", UiTab::Sampler, &mut self.active_tab);
                 button(ui, "Play", UiTab::Play, &mut self.active_tab);
                 button(ui, "Performance", UiTab::Performance, &mut self.active_tab);
             });
@@ -739,6 +746,54 @@ impl eframe::App for DawApp {
                             let _ = self.command_manager.execute(cmd, &mut self.daw_state);
                         }
                     });
+                },
+                UiTab::Sampler => {
+                    ui.heading("Sampler");
+                    if ui.button("Load Sample").clicked() {
+                        let file = FileDialog::new()
+                            .add_filter("Audio Files", &["wav", "flac"])
+                            .pick_file();
+
+                        if let Some(path) = file {
+                            match load_sample(&path) {
+                                Ok(sample) => {
+                                match &sample.data {
+                                    crate::sampler::loader::SampleData::F32(data) => {
+                                        let sample_data = Arc::new(data.clone());
+                                        // Send command to audio thread
+                                        let cmd = Command::AddSample(sample_data);
+                                        if let Ok(mut tx) = self.command_tx.lock() {
+                                            if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                                eprintln!("Failed to send AddSample command: ringbuffer full");
+                                            }
+                                        }
+                                    }
+                                }
+                                    // Store the whole sample struct in the UI state
+                                    self.loaded_samples.push(sample);
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to load sample: {}", e);
+                                }
+                            }
+                        }
+                    }
+
+                    ui.add_space(10.0);
+                    ui.heading("Loaded Samples");
+                    for (i, sample) in self.loaded_samples.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.label(&sample.name);
+                            if ui.button("Assign to C4").clicked() {
+                                let cmd = Command::SetNoteSampleMapping { note: 60, sample_index: i };
+                                if let Ok(mut tx) = self.command_tx.lock() {
+                                    if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                        eprintln!("Failed to send SetNoteSampleMapping command: ringbuffer full");
+                                    }
+                                }
+                            }
+                        });
+                    }
                 }
                 UiTab::Synth => {
                     // Synth tab

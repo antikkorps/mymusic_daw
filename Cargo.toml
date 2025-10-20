@@ -12,6 +12,7 @@ ringbuf = "0.4"
 hound = "3.5"
 claxon = "0.4"
 rubato = "0.14"
+rfd = "0.14"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

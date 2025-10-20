@@ -15,6 +15,8 @@ pub enum VoiceMode {
     Sampler,
 }
 
+use std::collections::HashMap;
+
 pub struct VoiceManager {
     voices: [Voice; MAX_VOICES],
     age_counter: u64,
@@ -22,15 +24,15 @@ pub struct VoiceManager {
     last_note: Option<u8>,
     mod_matrix: ModulationMatrix,
     aftertouch: f32,
-    // Sampler-related fields
     pub voice_mode: VoiceMode,
     dummy_sample: Arc<Vec<f32>>,
+    samples: Vec<Arc<Vec<f32>>>,
+    note_to_sample_map: HashMap<u8, usize>,
     sample_rate: f32,
 }
 
 impl VoiceManager {
     pub fn new(sample_rate: f32) -> Self {
-        // Create a dummy sample (a 1-second 440Hz sine wave)
         let mut dummy_sample_vec = Vec::with_capacity(sample_rate as usize);
         let frequency = 440.0;
         for i in 0..sample_rate as usize {
@@ -49,7 +51,19 @@ impl VoiceManager {
             aftertouch: 0.0,
             voice_mode: VoiceMode::Synth,
             dummy_sample: Arc::new(dummy_sample_vec),
+            samples: Vec::new(),
+            note_to_sample_map: HashMap::new(),
             sample_rate,
+        }
+    }
+
+    pub fn add_sample(&mut self, sample_data: Arc<Vec<f32>>) {
+        self.samples.push(sample_data);
+    }
+
+    pub fn set_note_to_sample(&mut self, note: u8, sample_index: usize) {
+        if sample_index < self.samples.len() {
+            self.note_to_sample_map.insert(note, sample_index);
         }
     }
 
@@ -81,9 +95,13 @@ impl VoiceManager {
                 }
             }
             VoiceMode::Sampler => {
-                if !matches!(voice, Voice::Sampler(_)) {
-                    *voice = Voice::new_sampler(self.dummy_sample.clone(), self.sample_rate);
-                }
+                let sample_index = self.note_to_sample_map.get(&note).copied();
+                let sample_to_use = match sample_index {
+                    Some(index) => self.samples.get(index).unwrap_or(&self.dummy_sample),
+                    None => self.samples.last().unwrap_or(&self.dummy_sample), // Fallback to last loaded sample
+                };
+                // TODO: More efficient update if voice is already a sampler.
+                *voice = Voice::new_sampler(sample_to_use.clone(), self.sample_rate);
             }
         }
         voice.note_on(note, velocity, self.age_counter);
@@ -103,9 +121,12 @@ impl VoiceManager {
                 }
             }
             VoiceMode::Sampler => {
-                if !matches!(voice, Voice::Sampler(_)) {
-                    *voice = Voice::new_sampler(self.dummy_sample.clone(), self.sample_rate);
-                }
+                let sample_index = self.note_to_sample_map.get(&note).copied();
+                let sample_to_use = match sample_index {
+                    Some(index) => self.samples.get(index).unwrap_or(&self.dummy_sample),
+                    None => self.samples.last().unwrap_or(&self.dummy_sample),
+                };
+                *voice = Voice::new_sampler(sample_to_use.clone(), self.sample_rate);
             }
         }
         voice.note_on(note, velocity, self.age_counter);
@@ -123,9 +144,12 @@ impl VoiceManager {
                     }
                 }
                 VoiceMode::Sampler => {
-                    if !matches!(voice, Voice::Sampler(_)) {
-                        *voice = Voice::new_sampler(self.dummy_sample.clone(), self.sample_rate);
-                    }
+                    let sample_index = self.note_to_sample_map.get(&note).copied();
+                    let sample_to_use = match sample_index {
+                        Some(index) => self.samples.get(index).unwrap_or(&self.dummy_sample),
+                        None => self.samples.last().unwrap_or(&self.dummy_sample),
+                    };
+                    *voice = Voice::new_sampler(sample_to_use.clone(), self.sample_rate);
                 }
             }
             voice.note_on(note, velocity, self.age_counter);

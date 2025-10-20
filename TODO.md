@@ -487,39 +487,39 @@
 
 ### Lecteur de samples
 
-- [ ] Chargement de fichiers audio (WAV, FLAC)
-  - [ ] Intégration crate `hound` (WAV) et `claxon` (FLAC)
-  - [ ] Parsing des metadata (sample rate, channels, bit depth)
-  - [ ] Resampling automatique si sample rate ≠ audio engine
-  - [ ] Conversion mono/stereo
-- [ ] Structure Sample
-  - [ ] Buffer pré-alloué (Vec<f32>)
-  - [ ] Sample rate, durée, nom
+- [x] Chargement de fichiers audio (WAV, FLAC)
+  - [x] Intégration crate `hound` (WAV) et `claxon` (FLAC)
+  - [x] Parsing des metadata (sample rate, channels, bit depth)
+  - [x] Resampling automatique si sample rate ≠ audio engine
+  - [x] Conversion mono/stereo
+- [x] Structure Sample
+  - [x] Buffer pré-alloué (Vec<f32>)
+  - [x] Sample rate, durée, nom
   - [ ] Loop points (start, end)
   - [ ] Metadata (BPM original si disponible)
 
 ### Sampler Engine
 
-- [ ] Playback de samples
-  - [ ] Lecture linéaire avec interpolation (linear ou cubic)
-  - [ ] Pitch shifting via resampling (semitones MIDI)
-  - [ ] Volume et pan par sample
+- [x] Playback de samples
+  - [x] Lecture linéaire avec interpolation (linear ou cubic)
+  - [x] Pitch shifting via resampling (semitones MIDI)
+  - [x] Volume et pan par sample
   - [ ] Mode one-shot vs loop
-  - [ ] ADSR par sample (optionnel - peut réutiliser Envelope existant)
-- [ ] Sampler Voice
-  - [ ] Similaire à Voice mais lit depuis buffer au lieu d'oscillateur
-  - [ ] Support polyphonie (plusieurs samples simultanés)
+  - [x] ADSR par sample (optionnel - peut réutiliser Envelope existant)
+- [x] Sampler Voice
+  - [x] Similaire à Voice mais lit depuis buffer au lieu d'oscillateur
+  - [x] Support polyphonie (plusieurs samples simultanés)
   - [ ] Note-to-sample mapping (ex: kick sur C1, snare sur D1)
-  - [ ] Velocity → volume scaling
-- [ ] Intégration avec VoiceManager
-  - [ ] Choix synth vs sampler par note/channel
+  - [x] Velocity → volume scaling
+- [x] Intégration avec VoiceManager
+  - [x] Choix synth vs sampler par note/channel
   - [ ] Ou: mode hybride (layers synth + sample)
 
 ### UI Sampling
 
 - [ ] Browser de samples
   - [ ] Liste des samples chargés
-  - [ ] Bouton "Load Sample" (file picker)
+  - [x] Bouton "Load Sample" (file picker)
   - [ ] Preview audio (playback du sample)
   - [ ] Affichage waveform (simple, pas obligatoire MVP)
 - [ ] Mapping MIDI → Sample
