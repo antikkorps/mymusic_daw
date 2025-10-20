@@ -1,7 +1,7 @@
 
 use std::path::Path;
-use hound::{WavReader, WavSpec};
-use claxon::{FlacReader, FlacReaderOptions};
+use hound::WavReader;
+use claxon::FlacReader;
 
 pub enum SampleData {
     F32(Vec<f32>),

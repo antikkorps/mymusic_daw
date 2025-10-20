@@ -5,7 +5,7 @@ use crate::audio::device::{AudioDeviceInfo, AudioDeviceManager};
 use crate::audio::parameters::AtomicF32;
 use crate::command::{CommandManager, DawState};
 use crate::command::commands::{SetVolumeCommand, SetWaveformCommand, SetAdsrCommand, SetLfoCommand, SetPolyModeCommand, SetPortamentoCommand, SetModRoutingCommand, SetFilterCommand};
-use crate::synth::filter::{FilterParams, FilterType};
+use crate::synth::filter::FilterType;
 use crate::synth::envelope::AdsrParams;
 use crate::synth::lfo::{LfoParams, LfoDestination};
 use crate::synth::poly_mode::PolyMode;
@@ -179,7 +179,7 @@ impl DawApp {
     }
 
     /// Récupère la notification la plus récente (si elle existe)
-    fn get_latest_notification(&self) -> Option<&Notification> {
+    fn _get_latest_notification(&self) -> Option<&Notification> {
         self.notification_queue.back()
     }
 
