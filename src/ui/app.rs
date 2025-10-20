@@ -799,8 +799,12 @@ impl eframe::App for DawApp {
                             }
 
                             if is_looping {
+                                let data_len = match &sample.data {
+                                    crate::sampler::loader::SampleData::F32(data) => data.len(),
+                                };
+
                                 ui.label("Start:");
-                                if ui.add(egui::DragValue::new(&mut sample.loop_start)).changed() {
+                                if ui.add(egui::DragValue::new(&mut sample.loop_start).range(0..=sample.loop_end)).changed() {
                                     let sample_arc = Arc::new(sample.clone());
                                     let cmd = Command::UpdateSample(i, sample_arc);
                                     if let Ok(mut tx) = self.command_tx.lock() {
@@ -810,7 +814,7 @@ impl eframe::App for DawApp {
                                     }
                                 }
                                 ui.label("End:");
-                                if ui.add(egui::DragValue::new(&mut sample.loop_end)).changed() {
+                                if ui.add(egui::DragValue::new(&mut sample.loop_end).range(sample.loop_start..=data_len)).changed() {
                                     let sample_arc = Arc::new(sample.clone());
                                     let cmd = Command::UpdateSample(i, sample_arc);
                                     if let Ok(mut tx) = self.command_tx.lock() {

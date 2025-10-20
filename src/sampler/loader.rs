@@ -71,6 +71,7 @@ fn load_wav(path: &Path) -> Result<Sample, String> {
     };
 
     let resampled = resample_if_needed(samples_mono, spec.sample_rate, TARGET_SAMPLE_RATE)?;
+    let loop_end = resampled.len();
 
     Ok(Sample {
         name: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
@@ -79,7 +80,7 @@ fn load_wav(path: &Path) -> Result<Sample, String> {
         source_channels: spec.channels,
         loop_mode: LoopMode::Off,
         loop_start: 0,
-        loop_end: 0,
+        loop_end,
     })
 }
 
@@ -97,6 +98,7 @@ fn load_flac(path: &Path) -> Result<Sample, String> {
     };
 
     let resampled = resample_if_needed(samples_mono, spec.sample_rate, TARGET_SAMPLE_RATE)?;
+    let loop_end = resampled.len();
 
     Ok(Sample {
         name: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
@@ -105,7 +107,7 @@ fn load_flac(path: &Path) -> Result<Sample, String> {
         source_channels: spec.channels as u16,
         loop_mode: LoopMode::Off,
         loop_start: 0,
-        loop_end: 0,
+        loop_end,
     })
 }
 
