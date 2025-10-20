@@ -81,6 +81,7 @@ pub struct DawApp {
     mod_routings_ui: [ModRouting; 4],
     // Sampler state
     loaded_samples: Vec<Sample>,
+    note_map_input: Vec<String>,
     // Active UI tab
     active_tab: UiTab,
 }
@@ -163,6 +164,7 @@ impl DawApp {
                 ModRouting { source: ModSource::Aftertouch, destination: ModDestination::Amplitude, amount: 0.5, enabled: false },
             ],
             loaded_samples: Vec::new(),
+            note_map_input: Vec::new(),
             active_tab: UiTab::Synth,
         }
     }
@@ -771,6 +773,7 @@ impl eframe::App for DawApp {
                                 }
                                     // Store the whole sample struct in the UI state
                                     self.loaded_samples.push(sample);
+                                    self.note_map_input.push(String::new());
                                 }
                                 Err(e) => {
                                     eprintln!("Failed to load sample: {}", e);
@@ -784,11 +787,15 @@ impl eframe::App for DawApp {
                     for (i, sample) in self.loaded_samples.iter().enumerate() {
                         ui.horizontal(|ui| {
                             ui.label(&sample.name);
-                            if ui.button("Assign to C4").clicked() {
-                                let cmd = Command::SetNoteSampleMapping { note: 60, sample_index: i };
-                                if let Ok(mut tx) = self.command_tx.lock() {
-                                    if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
-                                        eprintln!("Failed to send SetNoteSampleMapping command: ringbuffer full");
+                            ui.label("Note:");
+                            ui.text_edit_singleline(&mut self.note_map_input[i]);
+                            if ui.button("Assign").clicked() {
+                                if let Ok(note) = self.note_map_input[i].parse::<u8>() {
+                                    let cmd = Command::SetNoteSampleMapping { note, sample_index: i };
+                                    if let Ok(mut tx) = self.command_tx.lock() {
+                                        if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                            eprintln!("Failed to send SetNoteSampleMapping command: ringbuffer full");
+                                        }
                                     }
                                 }
                             }
