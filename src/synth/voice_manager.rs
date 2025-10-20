@@ -47,6 +47,8 @@ impl VoiceManager {
             loop_mode: LoopMode::Off,
             loop_start: 0,
             loop_end: 0,
+            volume: 1.0,
+            pan: 0.0,
         });
 
         let voices = std::array::from_fn(|_| Voice::new_synth(sample_rate));

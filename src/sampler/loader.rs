@@ -25,6 +25,8 @@ pub struct Sample {
     pub loop_mode: LoopMode,
     pub loop_start: usize,
     pub loop_end: usize,
+    pub volume: f32,
+    pub pan: f32,
 }
 
 pub fn load_sample(path: &Path) -> Result<Sample, String> {
@@ -81,6 +83,8 @@ fn load_wav(path: &Path) -> Result<Sample, String> {
         loop_mode: LoopMode::Off,
         loop_start: 0,
         loop_end,
+        volume: 1.0,
+        pan: 0.0,
     })
 }
 
@@ -108,6 +112,8 @@ fn load_flac(path: &Path) -> Result<Sample, String> {
         loop_mode: LoopMode::Off,
         loop_start: 0,
         loop_end,
+        volume: 1.0,
+        pan: 0.0,
     })
 }
 

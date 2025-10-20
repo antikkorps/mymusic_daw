@@ -18,7 +18,7 @@ pub struct SamplerVoice {
 impl SamplerVoice {
     pub fn new(sample: Arc<Sample>, sample_rate: f32) -> Self {
         Self {
-            sample,
+            sample: sample.clone(),
             position: 0.0,
             pitch_step: 1.0,
             is_active: false,
@@ -26,7 +26,7 @@ impl SamplerVoice {
             velocity: 0.0,
             age: 0,
             envelope: AdsrEnvelope::new(AdsrParams::default(), sample_rate),
-            pan: 0.0, // Center pan
+            pan: sample.pan,
         }
     }
 
@@ -113,7 +113,7 @@ impl SamplerVoice {
             self.is_active = false;
         }
 
-        sample *= self.velocity * envelope_value;
+        sample *= self.velocity * envelope_value * self.sample.volume;
 
         let angle = (self.pan.clamp(-1.0, 1.0) * 0.5 + 0.5) * FRAC_PI_2;
         let left = sample * angle.cos();
