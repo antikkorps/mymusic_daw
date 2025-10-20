@@ -797,6 +797,30 @@ impl eframe::App for DawApp {
                                     }
                                 }
                             }
+
+                            if is_looping {
+                                ui.label("Start:");
+                                if ui.add(egui::DragValue::new(&mut sample.loop_start)).changed() {
+                                    let sample_arc = Arc::new(sample.clone());
+                                    let cmd = Command::UpdateSample(i, sample_arc);
+                                    if let Ok(mut tx) = self.command_tx.lock() {
+                                        if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                            eprintln!("Failed to send UpdateSample command: ringbuffer full");
+                                        }
+                                    }
+                                }
+                                ui.label("End:");
+                                if ui.add(egui::DragValue::new(&mut sample.loop_end)).changed() {
+                                    let sample_arc = Arc::new(sample.clone());
+                                    let cmd = Command::UpdateSample(i, sample_arc);
+                                    if let Ok(mut tx) = self.command_tx.lock() {
+                                        if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                            eprintln!("Failed to send UpdateSample command: ringbuffer full");
+                                        }
+                                    }
+                                }
+                            }
+
                             ui.label("Note:");
                             ui.text_edit_singleline(&mut self.note_map_input[i]);
                             if ui.button("Assign").clicked() {
