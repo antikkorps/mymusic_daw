@@ -9,6 +9,8 @@ midir = "0.9"
 eframe = "0.30"
 egui = "0.30"
 ringbuf = "0.4"
+hound = "3.5"
+claxon = "0.4"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
