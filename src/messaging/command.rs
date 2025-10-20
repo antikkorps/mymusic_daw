@@ -1,14 +1,14 @@
 // Types de commandes - Communication UI → Audio
 
 use crate::midi::event::MidiEventTimed;
+use crate::sampler::loader::Sample;
 use crate::synth::envelope::AdsrParams;
 use crate::synth::filter::FilterParams;
 use crate::synth::lfo::LfoParams;
+use crate::synth::modulation::ModRouting;
 use crate::synth::oscillator::WaveformType;
 use crate::synth::poly_mode::PolyMode;
-use crate::synth::modulation::ModRouting;
 use crate::synth::portamento::PortamentoParams;
-
 use crate::synth::voice_manager::VoiceMode;
 use std::sync::Arc;
 
@@ -23,8 +23,9 @@ pub enum Command {
     SetPortamento(PortamentoParams),
     SetFilter(FilterParams),
     SetVoiceMode(VoiceMode),
-    AddSample(Arc<Vec<f32>>),
+    AddSample(Arc<Sample>),
     SetNoteSampleMapping { note: u8, sample_index: usize },
+    UpdateSample(usize, Arc<Sample>),
     /// Update a modulation routing slot (UI → Audio)
     SetModRouting { index: u8, routing: ModRouting },
     /// Clear a modulation routing slot

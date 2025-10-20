@@ -1,9 +1,10 @@
+use crate::sampler::loader::{Sample, LoopMode};
 use std::sync::Arc;
 use crate::synth::envelope::{AdsrEnvelope, AdsrParams};
 use std::f32::consts::FRAC_PI_2;
 
 pub struct SamplerVoice {
-    sample_data: Arc<Vec<f32>>,
+    sample: Arc<Sample>,
     position: f64,
     pitch_step: f64,
     is_active: bool,
@@ -15,9 +16,9 @@ pub struct SamplerVoice {
 }
 
 impl SamplerVoice {
-    pub fn new(sample_data: Arc<Vec<f32>>, sample_rate: f32) -> Self {
+    pub fn new(sample: Arc<Sample>, sample_rate: f32) -> Self {
         Self {
-            sample_data,
+            sample,
             position: 0.0,
             pitch_step: 1.0,
             is_active: false,
@@ -64,8 +65,6 @@ impl SamplerVoice {
     }
 
     pub fn is_releasing(&self) -> bool {
-        // Sampler doesn't have a distinct release phase in this simple model
-        // It's active until the envelope is done.
         !self.is_active && self.envelope.is_active()
     }
 
@@ -78,29 +77,35 @@ impl SamplerVoice {
         self.age = age;
     }
 
-    // Dummy method for API compatibility
     pub fn set_aftertouch(&mut self, _value: f32) {}
 
-    /// Returns a stereo sample `(left, right)`
     pub fn next_sample_with_matrix(&mut self, _matrix: &crate::synth::modulation::ModulationMatrix) -> (f32, f32) {
         if !self.is_active {
             return (0.0, 0.0);
         }
 
+        let sample_data = match &self.sample.data {
+            crate::sampler::loader::SampleData::F32(data) => data,
+        };
+
         let pos_integer = self.position as usize;
         let pos_fractional = self.position.fract();
 
-        let sample1 = self.sample_data.get(pos_integer).copied().unwrap_or(0.0);
-        let sample2 = self.sample_data.get(pos_integer + 1).copied().unwrap_or(0.0);
+        let sample1 = sample_data.get(pos_integer).copied().unwrap_or(0.0);
+        let sample2 = sample_data.get(pos_integer + 1).copied().unwrap_or(0.0);
 
         let mut sample = sample1 + (sample2 - sample1) * pos_fractional as f32;
 
         self.position += self.pitch_step;
 
-        if self.position >= self.sample_data.len() as f64 {
+        if self.sample.loop_mode == LoopMode::Forward {
+            if self.position >= self.sample.loop_end as f64 {
+                self.position = self.sample.loop_start as f64;
+            }
+        } else if self.position >= sample_data.len() as f64 {
             self.is_active = false;
             self.position = 0.0;
-            return (0.0, 0.0); // Return silence on the sample that finishes
+            return (0.0, 0.0);
         }
 
         let envelope_value = self.envelope.process();

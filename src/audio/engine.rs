@@ -466,11 +466,14 @@ impl AudioEngine {
                             Command::SetVoiceMode(mode) => {
                                 vm.set_voice_mode(mode);
                             }
-                            Command::AddSample(sample_data) => {
-                                vm.add_sample(sample_data);
+                            Command::AddSample(sample) => {
+                                vm.add_sample(sample);
                             }
                             Command::SetNoteSampleMapping { note, sample_index } => {
                                 vm.set_note_to_sample(note, sample_index);
+                            }
+                            Command::UpdateSample(index, sample) => {
+                                vm.update_sample(index, sample);
                             }
                             Command::Quit => {}
                         }

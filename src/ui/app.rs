@@ -759,19 +759,14 @@ impl eframe::App for DawApp {
                         if let Some(path) = file {
                             match load_sample(&path) {
                                 Ok(sample) => {
-                                match &sample.data {
-                                    crate::sampler::loader::SampleData::F32(data) => {
-                                        let sample_data = Arc::new(data.clone());
-                                        // Send command to audio thread
-                                        let cmd = Command::AddSample(sample_data);
-                                        if let Ok(mut tx) = self.command_tx.lock() {
-                                            if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
-                                                eprintln!("Failed to send AddSample command: ringbuffer full");
-                                            }
+                                    // Clone the sample: one for the UI, one for the audio thread
+                                    let sample_for_audio = Arc::new(sample.clone());
+                                    let cmd = Command::AddSample(sample_for_audio);
+                                    if let Ok(mut tx) = self.command_tx.lock() {
+                                        if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                            eprintln!("Failed to send AddSample command: ringbuffer full");
                                         }
                                     }
-                                }
-                                    // Store the whole sample struct in the UI state
                                     self.loaded_samples.push(sample);
                                     self.note_map_input.push(String::new());
                                 }
@@ -784,9 +779,24 @@ impl eframe::App for DawApp {
 
                     ui.add_space(10.0);
                     ui.heading("Loaded Samples");
-                    for (i, sample) in self.loaded_samples.iter().enumerate() {
+                    for (i, sample) in self.loaded_samples.iter_mut().enumerate() {
                         ui.horizontal(|ui| {
                             ui.label(&sample.name);
+                            let mut is_looping = sample.loop_mode == crate::sampler::loader::LoopMode::Forward;
+                            if ui.checkbox(&mut is_looping, "Loop").changed() {
+                                sample.loop_mode = if is_looping {
+                                    crate::sampler::loader::LoopMode::Forward
+                                } else {
+                                    crate::sampler::loader::LoopMode::Off
+                                };
+                                let sample_arc = Arc::new(sample.clone());
+                                let cmd = Command::UpdateSample(i, sample_arc);
+                                if let Ok(mut tx) = self.command_tx.lock() {
+                                    if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                        eprintln!("Failed to send UpdateSample command: ringbuffer full");
+                                    }
+                                }
+                            }
                             ui.label("Note:");
                             ui.text_edit_singleline(&mut self.note_map_input[i]);
                             if ui.button("Assign").clicked() {

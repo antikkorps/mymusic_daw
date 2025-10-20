@@ -5,15 +5,26 @@ use rubato::{Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolat
 
 const TARGET_SAMPLE_RATE: u32 = 48000;
 
+#[derive(Debug, Clone)]
 pub enum SampleData {
     F32(Vec<f32>),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoopMode {
+    Off,
+    Forward,
+}
+
+#[derive(Debug, Clone)]
 pub struct Sample {
     pub name: String,
     pub data: SampleData,
     pub sample_rate: u32,
     pub source_channels: u16,
+    pub loop_mode: LoopMode,
+    pub loop_start: usize,
+    pub loop_end: usize,
 }
 
 pub fn load_sample(path: &Path) -> Result<Sample, String> {
@@ -66,6 +77,9 @@ fn load_wav(path: &Path) -> Result<Sample, String> {
         data: SampleData::F32(resampled),
         sample_rate: TARGET_SAMPLE_RATE,
         source_channels: spec.channels,
+        loop_mode: LoopMode::Off,
+        loop_start: 0,
+        loop_end: 0,
     })
 }
 
@@ -89,6 +103,9 @@ fn load_flac(path: &Path) -> Result<Sample, String> {
         data: SampleData::F32(resampled),
         sample_rate: TARGET_SAMPLE_RATE,
         source_channels: spec.channels as u16,
+        loop_mode: LoopMode::Off,
+        loop_start: 0,
+        loop_end: 0,
     })
 }
 

@@ -1,4 +1,5 @@
 use crate::sampler::engine::SamplerVoice;
+use crate::sampler::loader::Sample;
 use std::sync::Arc;
 
 use super::effect::EffectChain;
@@ -20,8 +21,8 @@ impl Voice {
         Voice::Synth(SynthVoice::new(sample_rate))
     }
 
-    pub fn new_sampler(sample_data: Arc<Vec<f32>>, sample_rate: f32) -> Self {
-        Voice::Sampler(SamplerVoice::new(sample_data, sample_rate))
+    pub fn new_sampler(sample: Arc<Sample>, sample_rate: f32) -> Self {
+        Voice::Sampler(SamplerVoice::new(sample, sample_rate))
     }
 
     pub fn note_on(&mut self, note: u8, velocity: u8, age: u64) {
