@@ -18,12 +18,17 @@ use std::sync::{Arc, Mutex};
 /// This struct acts as the single source of truth for UI state.
 /// Commands modify this state, and changes are propagated to the audio thread
 /// via the command sender.
+use crate::synth::voice_manager::VoiceMode;
+
 pub struct DawState {
     /// Current volume (0.0 to 1.0)
     pub volume: f32,
 
     /// Current waveform type
     pub waveform: WaveformType,
+
+    /// Voice mode (Synth or Sampler)
+    pub voice_mode: VoiceMode,
 
     /// ADSR envelope parameters
     pub adsr: AdsrParams,
@@ -55,6 +60,7 @@ impl DawState {
         Self {
             volume: 0.5,
             waveform: WaveformType::Sine,
+            voice_mode: VoiceMode::Synth,
             adsr: AdsrParams::default(),
             lfo: LfoParams::default(),
             poly_mode: PolyMode::default(),

@@ -36,7 +36,7 @@ use crate::messaging::channels::{CommandConsumer, NotificationProducer};
 use crate::messaging::command::Command;
 use crate::messaging::notification::{Notification, NotificationCategory};
 use crate::midi::event::{MidiEvent, MidiEventTimed};
-use crate::synth::voice_manager::VoiceManager;
+use crate::synth::voice_manager::{VoiceManager, VoiceMode};
 
 pub struct AudioEngine {
     _device: Device,
@@ -462,6 +462,9 @@ impl AudioEngine {
                             }
                             Command::ClearModRouting { index } => {
                                 vm.clear_mod_routing(index as usize);
+                            }
+                            Command::SetVoiceMode(mode) => {
+                                vm.set_voice_mode(mode);
                             }
                             Command::Quit => {}
                         }

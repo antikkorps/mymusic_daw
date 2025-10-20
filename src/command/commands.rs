@@ -10,6 +10,7 @@ use crate::synth::modulation::ModRouting;
 use crate::synth::oscillator::WaveformType;
 use crate::synth::poly_mode::PolyMode;
 use crate::synth::portamento::PortamentoParams;
+use crate::synth::voice_manager::VoiceMode;
 
 /// Command to set the volume
 ///
@@ -646,6 +647,49 @@ impl UndoableCommand for SetFilterCommand {
         }
 
         Ok(())
+    }
+}
+
+/// Command to set the voice mode (Synth or Sampler)
+pub struct SetVoiceModeCommand {
+    new_mode: VoiceMode,
+    old_mode: Option<VoiceMode>,
+}
+
+impl SetVoiceModeCommand {
+    pub fn new(mode: VoiceMode) -> Self {
+        Self {
+            new_mode: mode,
+            old_mode: None,
+        }
+    }
+}
+
+impl UndoableCommand for SetVoiceModeCommand {
+    fn execute(&mut self, state: &mut DawState) -> CommandResult<()> {
+        self.old_mode = Some(state.voice_mode);
+        state.voice_mode = self.new_mode;
+        if !state.send_to_audio(Command::SetVoiceMode(self.new_mode)) {
+            return Err(CommandError::ExecutionFailed(
+                "Failed to send VoiceMode command to audio thread (ringbuffer full)".into()
+            ));
+        }
+        Ok(())
+    }
+
+    fn undo(&mut self, state: &mut DawState) -> CommandResult<()> {
+        let old_mode = self.old_mode.ok_or_else(|| CommandError::UndoFailed("No previous voice mode stored".into()))?;
+        state.voice_mode = old_mode;
+        if !state.send_to_audio(Command::SetVoiceMode(old_mode)) {
+            return Err(CommandError::UndoFailed(
+                "Failed to send VoiceMode command to audio thread (ringbuffer full)".into()
+            ));
+        }
+        Ok(())
+    }
+
+    fn description(&self) -> String {
+        format!("Set Voice Mode to {:?}", self.new_mode)
     }
 }
 

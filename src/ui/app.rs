@@ -4,7 +4,8 @@ use crate::audio::cpu_monitor::{CpuLoad, CpuMonitor};
 use crate::audio::device::{AudioDeviceInfo, AudioDeviceManager};
 use crate::audio::parameters::AtomicF32;
 use crate::command::{CommandManager, DawState};
-use crate::command::commands::{SetVolumeCommand, SetWaveformCommand, SetAdsrCommand, SetLfoCommand, SetPolyModeCommand, SetPortamentoCommand, SetModRoutingCommand, SetFilterCommand};
+use crate::command::commands::{SetVolumeCommand, SetWaveformCommand, SetAdsrCommand, SetLfoCommand, SetPolyModeCommand, SetPortamentoCommand, SetModRoutingCommand, SetFilterCommand, SetVoiceModeCommand};
+use crate::synth::voice_manager::VoiceMode;
 use crate::synth::filter::FilterType;
 use crate::synth::envelope::AdsrParams;
 use crate::synth::lfo::{LfoParams, LfoDestination};
@@ -910,6 +911,36 @@ impl eframe::App for DawApp {
             });
                     ui.label("Set to 0 for instant pitch changes, >0 for smooth glides.");
                     ui.label("Works best in Mono/Legato modes.");
+
+                    ui.add_space(10.0);
+                    ui.separator();
+
+                    // Voice Mode Section
+                    ui.heading("Voice Mode");
+                    let current_mode = self.daw_state.voice_mode;
+                    let new_mode = match current_mode {
+                        VoiceMode::Synth => {
+                            if ui.button("Switch to Sampler").clicked() {
+                                Some(VoiceMode::Sampler)
+                            } else {
+                                None
+                            }
+                        }
+                        VoiceMode::Sampler => {
+                            if ui.button("Switch to Synth").clicked() {
+                                Some(VoiceMode::Synth)
+                            } else {
+                                None
+                            }
+                        }
+                    };
+
+                    if let Some(mode) = new_mode {
+                        let cmd = Box::new(SetVoiceModeCommand::new(mode));
+                        if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                            eprintln!("Failed to execute voice mode command: {}", e);
+                        }
+                    }
 
                     ui.add_space(10.0);
                     ui.separator();
