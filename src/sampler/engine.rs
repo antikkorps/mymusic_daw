@@ -113,7 +113,9 @@ impl SamplerVoice {
             self.is_active = false;
         }
 
-        sample *= self.velocity * envelope_value * self.sample.volume;
+        // Apply velocity with proper scaling (0.2 to 1.0 range for musical dynamics)
+        let velocity_scaled = 0.2 + (self.velocity * 0.8); // Min 20% volume at velocity 0
+        sample *= velocity_scaled * envelope_value * self.sample.volume;
 
         let angle = (self.pan.clamp(-1.0, 1.0) * 0.5 + 0.5) * FRAC_PI_2;
         let left = sample * angle.cos();

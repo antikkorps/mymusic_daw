@@ -851,5 +851,17 @@ fn bench_audio_callback(b: &mut Bencher) {
 
 ---
 
+## Référence à la roadmap
+
+Pour le suivi du développement et l'état d'avancement des fonctionnalités, se référer au fichier **TODO.md** qui contient :
+
+- **Roadmap détaillée** par phases (Phase 1 → Phase 7)
+- **État d'avancement** en temps réel de chaque fonctionnalité
+- **Priorités actuelles** et prochaines étapes
+- **Décisions architecturales** critiques avec justifications
+- **Milestones** et versions de release
+
+Le TODO.md sert de **source de vérité** pour l'état du projet, tandis que ce document AGENTS.md se concentre sur l'architecture technique et les principes de design.
+
 **Version** : 0.2.0
-**Dernière mise à jour** : 2025-10-08
+**Dernière mise à jour** : 2025-10-21

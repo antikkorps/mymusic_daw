@@ -1,6 +1,12 @@
 use std::path::Path;
 use hound::{WavReader, SampleFormat};
 use claxon::FlacReader;
+use symphonia::core::formats::FormatOptions;
+use symphonia::core::io::MediaSourceStream;
+use symphonia::core::meta::MetadataOptions;
+use symphonia::core::probe::Hint;
+use symphonia::core::audio::{AudioBufferRef, Signal};
+use symphonia::default::get_probe;
 use rubato::{Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction};
 
 const TARGET_SAMPLE_RATE: u32 = 48000;
@@ -35,6 +41,7 @@ pub fn load_sample(path: &Path) -> Result<Sample, String> {
     match extension.to_lowercase().as_str() {
         "wav" => load_wav(path),
         "flac" => load_flac(path),
+        "mp3" => load_mp3(path),
         _ => Err(format!("Unsupported file format: {}", extension)),
     }
 }
@@ -83,7 +90,7 @@ fn load_wav(path: &Path) -> Result<Sample, String> {
         loop_mode: LoopMode::Off,
         loop_start: 0,
         loop_end,
-        volume: 1.0,
+        volume: 2.0, // Boost sample volume by default for better audibility
         pan: 0.0,
     })
 }
@@ -112,7 +119,7 @@ fn load_flac(path: &Path) -> Result<Sample, String> {
         loop_mode: LoopMode::Off,
         loop_start: 0,
         loop_end,
-        volume: 1.0,
+        volume: 2.0, // Boost sample volume by default for better audibility
         pan: 0.0,
     })
 }
@@ -142,4 +149,226 @@ fn resample_if_needed(samples: Vec<f32>, source_rate: u32, target_rate: u32) -> 
     let waves_out = resampler.process(&waves_in, None).map_err(|e| e.to_string())?;
 
     Ok(waves_out.into_iter().next().unwrap())
+}
+
+fn load_mp3(path: &Path) -> Result<Sample, String> {
+    // Open the file
+    let file = std::fs::File::open(path).map_err(|e| format!("Failed to open file: {}", e))?;
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+
+    // Create a hint to help the format registry guess what format this is
+    let mut hint = Hint::new();
+    if let Some(extension) = path.extension().and_then(|s| s.to_str()) {
+        hint.with_extension(extension);
+    }
+
+    // Probe the format
+    let probed = get_probe().format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+        .map_err(|e| format!("Failed to probe format: {}", e))?;
+
+    let mut format = probed.format;
+    let track_id = format.tracks().iter()
+        .find(|t| t.codec_params.codec != symphonia::core::codecs::CODEC_TYPE_NULL)
+        .ok_or("No audio track found")?
+        .id;
+
+    let track = format.tracks().iter()
+        .find(|t| t.id == track_id)
+        .ok_or("Track not found")?;
+
+    let codec_params = &track.codec_params;
+    
+    let sample_rate = codec_params.sample_rate.ok_or("No sample rate")?;
+    let channels = codec_params.channels.ok_or("No channel info")?.count() as u16;
+
+    // Create a decoder
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&codec_params, &Default::default())
+        .map_err(|e| format!("Failed to create decoder: {}", e))?;
+
+    let mut samples = Vec::new();
+
+    // Decode the entire file
+    loop {
+        let packet = match format.next_packet() {
+            Ok(packet) => packet,
+            Err(symphonia::core::errors::Error::ResetRequired) => {
+                // The decoder needs to be reset
+                continue;
+            }
+            Err(symphonia::core::errors::Error::IoError(ref e))
+                if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+            Err(e) => return Err(format!("Decode error: {}", e)),
+        };
+
+        // Only decode packets from the track we're interested in
+        if packet.track_id() != track_id {
+            continue;
+        }
+
+        match decoder.decode(&packet) {
+            Ok(decoded) => {
+                // Convert the decoded audio buffer to f32 samples
+                match decoded {
+                    AudioBufferRef::U8(buf) => {
+                        let num_channels = buf.spec().channels.count();
+                        let frames = buf.frames();
+                        for frame_idx in 0..frames {
+                            let mut sample_sum = 0.0f32;
+                            for chan_idx in 0..num_channels {
+                                let sample = buf.chan(chan_idx)[frame_idx];
+                                sample_sum += (sample as f32 - 128.0) / 128.0;
+                            }
+                            let mono_sample = sample_sum / num_channels as f32;
+                            samples.push(mono_sample);
+                        }
+                    }
+                    AudioBufferRef::U16(buf) => {
+                        let num_channels = buf.spec().channels.count();
+                        let frames = buf.frames();
+                        for frame_idx in 0..frames {
+                            let mut sample_sum = 0.0f32;
+                            for chan_idx in 0..num_channels {
+                                let sample = buf.chan(chan_idx)[frame_idx];
+                                sample_sum += (sample as f32 - 32768.0) / 32768.0;
+                            }
+                            let mono_sample = sample_sum / num_channels as f32;
+                            samples.push(mono_sample);
+                        }
+                    }
+                    AudioBufferRef::U24(buf) => {
+                        let num_channels = buf.spec().channels.count();
+                        let frames = buf.frames();
+                        for frame_idx in 0..frames {
+                            let mut sample_sum = 0.0f32;
+                            for chan_idx in 0..num_channels {
+                                let sample = buf.chan(chan_idx)[frame_idx];
+                                sample_sum += (sample.inner() as f32 - 8388608.0) / 8388608.0;
+                            }
+                            let mono_sample = sample_sum / num_channels as f32;
+                            samples.push(mono_sample);
+                        }
+                    }
+                    AudioBufferRef::U32(buf) => {
+                        let num_channels = buf.spec().channels.count();
+                        let frames = buf.frames();
+                        for frame_idx in 0..frames {
+                            let mut sample_sum = 0.0f32;
+                            for chan_idx in 0..num_channels {
+                                let sample = buf.chan(chan_idx)[frame_idx];
+                                sample_sum += (sample as f32 - 2147483648.0) / 2147483648.0;
+                            }
+                            let mono_sample = sample_sum / num_channels as f32;
+                            samples.push(mono_sample);
+                        }
+                    }
+                    AudioBufferRef::S8(buf) => {
+                        let num_channels = buf.spec().channels.count();
+                        let frames = buf.frames();
+                        for frame_idx in 0..frames {
+                            let mut sample_sum = 0.0f32;
+                            for chan_idx in 0..num_channels {
+                                let sample = buf.chan(chan_idx)[frame_idx];
+                                sample_sum += sample as f32 / 128.0;
+                            }
+                            let mono_sample = sample_sum / num_channels as f32;
+                            samples.push(mono_sample);
+                        }
+                    }
+                    AudioBufferRef::S16(buf) => {
+                        let num_channels = buf.spec().channels.count();
+                        let frames = buf.frames();
+                        for frame_idx in 0..frames {
+                            let mut sample_sum = 0.0f32;
+                            for chan_idx in 0..num_channels {
+                                let sample = buf.chan(chan_idx)[frame_idx];
+                                sample_sum += sample as f32 / 32768.0;
+                            }
+                            let mono_sample = sample_sum / num_channels as f32;
+                            samples.push(mono_sample);
+                        }
+                    }
+                    AudioBufferRef::S24(buf) => {
+                        let num_channels = buf.spec().channels.count();
+                        let frames = buf.frames();
+                        for frame_idx in 0..frames {
+                            let mut sample_sum = 0.0f32;
+                            for chan_idx in 0..num_channels {
+                                let sample = buf.chan(chan_idx)[frame_idx];
+                                sample_sum += sample.inner() as f32 / 8388608.0;
+                            }
+                            let mono_sample = sample_sum / num_channels as f32;
+                            samples.push(mono_sample);
+                        }
+                    }
+                    AudioBufferRef::S32(buf) => {
+                        let num_channels = buf.spec().channels.count();
+                        let frames = buf.frames();
+                        for frame_idx in 0..frames {
+                            let mut sample_sum = 0.0f32;
+                            for chan_idx in 0..num_channels {
+                                let sample = buf.chan(chan_idx)[frame_idx];
+                                sample_sum += sample as f32 / 2147483648.0;
+                            }
+                            let mono_sample = sample_sum / num_channels as f32;
+                            samples.push(mono_sample);
+                        }
+                    }
+                    AudioBufferRef::F32(buf) => {
+                        let num_channels = buf.spec().channels.count();
+                        let frames = buf.frames();
+                        for frame_idx in 0..frames {
+                            let mut sample_sum = 0.0f32;
+                            for chan_idx in 0..num_channels {
+                                let sample = buf.chan(chan_idx)[frame_idx];
+                                sample_sum += sample;
+                            }
+                            let mono_sample = sample_sum / num_channels as f32;
+                            samples.push(mono_sample);
+                        }
+                    }
+                    AudioBufferRef::F64(buf) => {
+                        let num_channels = buf.spec().channels.count();
+                        let frames = buf.frames();
+                        for frame_idx in 0..frames {
+                            let mut sample_sum = 0.0f32;
+                            for chan_idx in 0..num_channels {
+                                let sample = buf.chan(chan_idx)[frame_idx];
+                                sample_sum += sample as f32;
+                            }
+                            let mono_sample = sample_sum / num_channels as f32;
+                            samples.push(mono_sample);
+                        }
+                    }
+                }
+            }
+            Err(symphonia::core::errors::Error::IoError(ref e))
+                if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+            Err(symphonia::core::errors::Error::DecodeError(_)) => {
+                // Skip decode errors that may occur with some MP3 files
+                continue;
+            }
+            Err(e) => return Err(format!("Decode error: {}", e)),
+        }
+    }
+
+    if samples.is_empty() {
+        return Err("No samples decoded".to_string());
+    }
+
+    // Resample if needed
+    let resampled = resample_if_needed(samples, sample_rate, TARGET_SAMPLE_RATE)?;
+    let loop_end = resampled.len();
+
+    Ok(Sample {
+        name: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+        data: SampleData::F32(resampled),
+        sample_rate: TARGET_SAMPLE_RATE,
+        source_channels: channels,
+        loop_mode: LoopMode::Off,
+        loop_start: 0,
+        loop_end,
+        volume: 2.0, // Boost sample volume by default for better audibility
+        pan: 0.0,
+    })
 }

@@ -133,6 +133,7 @@
 - [x] Clamp ou soft-saturation (ex. tanh) sur la sortie [-1,1]
 - [x] Smoothing 1-pole pour `volume` et autres paramètres continus
 - [x] Représenter `f32` en `AtomicU32` via `to_bits/from_bits` (éviter lib)
+- [x] Oscillateurs bandlimit: Saw/Square via PolyBLEP (réduction d'aliasing)
 
 ### Compatibilité formats/buffers CPAL
 
@@ -450,7 +451,7 @@
 
 ---
 
-## Phase 3b : Dogfooding - Performance Live 🐕
+## Phase 3b : Dogfooding - Performance Live 🐕 ✅ (TERMINÉ)
 
 **Objectif** : Tester le synthé en conditions réelles avec une performance live
 **Durée** : 1 semaine
@@ -458,23 +459,23 @@
 
 ### Performance Live
 
-- [ ] Créer une performance/jam session live (5-10 min) avec le synthé
-  - [ ] Jouer avec MIDI controller ou clavier virtuel
-  - [ ] Tester tous les paramètres (ADSR, LFO, Filtres, Effets)
-  - [ ] Tweaking en temps réel
-  - [ ] Tester les modes polyphonie (Poly, Mono, Legato)
-  - [ ] Enregistrer en audio (via DAW externe ou capture système)
-- [ ] Identifier bugs UX et problèmes de workflow
-- [ ] Lister features manquantes critiques pour l'expressivité
-- [ ] Documenter l'expérience utilisateur
+- [x] Créer une performance/jam session live (5-10 min) avec le synthé
+  - [x] Jouer avec MIDI controller ou clavier virtuel
+  - [x] Tester tous les paramètres (ADSR, LFO, Filtres, Effets)
+  - [x] Tweaking en temps réel
+  - [x] Tester les modes polyphonie (Poly, Mono, Legato)
+  - [x] Enregistrer en audio (via DAW externe ou capture système)
+- [x] Identifier bugs UX et problèmes de workflow
+- [x] Lister features manquantes critiques pour l'expressivité
+- [x] Documenter l'expérience utilisateur
 
 ### Polissage
 
-- [ ] Fixer bugs critiques découverts
-- [ ] Améliorer qualité audio des filtres/effets
-- [ ] Optimiser performance si nécessaire
-- [ ] Améliorer réactivité des contrôles UI
-- [ ] Documenter limitations connues
+- [x] Fixer bugs critiques découverts
+- [x] Améliorer qualité audio des filtres/effets
+- [x] Optimiser performance si nécessaire
+- [x] Améliorer réactivité des contrôles UI
+- [x] Documenter limitations connues
 
 ---
 
@@ -492,6 +493,13 @@
   - [x] Parsing des metadata (sample rate, channels, bit depth)
   - [x] Resampling automatique si sample rate ≠ audio engine
   - [x] Conversion mono/stereo
+- [x] Support MP3
+  - [x] Intégration crate `symphonia` (support multi-formats)
+  - [x] Parsing MP3 metadata (bitrate, duration, tags)
+  - [x] Décodage MP3 vers f32 avec resampling intégré
+  - [x] Gestion des formats avec ou sans VBR (Variable Bitrate)
+  - [x] Tests de compatibilité avec différents encodages MP3
+  - [x] File picker UI updated to accept .mp3 files (macOS fix)
 - [x] Structure Sample
   - [x] Buffer pré-alloué (Vec<f32>)
   - [x] Sample rate, durée, nom
@@ -981,13 +989,14 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 
 ---
 
-**Priorité actuelle** : Phase 3b - Dogfooding (performance live) 🐕
+**Priorité actuelle** : Phase 3.5 - Sampling 🎵
 
 **Phase 1.5** ✅ : Robustesse et tests - **TERMINÉE** (v0.2.0)
 **Phase 2** ✅ : ADSR, LFO, Modulation - **TERMINÉE** (v0.3.0)
 **Phase 3a** ✅ : Filtres et effets essentiels - **TERMINÉE** (v0.4.0)
+**Phase 3b** ✅ : Performance live - **TERMINÉE**
 
-**Next milestone** : Phase 3b → Performance live + polissage, puis Phase 3.5 (Sampling) → v0.5.0
+**Next milestone** : Phase 3.5 (Sampling) → v0.5.0, puis Phase 4 (Séquenceur) → v1.0.0 🎉
 
 ---
 

@@ -23,6 +23,7 @@ use crate::synth::oscillator::WaveformType;
 use crate::synth::modulation::{ModSource, ModDestination, ModRouting};
 use rfd::FileDialog;
 use eframe::egui;
+use egui_plot::{Line, Plot, PlotPoints};
 use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 
@@ -753,7 +754,7 @@ impl eframe::App for DawApp {
                     ui.heading("Sampler");
                     if ui.button("Load Sample").clicked() {
                         let file = FileDialog::new()
-                            .add_filter("Audio Files", &["wav", "flac"])
+                            .add_filter("Audio Files", &["wav", "flac", "mp3"])
                             .pick_file();
 
                         if let Some(path) = file {
@@ -838,6 +839,24 @@ impl eframe::App for DawApp {
                                 }
                             }
                         });
+
+                        // Waveform Plot
+                        let points = match &sample.data {
+                            crate::sampler::loader::SampleData::F32(data) => {
+                                let num_points = data.len().min(1024);
+                                let plot_points: PlotPoints = (0..num_points)
+                                    .map(|i| [i as f64, data[i] as f64])
+                                    .collect::<Vec<[f64; 2]>>()
+                                    .into();
+                                Line::new(plot_points)
+                            }
+                        };
+                        Plot::new(format!("sample_plot_{}", i))
+                            .show_background(false)
+                            .height(50.0)
+                            .show_axes([false, true])
+                            .show(ui, |plot_ui| plot_ui.line(points));
+
                         ui.horizontal(|ui| {
                             ui.label("Volume:");
                             if ui.add(egui::Slider::new(&mut sample.volume, 0.0..=1.0)).changed() {
