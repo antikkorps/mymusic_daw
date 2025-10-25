@@ -24,6 +24,7 @@ pub enum Command {
     SetFilter(FilterParams),
     SetVoiceMode(VoiceMode),
     AddSample(Arc<Sample>),
+    RemoveSample(usize),
     SetNoteSampleMapping { note: u8, sample_index: usize },
     UpdateSample(usize, Arc<Sample>),
     /// Update a modulation routing slot (UI → Audio)

@@ -846,6 +846,7 @@ impl eframe::App for DawApp {
 
                     // Track actions to perform after rendering UI (to avoid borrow conflicts)
                     let mut preview_action: Option<(usize, bool)> = None; // (index, is_stop)
+                    let mut delete_action: Option<usize> = None; // index to delete
 
                     for (i, sample) in self.loaded_samples.iter_mut().enumerate() {
                         // Extract preview state before ui.horizontal to avoid borrow issues
@@ -860,6 +861,11 @@ impl eframe::App for DawApp {
                                 preview_action = Some((i, is_previewing));
                             }
 
+                            // Delete button
+                            if ui.button("🗑️ Delete").clicked() {
+                                delete_action = Some(i);
+                            }
+
                             let mut is_looping = sample.loop_mode == crate::sampler::loader::LoopMode::Forward;
                             if ui.checkbox(&mut is_looping, "Loop").changed() {
                                 sample.loop_mode = if is_looping {
@@ -867,6 +873,17 @@ impl eframe::App for DawApp {
                                 } else {
                                     crate::sampler::loader::LoopMode::Off
                                 };
+                                let sample_arc = Arc::new(sample.clone());
+                                let cmd = Command::UpdateSample(i, sample_arc);
+                                if let Ok(mut tx) = self.command_tx.lock() {
+                                    if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                        eprintln!("Failed to send UpdateSample command: ringbuffer full");
+                                    }
+                                }
+                            }
+
+                            // Reverse checkbox
+                            if ui.checkbox(&mut sample.reverse, "Reverse").changed() {
                                 let sample_arc = Arc::new(sample.clone());
                                 let cmd = Command::UpdateSample(i, sample_arc);
                                 if let Ok(mut tx) = self.command_tx.lock() {
@@ -996,6 +1013,33 @@ impl eframe::App for DawApp {
                             // Start preview
                             self.preview_sample(idx);
                         }
+                    }
+
+                    // Handle delete action after the loop to avoid borrow conflicts
+                    if let Some(idx) = delete_action {
+                        // Stop preview if deleting the currently previewed sample
+                        if let Some((preview_idx, note)) = self.preview_sample_note {
+                            if preview_idx == idx {
+                                self.send_note_off_direct(note);
+                                self.preview_sample_note = None;
+                                self.preview_timer = None;
+                            } else if preview_idx > idx {
+                                // Update preview index if it's after the deleted sample
+                                self.preview_sample_note = Some((preview_idx - 1, note));
+                            }
+                        }
+
+                        // Send command to audio thread
+                        let cmd = Command::RemoveSample(idx);
+                        if let Ok(mut tx) = self.command_tx.lock() {
+                            if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                eprintln!("Failed to send RemoveSample command: ringbuffer full");
+                            }
+                        }
+
+                        // Remove from UI
+                        self.loaded_samples.remove(idx);
+                        self.note_map_input.remove(idx);
                     }
                 }
                 UiTab::Synth => {

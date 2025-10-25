@@ -47,6 +47,7 @@ impl VoiceManager {
             loop_mode: LoopMode::Off,
             loop_start: 0,
             loop_end: 0,
+            reverse: false,
             volume: 1.0,
             pan: 0.0,
         });
@@ -82,6 +83,36 @@ impl VoiceManager {
         if index < self.samples.len() {
             self.samples[index] = sample;
         }
+    }
+
+    pub fn remove_sample(&mut self, index: usize) {
+        if index >= self.samples.len() {
+            return;
+        }
+
+        // Remove the sample from the vector
+        self.samples.remove(index);
+
+        // Update note_to_sample_map:
+        // - Remove mappings pointing to the removed index
+        // - Decrement indices > removed index
+        let mut updated_map = std::collections::HashMap::new();
+        for (note, sample_idx) in self.note_to_sample_map.iter() {
+            if *sample_idx == index {
+                // Skip - this mapping is deleted
+                continue;
+            } else if *sample_idx > index {
+                // Decrement index
+                updated_map.insert(*note, sample_idx - 1);
+            } else {
+                // Keep as-is
+                updated_map.insert(*note, *sample_idx);
+            }
+        }
+        self.note_to_sample_map = updated_map;
+
+        // Note: Active voices playing the removed sample will continue until they finish
+        // This is acceptable as they hold an Arc reference to the sample
     }
 
     pub fn note_on(&mut self, note: u8, velocity: u8) {

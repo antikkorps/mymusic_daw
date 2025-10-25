@@ -486,6 +486,15 @@
 **Durée** : 2-3 semaines
 **Justification** : Nécessaire pour créer un morceau complet (Phase 4 - dogfooding réel)
 
+**🎯 Plan de finalisation** (2-3 jours restants) :
+1. ✅ Loop points + Preview UI (FAIT)
+2. 🔲 Suppression de samples (UI)
+3. 🔲 Reverse playback mode
+4. 🔲 Pitch offset (coarse tune)
+5. 🔲 **Persistance** (Save/Load sample banks) - CRITIQUE pour Phase 4
+6. 🔲 Tests d'intégration
+7. 🔲 Release v0.5.0 🎉
+
 ### Lecteur de samples
 
 - [x] Chargement de fichiers audio (WAV, FLAC)
@@ -503,7 +512,7 @@
 - [x] Structure Sample
   - [x] Buffer pré-alloué (Vec<f32>)
   - [x] Sample rate, durée, nom
-  - [ ] Loop points (start, end)
+  - [x] Loop points (start, end) ✅
   - [ ] Metadata (BPM original si disponible)
 
 ### Sampler Engine
@@ -512,7 +521,9 @@
   - [x] Lecture linéaire avec interpolation (linear ou cubic)
   - [x] Pitch shifting via resampling (semitones MIDI)
   - [x] Volume et pan par sample
-  - [ ] Mode one-shot vs loop
+  - [x] Mode one-shot vs loop ✅
+  - [ ] Reverse playback mode 🔲
+  - [ ] Pitch offset (coarse tune -12 à +12 semitones) 🔲
   - [x] ADSR par sample (optionnel - peut réutiliser Envelope existant)
 - [x] Sampler Voice
   - [x] Similaire à Voice mais lit depuis buffer au lieu d'oscillateur
@@ -525,40 +536,47 @@
 
 ### UI Sampling
 
-- [ ] Browser de samples
-  - [ ] Liste des samples chargés
-  - [x] Bouton "Load Sample" (file picker)
-  - [ ] Preview audio (playback du sample)
-  - [ ] Affichage waveform (simple, pas obligatoire MVP)
-- [ ] Mapping MIDI → Sample
-  - [ ] Table note MIDI → sample assigné
-  - [ ] UI pour assigner samples aux notes (drag & drop ou boutons)
-  - [ ] Indication visuelle des notes assignées
-- [ ] Contrôles par sample
-  - [ ] Volume, Pan
-  - [ ] Pitch offset (coarse tuning)
-  - [ ] Loop on/off
-  - [ ] Mode one-shot/loop
+- [x] Browser de samples ✅ (MVP)
+  - [x] Liste des samples chargés ✅
+  - [x] Bouton "Load Sample" (file picker) ✅
+  - [ ] Bouton "Delete" pour supprimer un sample 🔲
+  - [x] Preview audio (playback du sample) ✅
+  - [x] Affichage waveform avec loop markers ✅
+- [ ] Mapping MIDI → Sample (partiellement)
+  - [x] UI basique pour assigner samples aux notes (text input + bouton)
+  - [ ] Table complète note MIDI → sample assigné
+  - [ ] UI drag & drop avancée
+  - [ ] Indication visuelle des notes assignées sur clavier
+- [x] Contrôles par sample ✅
+  - [x] Volume, Pan ✅
+  - [ ] Pitch offset (coarse tuning -12 à +12 semitones) 🔲
+  - [x] Loop on/off ✅
+  - [x] Mode one-shot/loop ✅
+  - [x] Loop points (start/end) avec affichage temps ✅
+  - [ ] Reverse playback 🔲
 
-### Persistance
+### Persistance 🔲 (CRITIQUE pour Phase 4)
 
 - [ ] Save/Load sample banks
-  - [ ] Format JSON pour mapping (note → sample path)
+  - [ ] Format JSON pour mapping (note → sample path + params)
+  - [ ] Sauvegarder : volume, pan, loop_mode, loop_start, loop_end, reverse, pitch_offset
   - [ ] Chemins relatifs au projet (préparation Phase 4)
-  - [ ] Command Pattern pour undo/redo des assignations
+  - [ ] Boutons UI : "Save Bank" / "Load Bank"
+  - [ ] Command Pattern pour undo/redo des assignations (optionnel)
 
 ### Tests
 
-- [ ] Tests unitaires sampler
-  - [ ] Playback correct (sample entier lu)
-  - [ ] Pitch shifting précis (± semitones)
-  - [ ] Loop correctement (retour au loop start)
-  - [ ] One-shot s'arrête à la fin
-  - [ ] Polyphonie de samples
-  - [ ] Resampling (44.1kHz → 48kHz etc.)
-- [ ] Tests d'intégration
+- [x] Tests unitaires sampler ✅ (6 tests)
+  - [x] Loop default values ✅
+  - [x] Loop mode Forward (keeps voice active) ✅
+  - [x] Loop mode Off (stops at end) ✅
+  - [x] Loop points within bounds ✅
+  - [x] Loop with pitch shift ✅
+  - [x] Loop produces continuous audio ✅
+  - [x] Format detection (WAV, FLAC, MP3) ✅
+- [ ] Tests d'intégration (à compléter)
   - [ ] MIDI → Sampler end-to-end
-  - [ ] Chargement WAV/FLAC
+  - [ ] Chargement WAV/FLAC/MP3 (formats testés)
   - [ ] Memory safety (pas de leaks)
 
 ---

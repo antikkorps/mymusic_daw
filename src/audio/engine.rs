@@ -469,6 +469,9 @@ impl AudioEngine {
                             Command::AddSample(sample) => {
                                 vm.add_sample(sample);
                             }
+                            Command::RemoveSample(index) => {
+                                vm.remove_sample(index);
+                            }
                             Command::SetNoteSampleMapping { note, sample_index } => {
                                 vm.set_note_to_sample(note, sample_index);
                             }

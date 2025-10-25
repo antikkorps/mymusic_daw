@@ -65,6 +65,7 @@ mod tests {
             loop_mode: LoopMode::Off,
             loop_start: 0,
             loop_end: size,
+            reverse: false,
             volume: 1.0,
             pan: 0.0,
         }
@@ -191,5 +192,67 @@ mod tests {
         // Check that we got continuous output (not all zeros after first loop)
         let non_zero_count = output_samples.iter().filter(|&&x| x.abs() > 0.001).count();
         assert!(non_zero_count > 150, "Should produce continuous non-zero output when looping, got {} non-zero samples", non_zero_count);
+    }
+
+    #[test]
+    fn test_reverse_playback() {
+        let mut sample = create_test_sample(100);
+        sample.reverse = true;
+
+        let sample_arc = Arc::new(sample);
+        let mut voice = SamplerVoice::new(sample_arc.clone(), 48000.0);
+        voice.note_on(60, 100, 0);
+
+        // Process several samples
+        let matrix = crate::synth::modulation::ModulationMatrix::new_empty();
+        for _ in 0..10 {
+            let (left, right) = voice.next_sample_with_matrix(&matrix);
+            assert!(left.is_finite() && right.is_finite(), "Reverse playback should produce valid audio");
+        }
+
+        // Voice should still be active
+        assert!(voice.is_active(), "Reverse playback should keep voice active");
+    }
+
+    #[test]
+    fn test_reverse_playback_stops_at_start() {
+        let sample = create_test_sample(20);
+        let mut sample_with_reverse = sample.clone();
+        sample_with_reverse.reverse = true;
+
+        let sample_arc = Arc::new(sample_with_reverse);
+        let mut voice = SamplerVoice::new(sample_arc.clone(), 48000.0);
+        voice.note_on(60, 100, 0);
+
+        // Process samples beyond the start (reverse goes from end to start)
+        let matrix = crate::synth::modulation::ModulationMatrix::new_empty();
+        for _ in 0..30 {
+            voice.next_sample_with_matrix(&matrix);
+        }
+
+        // Voice should stop when reaching the start (no loop)
+        assert!(!voice.is_active(), "Reverse playback should stop at start when not looping");
+    }
+
+    #[test]
+    fn test_reverse_with_loop() {
+        let mut sample = create_test_sample(50);
+        sample.reverse = true;
+        sample.loop_mode = LoopMode::Forward;
+        sample.loop_start = 10;
+        sample.loop_end = 40;
+
+        let sample_arc = Arc::new(sample);
+        let mut voice = SamplerVoice::new(sample_arc.clone(), 48000.0);
+        voice.note_on(60, 100, 0);
+
+        // Process many samples to test looping
+        let matrix = crate::synth::modulation::ModulationMatrix::new_empty();
+        for _ in 0..100 {
+            voice.next_sample_with_matrix(&matrix);
+        }
+
+        // Voice should still be active due to looping
+        assert!(voice.is_active(), "Reverse playback with loop should keep voice active");
     }
 }

@@ -38,7 +38,25 @@ impl SamplerVoice {
         self.note = note;
         self.velocity = velocity as f32 / 127.0;
         self.age = age;
-        self.position = 0.0;
+
+        // Initialize position based on reverse mode
+        if self.sample.reverse {
+            let data_len = match &self.sample.data {
+                crate::sampler::loader::SampleData::F32(data) => data.len(),
+            };
+            self.position = if self.sample.loop_mode == LoopMode::Forward {
+                self.sample.loop_end as f64 - 1.0
+            } else {
+                (data_len - 1) as f64
+            };
+        } else {
+            self.position = if self.sample.loop_mode == LoopMode::Forward {
+                self.sample.loop_start as f64
+            } else {
+                0.0
+            };
+        }
+
         self.is_active = true;
         self.envelope.note_on();
     }
@@ -96,16 +114,32 @@ impl SamplerVoice {
 
         let mut sample = sample1 + (sample2 - sample1) * pos_fractional as f32;
 
-        self.position += self.pitch_step;
+        // Update position based on reverse mode
+        if self.sample.reverse {
+            self.position -= self.pitch_step;
 
-        if self.sample.loop_mode == LoopMode::Forward {
-            if self.position >= self.sample.loop_end as f64 {
-                self.position = self.sample.loop_start as f64;
+            // Handle reverse playback boundaries
+            if self.sample.loop_mode == LoopMode::Forward {
+                if self.position < self.sample.loop_start as f64 {
+                    self.position = self.sample.loop_end as f64 - 1.0;
+                }
+            } else if self.position < 0.0 {
+                self.is_active = false;
+                return (0.0, 0.0);
             }
-        } else if self.position >= sample_data.len() as f64 {
-            self.is_active = false;
-            self.position = 0.0;
-            return (0.0, 0.0);
+        } else {
+            self.position += self.pitch_step;
+
+            // Handle forward playback boundaries
+            if self.sample.loop_mode == LoopMode::Forward {
+                if self.position >= self.sample.loop_end as f64 {
+                    self.position = self.sample.loop_start as f64;
+                }
+            } else if self.position >= sample_data.len() as f64 {
+                self.is_active = false;
+                self.position = 0.0;
+                return (0.0, 0.0);
+            }
         }
 
         let envelope_value = self.envelope.process();
