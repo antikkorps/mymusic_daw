@@ -463,6 +463,21 @@ impl AudioEngine {
                             Command::ClearModRouting { index } => {
                                 vm.clear_mod_routing(index as usize);
                             }
+                            Command::SetVoiceMode(mode) => {
+                                vm.set_voice_mode(mode);
+                            }
+                            Command::AddSample(sample) => {
+                                vm.add_sample(sample);
+                            }
+                            Command::RemoveSample(index) => {
+                                vm.remove_sample(index);
+                            }
+                            Command::SetNoteSampleMapping { note, sample_index } => {
+                                vm.set_note_to_sample(note, sample_index);
+                            }
+                            Command::UpdateSample(index, sample) => {
+                                vm.update_sample(index, sample);
+                            }
                             Command::Quit => {}
                         }
                     };

@@ -133,6 +133,7 @@
 - [x] Clamp ou soft-saturation (ex. tanh) sur la sortie [-1,1]
 - [x] Smoothing 1-pole pour `volume` et autres paramètres continus
 - [x] Représenter `f32` en `AtomicU32` via `to_bits/from_bits` (éviter lib)
+- [x] Oscillateurs bandlimit: Saw/Square via PolyBLEP (réduction d'aliasing)
 
 ### Compatibilité formats/buffers CPAL
 
@@ -450,7 +451,7 @@
 
 ---
 
-## Phase 3b : Dogfooding - Performance Live 🐕
+## Phase 3b : Dogfooding - Performance Live 🐕 ✅ (TERMINÉ)
 
 **Objectif** : Tester le synthé en conditions réelles avec une performance live
 **Durée** : 1 semaine
@@ -458,23 +459,23 @@
 
 ### Performance Live
 
-- [ ] Créer une performance/jam session live (5-10 min) avec le synthé
-  - [ ] Jouer avec MIDI controller ou clavier virtuel
-  - [ ] Tester tous les paramètres (ADSR, LFO, Filtres, Effets)
-  - [ ] Tweaking en temps réel
-  - [ ] Tester les modes polyphonie (Poly, Mono, Legato)
-  - [ ] Enregistrer en audio (via DAW externe ou capture système)
-- [ ] Identifier bugs UX et problèmes de workflow
-- [ ] Lister features manquantes critiques pour l'expressivité
-- [ ] Documenter l'expérience utilisateur
+- [x] Créer une performance/jam session live (5-10 min) avec le synthé
+  - [x] Jouer avec MIDI controller ou clavier virtuel
+  - [x] Tester tous les paramètres (ADSR, LFO, Filtres, Effets)
+  - [x] Tweaking en temps réel
+  - [x] Tester les modes polyphonie (Poly, Mono, Legato)
+  - [x] Enregistrer en audio (via DAW externe ou capture système)
+- [x] Identifier bugs UX et problèmes de workflow
+- [x] Lister features manquantes critiques pour l'expressivité
+- [x] Documenter l'expérience utilisateur
 
 ### Polissage
 
-- [ ] Fixer bugs critiques découverts
-- [ ] Améliorer qualité audio des filtres/effets
-- [ ] Optimiser performance si nécessaire
-- [ ] Améliorer réactivité des contrôles UI
-- [ ] Documenter limitations connues
+- [x] Fixer bugs critiques découverts
+- [x] Améliorer qualité audio des filtres/effets
+- [x] Optimiser performance si nécessaire
+- [x] Améliorer réactivité des contrôles UI
+- [x] Documenter limitations connues
 
 ---
 
@@ -485,72 +486,97 @@
 **Durée** : 2-3 semaines
 **Justification** : Nécessaire pour créer un morceau complet (Phase 4 - dogfooding réel)
 
+**🎯 Plan de finalisation** (2-3 jours restants) :
+1. ✅ Loop points + Preview UI (FAIT)
+2. 🔲 Suppression de samples (UI)
+3. 🔲 Reverse playback mode
+4. 🔲 Pitch offset (coarse tune)
+5. 🔲 **Persistance** (Save/Load sample banks) - CRITIQUE pour Phase 4
+6. 🔲 Tests d'intégration
+7. 🔲 Release v0.5.0 🎉
+
 ### Lecteur de samples
 
-- [ ] Chargement de fichiers audio (WAV, FLAC)
-  - [ ] Intégration crate `hound` (WAV) et `claxon` (FLAC)
-  - [ ] Parsing des metadata (sample rate, channels, bit depth)
-  - [ ] Resampling automatique si sample rate ≠ audio engine
-  - [ ] Conversion mono/stereo
-- [ ] Structure Sample
-  - [ ] Buffer pré-alloué (Vec<f32>)
-  - [ ] Sample rate, durée, nom
-  - [ ] Loop points (start, end)
+- [x] Chargement de fichiers audio (WAV, FLAC)
+  - [x] Intégration crate `hound` (WAV) et `claxon` (FLAC)
+  - [x] Parsing des metadata (sample rate, channels, bit depth)
+  - [x] Resampling automatique si sample rate ≠ audio engine
+  - [x] Conversion mono/stereo
+- [x] Support MP3
+  - [x] Intégration crate `symphonia` (support multi-formats)
+  - [x] Parsing MP3 metadata (bitrate, duration, tags)
+  - [x] Décodage MP3 vers f32 avec resampling intégré
+  - [x] Gestion des formats avec ou sans VBR (Variable Bitrate)
+  - [x] Tests de compatibilité avec différents encodages MP3
+  - [x] File picker UI updated to accept .mp3 files (macOS fix)
+- [x] Structure Sample
+  - [x] Buffer pré-alloué (Vec<f32>)
+  - [x] Sample rate, durée, nom
+  - [x] Loop points (start, end) ✅
   - [ ] Metadata (BPM original si disponible)
 
 ### Sampler Engine
 
-- [ ] Playback de samples
-  - [ ] Lecture linéaire avec interpolation (linear ou cubic)
-  - [ ] Pitch shifting via resampling (semitones MIDI)
-  - [ ] Volume et pan par sample
-  - [ ] Mode one-shot vs loop
-  - [ ] ADSR par sample (optionnel - peut réutiliser Envelope existant)
-- [ ] Sampler Voice
-  - [ ] Similaire à Voice mais lit depuis buffer au lieu d'oscillateur
-  - [ ] Support polyphonie (plusieurs samples simultanés)
+- [x] Playback de samples
+  - [x] Lecture linéaire avec interpolation (linear ou cubic)
+  - [x] Pitch shifting via resampling (semitones MIDI)
+  - [x] Volume et pan par sample
+  - [x] Mode one-shot vs loop ✅
+  - [ ] Reverse playback mode 🔲
+  - [ ] Pitch offset (coarse tune -12 à +12 semitones) 🔲
+  - [x] ADSR par sample (optionnel - peut réutiliser Envelope existant)
+- [x] Sampler Voice
+  - [x] Similaire à Voice mais lit depuis buffer au lieu d'oscillateur
+  - [x] Support polyphonie (plusieurs samples simultanés)
   - [ ] Note-to-sample mapping (ex: kick sur C1, snare sur D1)
-  - [ ] Velocity → volume scaling
-- [ ] Intégration avec VoiceManager
-  - [ ] Choix synth vs sampler par note/channel
+  - [x] Velocity → volume scaling
+- [x] Intégration avec VoiceManager
+  - [x] Choix synth vs sampler par note/channel
   - [ ] Ou: mode hybride (layers synth + sample)
 
 ### UI Sampling
 
-- [ ] Browser de samples
-  - [ ] Liste des samples chargés
-  - [ ] Bouton "Load Sample" (file picker)
-  - [ ] Preview audio (playback du sample)
-  - [ ] Affichage waveform (simple, pas obligatoire MVP)
-- [ ] Mapping MIDI → Sample
-  - [ ] Table note MIDI → sample assigné
-  - [ ] UI pour assigner samples aux notes (drag & drop ou boutons)
-  - [ ] Indication visuelle des notes assignées
-- [ ] Contrôles par sample
-  - [ ] Volume, Pan
-  - [ ] Pitch offset (coarse tuning)
-  - [ ] Loop on/off
-  - [ ] Mode one-shot/loop
+- [x] Browser de samples ✅ (MVP)
+  - [x] Liste des samples chargés ✅
+  - [x] Bouton "Load Sample" (file picker) ✅
+  - [ ] Bouton "Delete" pour supprimer un sample 🔲
+  - [x] Preview audio (playback du sample) ✅
+  - [x] Affichage waveform avec loop markers ✅
+- [ ] Mapping MIDI → Sample (partiellement)
+  - [x] UI basique pour assigner samples aux notes (text input + bouton)
+  - [ ] Table complète note MIDI → sample assigné
+  - [ ] UI drag & drop avancée
+  - [ ] Indication visuelle des notes assignées sur clavier
+- [x] Contrôles par sample ✅
+  - [x] Volume, Pan ✅
+  - [ ] Pitch offset (coarse tuning -12 à +12 semitones) 🔲
+  - [x] Loop on/off ✅
+  - [x] Mode one-shot/loop ✅
+  - [x] Loop points (start/end) avec affichage temps ✅
+  - [ ] Reverse playback 🔲
 
-### Persistance
+### Persistance 🔲 (CRITIQUE pour Phase 4)
 
 - [ ] Save/Load sample banks
-  - [ ] Format JSON pour mapping (note → sample path)
+  - [ ] Format JSON pour mapping (note → sample path + params)
+  - [ ] Sauvegarder : volume, pan, loop_mode, loop_start, loop_end, reverse, pitch_offset
   - [ ] Chemins relatifs au projet (préparation Phase 4)
-  - [ ] Command Pattern pour undo/redo des assignations
+  - [ ] Boutons UI : "Save Bank" / "Load Bank"
+  - [ ] Command Pattern pour undo/redo des assignations (optionnel)
 
 ### Tests
 
-- [ ] Tests unitaires sampler
-  - [ ] Playback correct (sample entier lu)
-  - [ ] Pitch shifting précis (± semitones)
-  - [ ] Loop correctement (retour au loop start)
-  - [ ] One-shot s'arrête à la fin
-  - [ ] Polyphonie de samples
-  - [ ] Resampling (44.1kHz → 48kHz etc.)
-- [ ] Tests d'intégration
+- [x] Tests unitaires sampler ✅ (6 tests)
+  - [x] Loop default values ✅
+  - [x] Loop mode Forward (keeps voice active) ✅
+  - [x] Loop mode Off (stops at end) ✅
+  - [x] Loop points within bounds ✅
+  - [x] Loop with pitch shift ✅
+  - [x] Loop produces continuous audio ✅
+  - [x] Format detection (WAV, FLAC, MP3) ✅
+- [ ] Tests d'intégration (à compléter)
   - [ ] MIDI → Sampler end-to-end
-  - [ ] Chargement WAV/FLAC
+  - [ ] Chargement WAV/FLAC/MP3 (formats testés)
   - [ ] Memory safety (pas de leaks)
 
 ---
@@ -981,13 +1007,14 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 
 ---
 
-**Priorité actuelle** : Phase 3b - Dogfooding (performance live) 🐕
+**Priorité actuelle** : Phase 3.5 - Sampling 🎵
 
 **Phase 1.5** ✅ : Robustesse et tests - **TERMINÉE** (v0.2.0)
 **Phase 2** ✅ : ADSR, LFO, Modulation - **TERMINÉE** (v0.3.0)
 **Phase 3a** ✅ : Filtres et effets essentiels - **TERMINÉE** (v0.4.0)
+**Phase 3b** ✅ : Performance live - **TERMINÉE**
 
-**Next milestone** : Phase 3b → Performance live + polissage, puis Phase 3.5 (Sampling) → v0.5.0
+**Next milestone** : Phase 3.5 (Sampling) → v0.5.0, puis Phase 4 (Séquenceur) → v1.0.0 🎉
 
 ---
 

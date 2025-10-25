@@ -163,7 +163,7 @@ pub struct Reverb {
     /// Reverb parameters
     params: ReverbParams,
     /// Sample rate
-    sample_rate: f32,
+    _sample_rate: f32,
 
     /// Comb filters (parallel)
     comb_filters: Vec<CombFilter>,
@@ -218,7 +218,7 @@ impl Reverb {
 
         let mut reverb = Self {
             params,
-            sample_rate,
+            _sample_rate: sample_rate,
             comb_filters,
             allpass_filters,
             mix_smoother,

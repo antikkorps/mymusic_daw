@@ -4,8 +4,10 @@ use crate::audio::cpu_monitor::{CpuLoad, CpuMonitor};
 use crate::audio::device::{AudioDeviceInfo, AudioDeviceManager};
 use crate::audio::parameters::AtomicF32;
 use crate::command::{CommandManager, DawState};
-use crate::command::commands::{SetVolumeCommand, SetWaveformCommand, SetAdsrCommand, SetLfoCommand, SetPolyModeCommand, SetPortamentoCommand, SetModRoutingCommand, SetFilterCommand};
-use crate::synth::filter::{FilterParams, FilterType};
+use crate::command::commands::{SetVolumeCommand, SetWaveformCommand, SetAdsrCommand, SetLfoCommand, SetPolyModeCommand, SetPortamentoCommand, SetModRoutingCommand, SetFilterCommand, SetVoiceModeCommand};
+use crate::synth::voice_manager::VoiceMode;
+use crate::sampler::loader::{load_sample, Sample};
+use crate::synth::filter::FilterType;
 use crate::synth::envelope::AdsrParams;
 use crate::synth::lfo::{LfoParams, LfoDestination};
 use crate::synth::poly_mode::PolyMode;
@@ -19,15 +21,19 @@ use crate::midi::event::{MidiEvent, MidiEventTimed};
 use crate::midi::manager::MidiConnectionManager;
 use crate::synth::oscillator::WaveformType;
 use crate::synth::modulation::{ModSource, ModDestination, ModRouting};
+use rfd::FileDialog;
 use eframe::egui;
+use egui_plot::{Line, Plot, PlotPoints, VLine};
 use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum UiTab {
     Devices,
     Synth,
     Modulation,
+    Sampler,
     Play,
     Performance,
 }
@@ -75,6 +81,12 @@ pub struct DawApp {
     max_notifications: usize,
     // Modulation Matrix UI (MVP) - 4 slots
     mod_routings_ui: [ModRouting; 4],
+    // Sampler state
+    loaded_samples: Vec<Sample>,
+    note_map_input: Vec<String>,
+    // Preview state (sample_index, note)
+    preview_sample_note: Option<(usize, u8)>,
+    preview_timer: Option<Instant>,
     // Active UI tab
     active_tab: UiTab,
 }
@@ -156,6 +168,10 @@ impl DawApp {
                 ModRouting { source: ModSource::Velocity, destination: ModDestination::Amplitude, amount: 0.5, enabled: false },
                 ModRouting { source: ModSource::Aftertouch, destination: ModDestination::Amplitude, amount: 0.5, enabled: false },
             ],
+            loaded_samples: Vec::new(),
+            note_map_input: Vec::new(),
+            preview_sample_note: None,
+            preview_timer: None,
             active_tab: UiTab::Synth,
         }
     }
@@ -179,7 +195,7 @@ impl DawApp {
     }
 
     /// Récupère la notification la plus récente (si elle existe)
-    fn get_latest_notification(&self) -> Option<&Notification> {
+    fn _get_latest_notification(&self) -> Option<&Notification> {
         self.notification_queue.back()
     }
 
@@ -235,6 +251,60 @@ impl DawApp {
             let cmd = Command::Midi(timed_event);
             if let Ok(mut tx) = self.command_tx.lock() {
                 let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+            }
+        }
+    }
+
+    /// Preview a sample by triggering a note (C4 = 60)
+    fn preview_sample(&mut self, sample_index: usize) {
+        // Stop any ongoing preview
+        if let Some((_, prev_note)) = self.preview_sample_note {
+            self.send_note_off_direct(prev_note);
+        }
+
+        // Use C4 (note 60) for preview
+        let preview_note = 60;
+
+        // Send note on
+        let timed_event = MidiEventTimed {
+            event: MidiEvent::NoteOn {
+                note: preview_note,
+                velocity: 100,
+            },
+            samples_from_now: 0,
+        };
+        let cmd = Command::Midi(timed_event);
+        if let Ok(mut tx) = self.command_tx.lock() {
+            let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+        }
+
+        // Track preview state with a 2-second timer
+        self.preview_sample_note = Some((sample_index, preview_note));
+        self.preview_timer = Some(Instant::now());
+    }
+
+    /// Send note off without tracking in active_notes (for preview)
+    fn send_note_off_direct(&mut self, note: u8) {
+        let timed_event = MidiEventTimed {
+            event: MidiEvent::NoteOff { note },
+            samples_from_now: 0,
+        };
+        let cmd = Command::Midi(timed_event);
+        if let Ok(mut tx) = self.command_tx.lock() {
+            let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+        }
+    }
+
+    /// Check if preview timer has expired and stop preview if needed
+    fn check_preview_timer(&mut self) {
+        if let Some(timer) = self.preview_timer {
+            if timer.elapsed().as_secs_f32() > 2.0 {
+                // Stop preview after 2 seconds
+                if let Some((_, note)) = self.preview_sample_note {
+                    self.send_note_off_direct(note);
+                }
+                self.preview_sample_note = None;
+                self.preview_timer = None;
             }
         }
     }
@@ -401,6 +471,9 @@ impl eframe::App for DawApp {
         // Always process PC keyboard input, regardless of the current tab
         self.process_pc_keyboard_input(ctx);
 
+        // Check if preview timer has expired
+        self.check_preview_timer();
+
             // Handle Undo/Redo keyboard shortcuts
             ctx.input(|i| {
                 // Ctrl+Z for Undo
@@ -487,6 +560,7 @@ impl eframe::App for DawApp {
                 button(ui, "Devices", UiTab::Devices, &mut self.active_tab);
                 button(ui, "Synth", UiTab::Synth, &mut self.active_tab);
                 button(ui, "Modulation", UiTab::Modulation, &mut self.active_tab);
+                button(ui, "Sampler", UiTab::Sampler, &mut self.active_tab);
                 button(ui, "Play", UiTab::Play, &mut self.active_tab);
                 button(ui, "Performance", UiTab::Performance, &mut self.active_tab);
             });
@@ -738,6 +812,235 @@ impl eframe::App for DawApp {
                             let _ = self.command_manager.execute(cmd, &mut self.daw_state);
                         }
                     });
+                },
+                UiTab::Sampler => {
+                    ui.heading("Sampler");
+                    if ui.button("Load Sample").clicked() {
+                        let file = FileDialog::new()
+                            .add_filter("Audio Files", &["wav", "flac", "mp3"])
+                            .pick_file();
+
+                        if let Some(path) = file {
+                            match load_sample(&path) {
+                                Ok(sample) => {
+                                    // Clone the sample: one for the UI, one for the audio thread
+                                    let sample_for_audio = Arc::new(sample.clone());
+                                    let cmd = Command::AddSample(sample_for_audio);
+                                    if let Ok(mut tx) = self.command_tx.lock() {
+                                        if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                            eprintln!("Failed to send AddSample command: ringbuffer full");
+                                        }
+                                    }
+                                    self.loaded_samples.push(sample);
+                                    self.note_map_input.push(String::new());
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to load sample: {}", e);
+                                }
+                            }
+                        }
+                    }
+
+                    ui.add_space(10.0);
+                    ui.heading("Loaded Samples");
+
+                    // Track actions to perform after rendering UI (to avoid borrow conflicts)
+                    let mut preview_action: Option<(usize, bool)> = None; // (index, is_stop)
+                    let mut delete_action: Option<usize> = None; // index to delete
+
+                    for (i, sample) in self.loaded_samples.iter_mut().enumerate() {
+                        // Extract preview state before ui.horizontal to avoid borrow issues
+                        let is_previewing = self.preview_sample_note.map(|(idx, _)| idx == i).unwrap_or(false);
+
+                        ui.horizontal(|ui| {
+                            ui.label(&sample.name);
+
+                            // Preview button
+                            let preview_button_text = if is_previewing { "⏸ Stop" } else { "▶ Preview" };
+                            if ui.button(preview_button_text).clicked() {
+                                preview_action = Some((i, is_previewing));
+                            }
+
+                            // Delete button
+                            if ui.button("🗑️ Delete").clicked() {
+                                delete_action = Some(i);
+                            }
+
+                            let mut is_looping = sample.loop_mode == crate::sampler::loader::LoopMode::Forward;
+                            if ui.checkbox(&mut is_looping, "Loop").changed() {
+                                sample.loop_mode = if is_looping {
+                                    crate::sampler::loader::LoopMode::Forward
+                                } else {
+                                    crate::sampler::loader::LoopMode::Off
+                                };
+                                let sample_arc = Arc::new(sample.clone());
+                                let cmd = Command::UpdateSample(i, sample_arc);
+                                if let Ok(mut tx) = self.command_tx.lock() {
+                                    if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                        eprintln!("Failed to send UpdateSample command: ringbuffer full");
+                                    }
+                                }
+                            }
+
+                            // Reverse checkbox
+                            if ui.checkbox(&mut sample.reverse, "Reverse").changed() {
+                                let sample_arc = Arc::new(sample.clone());
+                                let cmd = Command::UpdateSample(i, sample_arc);
+                                if let Ok(mut tx) = self.command_tx.lock() {
+                                    if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                        eprintln!("Failed to send UpdateSample command: ringbuffer full");
+                                    }
+                                }
+                            }
+
+                            if is_looping {
+                                let data_len = match &sample.data {
+                                    crate::sampler::loader::SampleData::F32(data) => data.len(),
+                                };
+
+                                // Helper function to convert samples to milliseconds
+                                let samples_to_ms = |samples: usize| -> f32 {
+                                    (samples as f32 / sample.sample_rate as f32) * 1000.0
+                                };
+
+                                ui.label(format!("Start: {} samples ({:.1} ms)", sample.loop_start, samples_to_ms(sample.loop_start)));
+                                if ui.add(egui::Slider::new(&mut sample.loop_start, 0..=sample.loop_end).suffix(" samples")).changed() {
+                                    let sample_arc = Arc::new(sample.clone());
+                                    let cmd = Command::UpdateSample(i, sample_arc);
+                                    if let Ok(mut tx) = self.command_tx.lock() {
+                                        if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                            eprintln!("Failed to send UpdateSample command: ringbuffer full");
+                                        }
+                                    }
+                                }
+                                ui.label(format!("End: {} samples ({:.1} ms)", sample.loop_end, samples_to_ms(sample.loop_end)));
+                                if ui.add(egui::Slider::new(&mut sample.loop_end, sample.loop_start..=data_len).suffix(" samples")).changed() {
+                                    let sample_arc = Arc::new(sample.clone());
+                                    let cmd = Command::UpdateSample(i, sample_arc);
+                                    if let Ok(mut tx) = self.command_tx.lock() {
+                                        if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                            eprintln!("Failed to send UpdateSample command: ringbuffer full");
+                                        }
+                                    }
+                                }
+                            }
+
+                            ui.label("Note:");
+                            ui.text_edit_singleline(&mut self.note_map_input[i]);
+                            if ui.button("Assign").clicked() {
+                                if let Ok(note) = self.note_map_input[i].parse::<u8>() {
+                                    let cmd = Command::SetNoteSampleMapping { note, sample_index: i };
+                                    if let Ok(mut tx) = self.command_tx.lock() {
+                                        if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                            eprintln!("Failed to send SetNoteSampleMapping command: ringbuffer full");
+                                        }
+                                    }
+                                }
+                            }
+                        });
+
+                        // Waveform Plot with loop markers
+                        let (waveform_line, _data_len) = match &sample.data {
+                            crate::sampler::loader::SampleData::F32(data) => {
+                                let num_points = data.len().min(1024);
+                                let skip_factor = (data.len() / num_points).max(1);
+                                let plot_points: PlotPoints = (0..num_points)
+                                    .map(|i| {
+                                        let idx = (i * skip_factor).min(data.len() - 1);
+                                        [idx as f64, data[idx] as f64]
+                                    })
+                                    .collect::<Vec<[f64; 2]>>()
+                                    .into();
+                                (Line::new(plot_points), data.len())
+                            }
+                        };
+
+                        Plot::new(format!("sample_plot_{}", i))
+                            .show_background(false)
+                            .height(50.0)
+                            .show_axes([false, true])
+                            .show(ui, |plot_ui| {
+                                plot_ui.line(waveform_line);
+                                // Add visual markers for loop points when looping is enabled
+                                if sample.loop_mode == crate::sampler::loader::LoopMode::Forward {
+                                    // Loop start marker (green)
+                                    plot_ui.vline(VLine::new(sample.loop_start as f64)
+                                        .color(egui::Color32::from_rgb(0, 200, 0))
+                                        .width(2.0)
+                                        .name("Loop Start"));
+                                    // Loop end marker (red)
+                                    plot_ui.vline(VLine::new(sample.loop_end as f64)
+                                        .color(egui::Color32::from_rgb(200, 0, 0))
+                                        .width(2.0)
+                                        .name("Loop End"));
+                                }
+                            });
+
+                        ui.horizontal(|ui| {
+                            ui.label("Volume:");
+                            if ui.add(egui::Slider::new(&mut sample.volume, 0.0..=1.0)).changed() {
+                                let sample_arc = Arc::new(sample.clone());
+                                let cmd = Command::UpdateSample(i, sample_arc);
+                                if let Ok(mut tx) = self.command_tx.lock() {
+                                    if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                        eprintln!("Failed to send UpdateSample command: ringbuffer full");
+                                    }
+                                }
+                            }
+                            ui.label("Pan:");
+                            if ui.add(egui::Slider::new(&mut sample.pan, -1.0..=1.0)).changed() {
+                                let sample_arc = Arc::new(sample.clone());
+                                let cmd = Command::UpdateSample(i, sample_arc);
+                                if let Ok(mut tx) = self.command_tx.lock() {
+                                    if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                        eprintln!("Failed to send UpdateSample command: ringbuffer full");
+                                    }
+                                }
+                            }
+                        });
+                    }
+
+                    // Handle preview action after the loop to avoid borrow conflicts
+                    if let Some((idx, is_stop)) = preview_action {
+                        if is_stop {
+                            // Stop preview
+                            if let Some((_, note)) = self.preview_sample_note {
+                                self.send_note_off_direct(note);
+                            }
+                            self.preview_sample_note = None;
+                            self.preview_timer = None;
+                        } else {
+                            // Start preview
+                            self.preview_sample(idx);
+                        }
+                    }
+
+                    // Handle delete action after the loop to avoid borrow conflicts
+                    if let Some(idx) = delete_action {
+                        // Stop preview if deleting the currently previewed sample
+                        if let Some((preview_idx, note)) = self.preview_sample_note {
+                            if preview_idx == idx {
+                                self.send_note_off_direct(note);
+                                self.preview_sample_note = None;
+                                self.preview_timer = None;
+                            } else if preview_idx > idx {
+                                // Update preview index if it's after the deleted sample
+                                self.preview_sample_note = Some((preview_idx - 1, note));
+                            }
+                        }
+
+                        // Send command to audio thread
+                        let cmd = Command::RemoveSample(idx);
+                        if let Ok(mut tx) = self.command_tx.lock() {
+                            if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                eprintln!("Failed to send RemoveSample command: ringbuffer full");
+                            }
+                        }
+
+                        // Remove from UI
+                        self.loaded_samples.remove(idx);
+                        self.note_map_input.remove(idx);
+                    }
                 }
                 UiTab::Synth => {
                     // Synth tab
@@ -910,6 +1213,36 @@ impl eframe::App for DawApp {
             });
                     ui.label("Set to 0 for instant pitch changes, >0 for smooth glides.");
                     ui.label("Works best in Mono/Legato modes.");
+
+                    ui.add_space(10.0);
+                    ui.separator();
+
+                    // Voice Mode Section
+                    ui.heading("Voice Mode");
+                    let current_mode = self.daw_state.voice_mode;
+                    let new_mode = match current_mode {
+                        VoiceMode::Synth => {
+                            if ui.button("Switch to Sampler").clicked() {
+                                Some(VoiceMode::Sampler)
+                            } else {
+                                None
+                            }
+                        }
+                        VoiceMode::Sampler => {
+                            if ui.button("Switch to Synth").clicked() {
+                                Some(VoiceMode::Synth)
+                            } else {
+                                None
+                            }
+                        }
+                    };
+
+                    if let Some(mode) = new_mode {
+                        let cmd = Box::new(SetVoiceModeCommand::new(mode));
+                        if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                            eprintln!("Failed to execute voice mode command: {}", e);
+                        }
+                    }
 
                     ui.add_space(10.0);
                     ui.separator();

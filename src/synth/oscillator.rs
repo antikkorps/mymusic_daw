@@ -1,4 +1,10 @@
-// Oscillateurs - Générateurs de formes d'onde
+// Oscillators - Waveform generators
+//
+// Notes:
+// - The audio callback is RT-critical. This module must avoid allocations
+//   and any blocking operations. The oscillator is allocation-free.
+// - Saw and Square are bandlimited using PolyBLEP to reduce aliasing at
+//   higher frequencies while keeping CPU overhead minimal.
 
 use std::f32::consts::PI;
 
@@ -36,13 +42,16 @@ impl SimpleOscillator {
 
 impl Oscillator for SimpleOscillator {
     fn next_sample(&mut self) -> f32 {
-        let sample = match self.waveform {
+        // Compute raw sample based on waveform
+        let mut sample = match self.waveform {
             WaveformType::Sine => (self.phase * 2.0 * PI).sin(),
             WaveformType::Square => {
+                // 50% duty square wave
                 if self.phase < 0.5 { 1.0 } else { -1.0 }
             }
             WaveformType::Saw => (self.phase * 2.0) - 1.0,
             WaveformType::Triangle => {
+                // Simple piecewise triangle in [-1, 1]
                 if self.phase < 0.5 {
                     (self.phase * 4.0) - 1.0
                 } else {
@@ -56,7 +65,24 @@ impl Oscillator for SimpleOscillator {
             self.phase -= 1.0;
         }
 
-        sample
+        // Apply PolyBLEP correction for discontinuous waveforms to reduce aliasing.
+        // This must be done after incrementing phase to keep behavior consistent
+        // across blocks, using the phase value corresponding to this sample.
+        match self.waveform {
+            WaveformType::Saw => {
+                sample -= self.poly_blep(self.phase);
+                sample
+            }
+            WaveformType::Square => {
+                // Square has two discontinuities per period: at phase 0 and 0.5
+                sample += self.poly_blep(self.phase);
+                let mut p2 = self.phase + 0.5;
+                if p2 >= 1.0 { p2 -= 1.0; }
+                sample -= self.poly_blep(p2);
+                sample
+            }
+            _ => sample,
+        }
     }
 
     fn set_frequency(&mut self, freq: f32) {
@@ -65,6 +91,36 @@ impl Oscillator for SimpleOscillator {
 
     fn reset(&mut self) {
         self.phase = 0.0;
+    }
+}
+
+impl SimpleOscillator {
+    /// PolyBLEP (Polynomial Band-Limited Step) correction
+    ///
+    /// Suppresses aliasing at discontinuities for saw/square by adding a small
+    /// polynomial correction around the step. `self.phase_increment` is used as
+    /// the normalized time step `dt` (in cycles per sample).
+    #[inline]
+    fn poly_blep(&self, t: f32) -> f32 {
+        let dt = self.phase_increment;
+        // Guard against extreme dt values; when dt is very small, the regions
+        // below become negligible and we return 0 quickly.
+        if dt <= 0.0 || dt >= 1.0 {
+            return 0.0;
+        }
+
+        if t < dt {
+            // 0 <= t < dt
+            let u = t / dt;
+            // u + u - u*u - 1 = 2u - u^2 - 1
+            return u + u - u * u - 1.0;
+        } else if t > 1.0 - dt {
+            // 1 - dt < t < 1
+            let u = (t - 1.0) / dt;
+            // u^2 + u + u + 1 = u^2 + 2u + 1
+            return u * u + u + u + 1.0;
+        }
+        0.0
     }
 }
 
@@ -131,12 +187,15 @@ mod tests {
         let mut osc = SimpleOscillator::new(WaveformType::Square, SAMPLE_RATE);
         osc.set_frequency(440.0);
 
-        // Les samples doivent être soit 1.0 soit -1.0
-        for _ in 0..1000 {
+        // With PolyBLEP correction, samples are close to ±1.0 except around
+        // discontinuities. Ensure output stays within a reasonable bound and
+        // contains no NaNs/Infs.
+        for _ in 0..5000 {
             let sample = osc.next_sample();
+            assert!(sample.is_finite(), "Square wave sample must be finite");
             assert!(
-                (sample - 1.0).abs() < EPSILON || (sample + 1.0).abs() < EPSILON,
-                "Square wave sample not ±1.0: {}",
+                sample >= -1.2 && sample <= 1.2,
+                "Square wave sample out of expected range: {}",
                 sample
             );
         }
@@ -147,12 +206,13 @@ mod tests {
         let mut osc = SimpleOscillator::new(WaveformType::Saw, SAMPLE_RATE);
         osc.set_frequency(440.0);
 
-        // Saw wave doit être dans [-1, 1]
-        for _ in 0..1000 {
+        // With PolyBLEP correction, saw stays close to [-1, 1] with small
+        // overshoot near discontinuities. Ensure reasonable bounds.
+        for _ in 0..5000 {
             let sample = osc.next_sample();
             assert!(
-                sample >= -1.0 && sample <= 1.0,
-                "Saw wave sample out of range: {}",
+                sample >= -1.2 && sample <= 1.2,
+                "Saw wave sample out of expected range: {}",
                 sample
             );
         }
