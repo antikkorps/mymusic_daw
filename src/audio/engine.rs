@@ -24,7 +24,7 @@
 // mais la reconnexion doit être gérée manuellement.
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{Device, FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig};
+use cpal::{Device, FromSample, SampleFormat, SizedSample, Stream, StreamConfig};
 use std::sync::{Arc, Mutex};
 
 use crate::audio::cpu_monitor::CpuMonitor;
@@ -91,61 +91,52 @@ impl AudioEngine {
         let cpu_monitor = CpuMonitor::new(sample_rate, buffer_frames, 10);
         let cpu_monitor_clone = cpu_monitor.clone();
 
-        // Create atomic volume parameter (shared between UI and audio thread)
+        // Create atomic volume parameter (shared between UI and audio thread via atomic)
         let volume = AtomicF32::new(0.5); // Default volume: 50%
         let volume_clone = volume.clone();
 
-        // Créer le VoiceManager (pré-alloué, partagé avec le callback)
-        let voice_manager = Arc::new(std::sync::Mutex::new(VoiceManager::new(sample_rate)));
-        let voice_manager_clone = Arc::clone(&voice_manager);
+        // Create VoiceManager (will be moved into audio callback)
+        let voice_manager = VoiceManager::new(sample_rate);
 
-        // Créer le smoother pour le volume (10ms de smoothing pour éviter les clics)
-        let volume_smoother = Arc::new(std::sync::Mutex::new(OnePoleSmoother::new(
-            0.5,        // Valeur initiale (50%)
+        // Create volume smoother (10ms smoothing to avoid clicks, moved into callback)
+        let volume_smoother = OnePoleSmoother::new(
+            0.5,        // Initial value (50%)
             10.0,       // 10ms time constant
             sample_rate,
-        )));
-        let volume_smoother_clone = Arc::clone(&volume_smoother);
+        );
 
-        // Create device status (initially disconnected, will be set to connected after stream starts)
+        // Create device status (initially connecting, atomic for UI access)
         let status = AtomicDeviceStatus::new(DeviceStatus::Connecting);
         let status_clone = status.clone();
 
         // Clone notification_tx for the error callback
         let notification_tx_err = notification_tx.clone();
 
-        // Ringbuffers pour les commandes (shared avec le callback)
-        let command_rx_ui = Arc::new(std::sync::Mutex::new(command_rx_ui));
-        let command_rx_ui_clone = Arc::clone(&command_rx_ui);
-
-        let command_rx_midi = Arc::new(std::sync::Mutex::new(command_rx_midi));
-        let command_rx_midi_clone = Arc::clone(&command_rx_midi);
-
         // Build stream based on the detected sample format
-        // We match on the format and create the appropriate stream type
+        // Each format gets its own stream with moved values (no Arc/Mutex in callback)
         let stream = match sample_format {
             SampleFormat::F32 => Self::build_stream::<f32>(
                 &device,
                 &config,
                 channels,
-                command_rx_ui_clone,
-                command_rx_midi_clone,
-                voice_manager_clone,
-                volume_clone,
-                volume_smoother_clone,
-                cpu_monitor_clone,
-                status_clone,
-                notification_tx_err,
+                command_rx_ui,           // Moved (no Arc/Mutex)
+                command_rx_midi,         // Moved (no Arc/Mutex)
+                voice_manager,           // Moved (no Arc/Mutex)
+                volume_clone,            // Clone (AtomicF32 is Arc internally)
+                volume_smoother,         // Moved (no Arc/Mutex)
+                cpu_monitor_clone,       // Clone (CpuMonitor is Arc internally for stats)
+                status_clone,            // Clone (AtomicDeviceStatus is Arc internally)
+                notification_tx_err,     // Clone (Arc<Mutex> only for error callback)
             ),
             SampleFormat::I16 => Self::build_stream::<i16>(
                 &device,
                 &config,
                 channels,
-                command_rx_ui_clone,
-                command_rx_midi_clone,
-                voice_manager_clone,
+                command_rx_ui,
+                command_rx_midi,
+                voice_manager,
                 volume_clone,
-                volume_smoother_clone,
+                volume_smoother,
                 cpu_monitor_clone,
                 status_clone,
                 notification_tx_err,
@@ -154,11 +145,11 @@ impl AudioEngine {
                 &device,
                 &config,
                 channels,
-                command_rx_ui_clone,
-                command_rx_midi_clone,
-                voice_manager_clone,
+                command_rx_ui,
+                command_rx_midi,
+                voice_manager,
                 volume_clone,
-                volume_smoother_clone,
+                volume_smoother,
                 cpu_monitor_clone,
                 status_clone,
                 notification_tx_err,
@@ -374,23 +365,29 @@ impl AudioEngine {
         self.sample_rate
     }
 
-    /// Build an audio stream with automatic format conversion
+    /// Build an audio stream with automatic format conversion (RT-safe)
     ///
     /// This is a generic helper that creates a stream for any sample type (f32, i16, u16)
     /// The audio callback generates f32 internally and converts to the target format.
+    ///
+    /// # RT-Safety
+    /// All mutable state is moved into the closure by value (no Arc<Mutex>), ensuring:
+    /// - Zero lock contention
+    /// - Deterministic access times
+    /// - No allocations in the audio callback
     #[allow(clippy::too_many_arguments)]
     fn build_stream<T>(
         device: &Device,
         config: &StreamConfig,
         channels: usize,
-        command_rx_ui: Arc<Mutex<CommandConsumer>>,
-        command_rx_midi: Arc<Mutex<CommandConsumer>>,
-        voice_manager: Arc<Mutex<VoiceManager>>,
-        volume: AtomicF32,
-        volume_smoother: Arc<Mutex<OnePoleSmoother>>,
-        cpu_monitor: CpuMonitor,
-        status: AtomicDeviceStatus,
-        notification_tx: Arc<Mutex<NotificationProducer>>,
+        mut command_rx_ui: CommandConsumer,       // Moved into closure (no Mutex)
+        mut command_rx_midi: CommandConsumer,     // Moved into closure (no Mutex)
+        mut voice_manager: VoiceManager,          // Moved into closure (no Mutex)
+        volume: AtomicF32,                        // Clone (Arc internally, read-only atomic)
+        mut volume_smoother: OnePoleSmoother,     // Moved into closure (no Mutex)
+        cpu_monitor: CpuMonitor,                  // Clone (Arc internally for stats)
+        status: AtomicDeviceStatus,               // Clone (Arc internally, atomic)
+        notification_tx: Arc<Mutex<NotificationProducer>>, // Keep Mutex (only error callback)
     ) -> Result<Stream, String>
     where
         T: SizedSample + FromSample<f32> + Send + 'static,
@@ -482,76 +479,41 @@ impl AudioEngine {
                         }
                     };
 
-                    // treat UI commands
-                    if let Ok(mut rx) = command_rx_ui.try_lock() {
-                        if let Ok(mut vm) = voice_manager.try_lock() {
-                            while let Some(cmd) = ringbuf::traits::Consumer::try_pop(&mut *rx) {
-                                process_command(cmd, &mut vm);
-                            }
-                        }
+                    // Process UI commands (direct access, no locks!)
+                    while let Some(cmd) = ringbuf::traits::Consumer::try_pop(&mut command_rx_ui) {
+                        process_command(cmd, &mut voice_manager);
                     }
 
-                    // Treat MIDI commands
-                    if let Ok(mut rx) = command_rx_midi.try_lock() {
-                        if let Ok(mut vm) = voice_manager.try_lock() {
-                            while let Some(cmd) = ringbuf::traits::Consumer::try_pop(&mut *rx) {
-                                process_command(cmd, &mut vm);
-                            }
-                        }
+                    // Process MIDI commands (direct access, no locks!)
+                    while let Some(cmd) = ringbuf::traits::Consumer::try_pop(&mut command_rx_midi) {
+                        process_command(cmd, &mut voice_manager);
                     }
 
-                    // Generate audio samples
-                    if let Ok(mut vm) = voice_manager.try_lock() {
-                        // Try to get smoother (non-blocking)
-                        if let Ok(mut smoother) = volume_smoother.try_lock() {
-                            for frame in data.chunks_mut(channels) {
-                                // Read target volume from atomic (once per sample for smoothing)
-                                let target_volume = volume.get();
+                    // Generate audio samples (direct access, no locks!)
+                    for frame in data.chunks_mut(channels) {
+                        // Read target volume from atomic (once per sample for smoothing)
+                        let target_volume = volume.get();
 
-                                // Smooth volume pour éviter clics/pops
-                                let smoothed_volume = smoother.process(target_volume);
+                        // Smooth volume to avoid clicks/pops
+                        let smoothed_volume = volume_smoother.process(target_volume);
 
-                                // Generate stereo sample
-                                let (mut left, mut right) = vm.next_sample();
+                        // Generate stereo sample
+                        let (mut left, mut right) = voice_manager.next_sample();
 
-                                // Anti-denormals (flush tiny values to zero)
-                                left = flush_denormals_to_zero(left);
-                                right = flush_denormals_to_zero(right);
+                        // Anti-denormals (flush tiny values to zero)
+                        left = flush_denormals_to_zero(left);
+                        right = flush_denormals_to_zero(right);
 
-                                // Apply volume
-                                left *= smoothed_volume;
-                                right *= smoothed_volume;
+                        // Apply volume
+                        left *= smoothed_volume;
+                        right *= smoothed_volume;
 
-                                // Soft saturation (protection contre clipping dur)
-                                left = soft_clip(left);
-                                right = soft_clip(right);
+                        // Soft saturation (protection against hard clipping)
+                        left = soft_clip(left);
+                        right = soft_clip(right);
 
-                                // Write stereo sample to frame
-                                write_stereo_to_interleaved_frame((left, right), frame);
-                            }
-                        } else {
-                            // Fallback sans smoother (toujours mieux que silence)
-                            let current_volume = volume.get();
-                            for frame in data.chunks_mut(channels) {
-                                let (mut left, mut right) = vm.next_sample();
-
-                                left = flush_denormals_to_zero(left);
-                                right = flush_denormals_to_zero(right);
-
-                                left *= current_volume;
-                                right *= current_volume;
-
-                                left = soft_clip(left);
-                                right = soft_clip(right);
-
-                                write_stereo_to_interleaved_frame((left, right), frame);
-                            }
-                        }
-                    } else {
-                        // Fallback: silence if we cannot acquire the lock
-                        for sample in data.iter_mut() {
-                            *sample = Sample::from_sample::<f32>(0.0);
-                        }
+                        // Write stereo sample to frame
+                        write_stereo_to_interleaved_frame((left, right), frame);
                     }
 
                     // End CPU monitoring

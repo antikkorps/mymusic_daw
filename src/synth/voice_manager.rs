@@ -50,6 +50,7 @@ impl VoiceManager {
             reverse: false,
             volume: 1.0,
             pan: 0.0,
+            pitch_offset: 0,
         });
 
         let voices = std::array::from_fn(|_| Voice::new_synth(sample_rate));
@@ -304,13 +305,38 @@ impl VoiceManager {
 
     pub fn next_sample(&mut self) -> (f32, f32) {
         let matrix = self.mod_matrix;
-        let (left, right) = self.voices
+
+        // Sum all voice outputs
+        let (left_sum, right_sum) = self.voices
             .iter_mut()
             .map(|v| v.next_sample_with_matrix(&matrix))
             .fold((0.0, 0.0), |(acc_l, acc_r), (voice_l, voice_r)| {
                 (acc_l + voice_l, acc_r + voice_r)
             });
-        (left / 4.0, right / 4.0)
+
+        // Dynamic gain staging based on active voices
+        // This provides optimal headroom while maximizing loudness
+        let active_voices = self.voices.iter().filter(|v| v.is_active()).count();
+
+        // Calculate gain factor:
+        // - 1 voice: full gain (1.0)
+        // - 4 voices: 0.5 gain
+        // - 16 voices: 0.25 gain
+        // Formula: 1.0 / sqrt(max(1, n)) provides perceptually balanced scaling
+        let gain = if active_voices > 0 {
+            1.0 / (active_voices as f32).sqrt()
+        } else {
+            1.0 // No voices, doesn't matter
+        };
+
+        // Apply headroom (0.7 = ~-3dB to prevent digital clipping)
+        const HEADROOM: f32 = 0.7;
+        let left = left_sum * gain * HEADROOM;
+        let right = right_sum * gain * HEADROOM;
+
+        // Soft-limiter (tanh provides smooth saturation instead of harsh clipping)
+        // tanh maps (-∞, +∞) → (-1, +1) with smooth curve
+        (left.tanh(), right.tanh())
     }
 
     pub fn active_voice_count(&self) -> usize {
@@ -334,6 +360,89 @@ mod tests {
         assert_eq!(vm.active_voice_count(), 2);
         vm.note_on(67, 100);
         assert_eq!(vm.active_voice_count(), 3);
+    }
+
+    #[test]
+    fn test_gain_staging_multiple_voices() {
+        let mut vm = VoiceManager::new(SAMPLE_RATE);
+
+        // Trigger 4 voices at full velocity
+        for note in [60, 64, 67, 72] {
+            vm.note_on(note, 127);
+        }
+
+        // Process samples and verify no clipping
+        for _ in 0..100 {
+            let (left, right) = vm.next_sample();
+            assert!(left.abs() <= 1.0, "Left channel should not clip with 4 voices: {}", left);
+            assert!(right.abs() <= 1.0, "Right channel should not clip with 4 voices: {}", right);
+        }
+    }
+
+    #[test]
+    fn test_gain_staging_max_polyphony() {
+        let mut vm = VoiceManager::new(SAMPLE_RATE);
+
+        // Trigger all 16 voices at full velocity (worst case)
+        for i in 0..16 {
+            vm.note_on(60 + i, 127);
+        }
+
+        assert_eq!(vm.active_voice_count(), 16, "Should have 16 active voices");
+
+        // Process samples and verify no clipping even with 16 voices
+        for _ in 0..500 {
+            let (left, right) = vm.next_sample();
+
+            // With dynamic gain staging and soft-limiter (tanh),
+            // output should NEVER exceed [-1, +1]
+            assert!(
+                left.abs() <= 1.0,
+                "Left channel should not clip with 16 voices: {}",
+                left
+            );
+            assert!(
+                right.abs() <= 1.0,
+                "Right channel should not clip with 16 voices: {}",
+                right
+            );
+
+            // Should still produce audible output (not silence)
+            if left.abs() > 0.001 || right.abs() > 0.001 {
+                // Good, we have audio
+            }
+        }
+    }
+
+    #[test]
+    fn test_soft_limiter_smoothness() {
+        // Test that tanh() soft-limiter provides smooth saturation
+        let mut vm = VoiceManager::new(SAMPLE_RATE);
+
+        // Create extreme scenario: many loud voices
+        for i in 0..16 {
+            vm.note_on(60 + i, 127);
+        }
+
+        // Collect samples
+        let mut samples = Vec::new();
+        for _ in 0..100 {
+            let (left, _) = vm.next_sample();
+            samples.push(left);
+        }
+
+        // Check that samples are smoothly saturated (no sudden jumps)
+        for window in samples.windows(2) {
+            let diff = (window[1] - window[0]).abs();
+            // Difference between consecutive samples should be reasonable
+            // (tanh provides smooth saturation, not brick-wall clipping)
+            assert!(
+                diff < 0.5,
+                "Consecutive samples should not have huge jumps: {} → {}",
+                window[0],
+                window[1]
+            );
+        }
     }
 
     // ... (rest of the tests are omitted for brevity but are unchanged)

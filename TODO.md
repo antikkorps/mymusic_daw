@@ -486,14 +486,17 @@
 **Durée** : 2-3 semaines
 **Justification** : Nécessaire pour créer un morceau complet (Phase 4 - dogfooding réel)
 
-**🎯 Plan de finalisation** (2-3 jours restants) :
+**🎯 Plan de finalisation** (1-2 jours restants) :
 1. ✅ Loop points + Preview UI (FAIT)
-2. 🔲 Suppression de samples (UI)
-3. 🔲 Reverse playback mode
-4. 🔲 Pitch offset (coarse tune)
-5. 🔲 **Persistance** (Save/Load sample banks) - CRITIQUE pour Phase 4
-6. 🔲 Tests d'intégration
-7. 🔲 Release v0.5.0 🎉
+2. ✅ Suppression de samples (UI) (FAIT)
+3. ✅ Reverse playback mode (FAIT)
+4. ✅ Pitch offset (coarse tune) (FAIT)
+5. ✅ **Refactoring audio RT-safe** (FAIT) 🚀
+   - ✅ Retirer Mutex du callback (ZÉRO try_lock maintenant!)
+   - ✅ Gain staging dynamique (1/sqrt(n) + headroom + tanh soft-limiter)
+6. 🔲 **Persistance** (Save/Load sample banks) - CRITIQUE pour Phase 4
+7. 🔲 Tests d'intégration
+8. 🔲 Release v0.5.0 🎉
 
 ### Lecteur de samples
 
@@ -522,8 +525,8 @@
   - [x] Pitch shifting via resampling (semitones MIDI)
   - [x] Volume et pan par sample
   - [x] Mode one-shot vs loop ✅
-  - [ ] Reverse playback mode 🔲
-  - [ ] Pitch offset (coarse tune -12 à +12 semitones) 🔲
+  - [x] Reverse playback mode ✅
+  - [x] Pitch offset (coarse tune -12 à +12 semitones) ✅
   - [x] ADSR par sample (optionnel - peut réutiliser Envelope existant)
 - [x] Sampler Voice
   - [x] Similaire à Voice mais lit depuis buffer au lieu d'oscillateur
@@ -539,7 +542,7 @@
 - [x] Browser de samples ✅ (MVP)
   - [x] Liste des samples chargés ✅
   - [x] Bouton "Load Sample" (file picker) ✅
-  - [ ] Bouton "Delete" pour supprimer un sample 🔲
+  - [x] Bouton "Delete" pour supprimer un sample ✅
   - [x] Preview audio (playback du sample) ✅
   - [x] Affichage waveform avec loop markers ✅
 - [ ] Mapping MIDI → Sample (partiellement)
@@ -549,11 +552,39 @@
   - [ ] Indication visuelle des notes assignées sur clavier
 - [x] Contrôles par sample ✅
   - [x] Volume, Pan ✅
-  - [ ] Pitch offset (coarse tuning -12 à +12 semitones) 🔲
+  - [x] Pitch offset (coarse tuning -12 à +12 semitones) ✅
   - [x] Loop on/off ✅
   - [x] Mode one-shot/loop ✅
   - [x] Loop points (start/end) avec affichage temps ✅
-  - [ ] Reverse playback 🔲
+  - [x] Reverse playback ✅
+
+### Refactoring audio RT-safe 🔧✅ (TERMINÉ)
+
+**Objectif** : Améliorer RT-safety et qualité audio avant v0.5.0
+
+- [x] Retirer Mutex du callback audio ✅
+  - [x] Move CommandConsumer (UI/MIDI) dans la closure du stream
+  - [x] VoiceManager owned directement dans la closure (pas d'Arc<Mutex>)
+  - [x] OnePoleSmoother owned directement dans la closure
+  - [x] Producteurs restent côté UI/MIDI threads
+  - [x] **Résultat : ZÉRO try_lock() dans le callback** 🚀
+- [x] Gain staging dynamique ✅
+  - [x] Remplacer division fixe `/4.0` par scaling dynamique
+  - [x] Formula : `1/sqrt(active_voices)` pour scaling perceptuellement balancé
+  - [x] Headroom fixe (0.7 = -3dB) + tanh() soft-limiter
+  - [x] Tests : 3 nouveaux tests (4 voix, 16 voix max polyphony, soft-limiter smoothness)
+  - [x] **Résultat : Pas de clipping même avec 16 voix simultanées** ✅
+
+**Notes techniques :**
+- Latency réduite (pas de contention de locks)
+- Code plus simple et déterministe
+- Soft-limiter tanh() fournit saturation douce (pas de harsh clipping)
+- PolyBLEP overshoots (±1.8) sont intentionnels et nécessaires pour bandlimiting
+- **179 tests passent ✅** (tous actifs, aucun ignored)
+
+**Dépriorisés (Phase 4+ ou 6a) :**
+- [ ] Scheduling MIDI sample-accurate (AudioTiming infrastructure existe déjà)
+- [ ] Anglais partout dans les commentaires (cosmétique)
 
 ### Persistance 🔲 (CRITIQUE pour Phase 4)
 

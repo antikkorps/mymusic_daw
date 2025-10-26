@@ -34,6 +34,7 @@ pub struct Sample {
     pub reverse: bool,
     pub volume: f32,
     pub pan: f32,
+    pub pitch_offset: i8, // Pitch offset in semitones, range: -12 to +12
 }
 
 pub fn load_sample(path: &Path) -> Result<Sample, String> {
@@ -94,6 +95,7 @@ fn load_wav(path: &Path) -> Result<Sample, String> {
         reverse: false,
         volume: 2.0, // Boost sample volume by default for better audibility
         pan: 0.0,
+        pitch_offset: 0,
     })
 }
 
@@ -124,6 +126,7 @@ fn load_flac(path: &Path) -> Result<Sample, String> {
         reverse: false,
         volume: 2.0, // Boost sample volume by default for better audibility
         pan: 0.0,
+        pitch_offset: 0,
     })
 }
 
@@ -374,5 +377,6 @@ fn load_mp3(path: &Path) -> Result<Sample, String> {
         reverse: false,
         volume: 2.0, // Boost sample volume by default for better audibility
         pan: 0.0,
+        pitch_offset: 0,
     })
 }

@@ -32,7 +32,7 @@ impl SamplerVoice {
 
     pub fn note_on(&mut self, note: u8, velocity: u8, age: u64) {
         const BASE_NOTE: f64 = 60.0; // C4
-        let semitones_from_base = note as f64 - BASE_NOTE;
+        let semitones_from_base = (note as f64 - BASE_NOTE) + self.sample.pitch_offset as f64;
         self.pitch_step = 2.0_f64.powf(semitones_from_base / 12.0);
 
         self.note = note;
@@ -88,7 +88,7 @@ impl SamplerVoice {
 
     pub fn change_pitch_legato(&mut self, note: u8, velocity: u8, age: u64) {
         const BASE_NOTE: f64 = 60.0; // C4
-        let semitones_from_base = note as f64 - BASE_NOTE;
+        let semitones_from_base = (note as f64 - BASE_NOTE) + self.sample.pitch_offset as f64;
         self.pitch_step = 2.0_f64.powf(semitones_from_base / 12.0);
         self.note = note;
         self.velocity = velocity as f32 / 127.0;
