@@ -486,14 +486,17 @@
 **Durée** : 2-3 semaines
 **Justification** : Nécessaire pour créer un morceau complet (Phase 4 - dogfooding réel)
 
-**🎯 Plan de finalisation** (2-3 jours restants) :
+**🎯 Plan de finalisation** (1-2 jours restants) :
 1. ✅ Loop points + Preview UI (FAIT)
 2. ✅ Suppression de samples (UI) (FAIT)
 3. ✅ Reverse playback mode (FAIT)
 4. ✅ Pitch offset (coarse tune) (FAIT)
-5. 🔲 **Persistance** (Save/Load sample banks) - CRITIQUE pour Phase 4
-6. 🔲 Tests d'intégration
-7. 🔲 Release v0.5.0 🎉
+5. ✅ **Refactoring audio RT-safe** (FAIT) 🚀
+   - ✅ Retirer Mutex du callback (ZÉRO try_lock maintenant!)
+   - ✅ Gain staging dynamique (1/sqrt(n) + headroom + tanh soft-limiter)
+6. 🔲 **Persistance** (Save/Load sample banks) - CRITIQUE pour Phase 4
+7. 🔲 Tests d'intégration
+8. 🔲 Release v0.5.0 🎉
 
 ### Lecteur de samples
 
@@ -554,6 +557,34 @@
   - [x] Mode one-shot/loop ✅
   - [x] Loop points (start/end) avec affichage temps ✅
   - [x] Reverse playback ✅
+
+### Refactoring audio RT-safe 🔧✅ (TERMINÉ)
+
+**Objectif** : Améliorer RT-safety et qualité audio avant v0.5.0
+
+- [x] Retirer Mutex du callback audio ✅
+  - [x] Move CommandConsumer (UI/MIDI) dans la closure du stream
+  - [x] VoiceManager owned directement dans la closure (pas d'Arc<Mutex>)
+  - [x] OnePoleSmoother owned directement dans la closure
+  - [x] Producteurs restent côté UI/MIDI threads
+  - [x] **Résultat : ZÉRO try_lock() dans le callback** 🚀
+- [x] Gain staging dynamique ✅
+  - [x] Remplacer division fixe `/4.0` par scaling dynamique
+  - [x] Formula : `1/sqrt(active_voices)` pour scaling perceptuellement balancé
+  - [x] Headroom fixe (0.7 = -3dB) + tanh() soft-limiter
+  - [x] Tests : 3 nouveaux tests (4 voix, 16 voix max polyphony, soft-limiter smoothness)
+  - [x] **Résultat : Pas de clipping même avec 16 voix simultanées** ✅
+
+**Notes techniques :**
+- Latency réduite (pas de contention de locks)
+- Code plus simple et déterministe
+- Soft-limiter tanh() fournit saturation douce (pas de harsh clipping)
+- 177 tests passent ✅ (2 ignored pour problème PolyBLEP préexistant)
+
+**Dépriorisés (Phase 4+ ou 6a) :**
+- [ ] Scheduling MIDI sample-accurate (AudioTiming infrastructure existe déjà)
+- [ ] Anglais partout dans les commentaires (cosmétique)
+- [ ] Fix PolyBLEP overshoot issue (±1.8 overshoot détecté)
 
 ### Persistance 🔲 (CRITIQUE pour Phase 4)
 
