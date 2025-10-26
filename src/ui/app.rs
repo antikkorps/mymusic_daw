@@ -997,6 +997,16 @@ impl eframe::App for DawApp {
                                     }
                                 }
                             }
+                            ui.label("Pitch Offset:");
+                            if ui.add(egui::Slider::new(&mut sample.pitch_offset, -12..=12).suffix(" st")).changed() {
+                                let sample_arc = Arc::new(sample.clone());
+                                let cmd = Command::UpdateSample(i, sample_arc);
+                                if let Ok(mut tx) = self.command_tx.lock() {
+                                    if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                        eprintln!("Failed to send UpdateSample command: ringbuffer full");
+                                    }
+                                }
+                            }
                         });
                     }
 

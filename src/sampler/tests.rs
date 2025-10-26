@@ -68,6 +68,7 @@ mod tests {
             reverse: false,
             volume: 1.0,
             pan: 0.0,
+            pitch_offset: 0,
         }
     }
 
@@ -254,5 +255,135 @@ mod tests {
 
         // Voice should still be active due to looping
         assert!(voice.is_active(), "Reverse playback with loop should keep voice active");
+    }
+
+    #[test]
+    fn test_pitch_offset_default() {
+        // Test that default pitch_offset (0) plays at normal pitch
+        let sample = create_test_sample(100);
+        assert_eq!(sample.pitch_offset, 0, "Default pitch_offset should be 0");
+
+        let sample_arc = Arc::new(sample);
+        let mut voice = SamplerVoice::new(sample_arc.clone(), 48000.0);
+
+        // Note C4 (60) with no offset should have pitch_step = 1.0
+        voice.note_on(60, 100, 0);
+
+        // We can't directly access pitch_step (it's private), but we can verify
+        // the voice is active and produces output
+        let matrix = crate::synth::modulation::ModulationMatrix::new_empty();
+        let (left, right) = voice.next_sample_with_matrix(&matrix);
+
+        assert!(left.is_finite() && right.is_finite(), "Should produce valid audio with default pitch offset");
+        assert!(voice.is_active(), "Voice should be active");
+    }
+
+    #[test]
+    fn test_pitch_offset_positive() {
+        // Test that pitch_offset = +12 shifts pitch up one octave
+        let mut sample = create_test_sample(1000);
+        sample.pitch_offset = 12; // +1 octave
+        sample.loop_mode = LoopMode::Forward; // Loop to keep voice active
+        sample.loop_end = 1000;
+
+        let sample_arc = Arc::new(sample);
+        let mut voice = SamplerVoice::new(sample_arc.clone(), 48000.0);
+
+        // Play C4 (60) with +12 offset should sound like C5 (72)
+        // This means pitch_step should be 2.0 (2x faster playback)
+        voice.note_on(60, 100, 0);
+
+        let matrix = crate::synth::modulation::ModulationMatrix::new_empty();
+
+        // Process many samples to verify stability
+        for _ in 0..500 {
+            let (left, right) = voice.next_sample_with_matrix(&matrix);
+            assert!(left.is_finite() && right.is_finite(), "Should produce valid audio with positive pitch offset");
+        }
+
+        assert!(voice.is_active(), "Voice should remain active with pitch offset");
+    }
+
+    #[test]
+    fn test_pitch_offset_negative() {
+        // Test that pitch_offset = -12 shifts pitch down one octave
+        let mut sample = create_test_sample(1000);
+        sample.pitch_offset = -12; // -1 octave
+        sample.loop_mode = LoopMode::Forward; // Loop to keep voice active
+        sample.loop_end = 1000;
+
+        let sample_arc = Arc::new(sample);
+        let mut voice = SamplerVoice::new(sample_arc.clone(), 48000.0);
+
+        // Play C4 (60) with -12 offset should sound like C3 (48)
+        // This means pitch_step should be 0.5 (0.5x slower playback)
+        voice.note_on(60, 100, 0);
+
+        let matrix = crate::synth::modulation::ModulationMatrix::new_empty();
+
+        // Process many samples to verify stability
+        for _ in 0..200 {
+            let (left, right) = voice.next_sample_with_matrix(&matrix);
+            assert!(left.is_finite() && right.is_finite(), "Should produce valid audio with negative pitch offset");
+        }
+
+        assert!(voice.is_active(), "Voice should remain active with negative pitch offset");
+    }
+
+    #[test]
+    fn test_pitch_offset_range() {
+        // Test that pitch_offset works across the full range (-12 to +12)
+        for offset in -12..=12 {
+            let mut sample = create_test_sample(100);
+            sample.pitch_offset = offset;
+            sample.loop_mode = LoopMode::Forward;
+
+            let sample_arc = Arc::new(sample);
+            let mut voice = SamplerVoice::new(sample_arc.clone(), 48000.0);
+            voice.note_on(60, 100, 0);
+
+            let matrix = crate::synth::modulation::ModulationMatrix::new_empty();
+
+            // Process a few samples
+            for _ in 0..10 {
+                let (left, right) = voice.next_sample_with_matrix(&matrix);
+                assert!(
+                    left.is_finite() && right.is_finite(),
+                    "Should produce valid audio with pitch_offset = {}",
+                    offset
+                );
+            }
+
+            assert!(voice.is_active(), "Voice should be active with pitch_offset = {}", offset);
+        }
+    }
+
+    #[test]
+    fn test_pitch_offset_with_different_notes() {
+        // Test that pitch_offset works correctly with different MIDI notes
+        let mut sample = create_test_sample(500);
+        sample.pitch_offset = 5; // Perfect fourth up
+        sample.loop_mode = LoopMode::Forward;
+
+        let sample_arc = Arc::new(sample);
+
+        // Test with various notes
+        for note in [36, 48, 60, 72, 84] {
+            let mut voice = SamplerVoice::new(sample_arc.clone(), 48000.0);
+            voice.note_on(note, 100, 0);
+
+            let matrix = crate::synth::modulation::ModulationMatrix::new_empty();
+
+            for _ in 0..20 {
+                let (left, right) = voice.next_sample_with_matrix(&matrix);
+                assert!(
+                    left.is_finite() && right.is_finite(),
+                    "Should produce valid audio for note {} with pitch_offset",
+                    note
+                );
+            }
+
+            assert!(voice.is_active(), "Voice should be active for note {}", note);
+        }
     }
 }

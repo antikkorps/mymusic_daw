@@ -50,6 +50,7 @@ impl VoiceManager {
             reverse: false,
             volume: 1.0,
             pan: 0.0,
+            pitch_offset: 0,
         });
 
         let voices = std::array::from_fn(|_| Voice::new_synth(sample_rate));
