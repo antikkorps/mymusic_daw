@@ -579,12 +579,12 @@
 - Latency réduite (pas de contention de locks)
 - Code plus simple et déterministe
 - Soft-limiter tanh() fournit saturation douce (pas de harsh clipping)
-- 177 tests passent ✅ (2 ignored pour problème PolyBLEP préexistant)
+- PolyBLEP overshoots (±1.8) sont intentionnels et nécessaires pour bandlimiting
+- **179 tests passent ✅** (tous actifs, aucun ignored)
 
 **Dépriorisés (Phase 4+ ou 6a) :**
 - [ ] Scheduling MIDI sample-accurate (AudioTiming infrastructure existe déjà)
 - [ ] Anglais partout dans les commentaires (cosmétique)
-- [ ] Fix PolyBLEP overshoot issue (±1.8 overshoot détecté)
 
 ### Persistance 🔲 (CRITIQUE pour Phase 4)
 
