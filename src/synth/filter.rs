@@ -74,6 +74,7 @@ impl Default for FilterParams {
 /// let mut filter = StateVariableFilter::new(params, 44100.0);
 ///
 /// // Process audio
+/// let input_sample = 0.5;
 /// let output = filter.process(input_sample);
 /// ```
 pub struct StateVariableFilter {

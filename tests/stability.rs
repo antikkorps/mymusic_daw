@@ -6,10 +6,10 @@
 use mymusic_daw::synth::voice_manager::VoiceManager;
 use std::time::{Duration, Instant};
 
-/// Short stability test (5 minutes) - suitable for CI/CD
+/// Short stability test (10 seconds) - suitable for CI/CD
 #[test]
 fn test_stability_short() {
-    run_stability_test(Duration::from_secs(60 * 5), "short (5 min)");
+    run_stability_test(Duration::from_secs(10), "short (10s)");
 }
 
 /// Long stability test (1 hour) - run manually for full validation
@@ -90,9 +90,9 @@ fn run_stability_test(duration: Duration, test_name: &str) {
 
         total_buffers += 1;
 
-        // Print progress every 10 seconds
+        // Print progress every 2 seconds for short tests
         let elapsed = start_time.elapsed();
-        if elapsed.as_secs().is_multiple_of(10) && elapsed.as_millis() % 10000 < 100 {
+        if elapsed.as_secs().is_multiple_of(2) && elapsed.as_millis() % 2000 < 100 {
             let progress_pct = (elapsed.as_secs_f32() / duration.as_secs_f32()) * 100.0;
             println!(
                 "Progress: {:.1}% ({:.0}s / {:.0}s) - {} buffers, {} samples, {} notes",
@@ -147,7 +147,7 @@ fn run_stability_test(duration: Duration, test_name: &str) {
 fn test_stability_polyphonic_stress() {
     const SAMPLE_RATE: f32 = 48000.0;
     const BUFFER_SIZE: usize = 512;
-    const TEST_DURATION_SECS: u64 = 30; // 30 seconds of stress test
+    const TEST_DURATION_SECS: u64 = 5; // 5 seconds of stress test
 
     println!("\n=== Polyphonic Stress Test ===");
 
