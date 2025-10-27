@@ -1,7 +1,7 @@
 // Audio timing utilities for sample-accurate MIDI scheduling
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Shared audio timing state for sample-accurate MIDI scheduling
 #[derive(Clone)]
@@ -114,7 +114,7 @@ mod tests {
 
         // Event 10ms in the future
         let current_time = 1_000_000; // 1 second
-        let midi_time = 1_010_000;    // 1.01 seconds
+        let midi_time = 1_010_000; // 1.01 seconds
 
         let samples_from_now = timing.calculate_samples_from_now(midi_time, current_time);
         assert_eq!(samples_from_now, 480); // 10ms = 480 samples @ 48kHz
@@ -141,6 +141,9 @@ mod tests {
         let midi_time = 1_000_000;
 
         let samples_from_now = timing.calculate_samples_from_now(midi_time, current_time);
-        assert_eq!(timing.calculate_samples_from_now(midi_time, current_time), 0);
+        assert_eq!(
+            timing.calculate_samples_from_now(midi_time, current_time),
+            0
+        );
     }
 }

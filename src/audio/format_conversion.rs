@@ -85,10 +85,8 @@ where
 /// * `internal_sample` - The mono f32 sample to write
 /// * `output_frame` - A slice representing one audio frame (e.g., [L, R] for stereo)
 #[inline]
-pub fn write_mono_to_interleaved_frame<T>(
-    internal_sample: f32,
-    output_frame: &mut [T],
-) where
+pub fn write_mono_to_interleaved_frame<T>(internal_sample: f32, output_frame: &mut [T])
+where
     T: Sample + FromSample<f32>,
 {
     for channel_sample in output_frame.iter_mut() {
@@ -197,8 +195,12 @@ mod tests {
             let i16_val = f32_to_i16(original);
             let back = i16_to_f32(i16_val);
             // Allow small loss due to quantization
-            assert!((back - original).abs() < 0.001,
-                "Roundtrip failed for {}: got {}", original, back);
+            assert!(
+                (back - original).abs() < 0.001,
+                "Roundtrip failed for {}: got {}",
+                original,
+                back
+            );
         }
     }
 
@@ -210,8 +212,12 @@ mod tests {
             let u16_val = f32_to_u16(original);
             let back = u16_to_f32(u16_val);
             // Allow small loss due to quantization
-            assert!((back - original).abs() < 0.001,
-                "Roundtrip failed for {}: got {}", original, back);
+            assert!(
+                (back - original).abs() < 0.001,
+                "Roundtrip failed for {}: got {}",
+                original,
+                back
+            );
         }
     }
 

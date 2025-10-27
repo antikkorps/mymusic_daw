@@ -1,8 +1,8 @@
 // Atomic parameters - Lock-free communication UI ↔ Audio thread
 // Uses atomic operations to share parameters between threads without locks
 
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Thread-safe f32 parameter using atomic operations
 /// Converts f32 to u32 bits for atomic storage

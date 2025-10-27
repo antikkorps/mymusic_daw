@@ -1,10 +1,10 @@
 // Module audio - Gestion du backend CPAL et callback temps-réel
 
-pub mod engine;
-pub mod device;
 pub mod buffer;
-pub mod parameters;
-pub mod dsp_utils;
 pub mod cpu_monitor;
-pub mod timing;
+pub mod device;
+pub mod dsp_utils;
+pub mod engine;
 pub mod format_conversion;
+pub mod parameters;
+pub mod timing;

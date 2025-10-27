@@ -26,7 +26,7 @@ pub struct SimpleOscillator {
     waveform: WaveformType,
     phase: f32,
     phase_increment: f32,
-    pub(crate) sample_rate: f32,  // Made pub(crate) for LFO access
+    pub(crate) sample_rate: f32, // Made pub(crate) for LFO access
 }
 
 impl SimpleOscillator {
@@ -77,7 +77,9 @@ impl Oscillator for SimpleOscillator {
                 // Square has two discontinuities per period: at phase 0 and 0.5
                 sample += self.poly_blep(self.phase);
                 let mut p2 = self.phase + 0.5;
-                if p2 >= 1.0 { p2 -= 1.0; }
+                if p2 >= 1.0 {
+                    p2 -= 1.0;
+                }
                 sample -= self.poly_blep(p2);
                 sample
             }
@@ -168,7 +170,11 @@ mod tests {
         // Générer plusieurs samples et vérifier qu'ils sont dans [-1, 1]
         for _ in 0..1000 {
             let sample = osc.next_sample();
-            assert!(sample >= -1.0 && sample <= 1.0, "Sample {} hors limites", sample);
+            assert!(
+                sample >= -1.0 && sample <= 1.0,
+                "Sample {} hors limites",
+                sample
+            );
         }
     }
 
@@ -179,7 +185,11 @@ mod tests {
 
         // Premier sample doit être proche de 0 (sin(0) = 0)
         let first_sample = osc.next_sample();
-        assert!(first_sample.abs() < EPSILON, "First sample: {}", first_sample);
+        assert!(
+            first_sample.abs() < EPSILON,
+            "First sample: {}",
+            first_sample
+        );
     }
 
     #[test]

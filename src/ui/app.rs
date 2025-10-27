@@ -3,15 +3,11 @@
 use crate::audio::cpu_monitor::{CpuLoad, CpuMonitor};
 use crate::audio::device::{AudioDeviceInfo, AudioDeviceManager};
 use crate::audio::parameters::AtomicF32;
+use crate::command::commands::{
+    SetAdsrCommand, SetFilterCommand, SetLfoCommand, SetModRoutingCommand, SetPolyModeCommand,
+    SetPortamentoCommand, SetVoiceModeCommand, SetVolumeCommand, SetWaveformCommand,
+};
 use crate::command::{CommandManager, DawState};
-use crate::command::commands::{SetVolumeCommand, SetWaveformCommand, SetAdsrCommand, SetLfoCommand, SetPolyModeCommand, SetPortamentoCommand, SetModRoutingCommand, SetFilterCommand, SetVoiceModeCommand};
-use crate::synth::voice_manager::VoiceMode;
-use crate::sampler::loader::{load_sample, Sample};
-use crate::synth::filter::FilterType;
-use crate::synth::envelope::AdsrParams;
-use crate::synth::lfo::{LfoParams, LfoDestination};
-use crate::synth::poly_mode::PolyMode;
-use crate::synth::portamento::PortamentoParams;
 use crate::connection::status::DeviceStatus;
 use crate::messaging::channels::{CommandProducer, NotificationConsumer};
 use crate::messaging::command::Command;
@@ -19,11 +15,18 @@ use crate::messaging::notification::{Notification, NotificationCategory};
 use crate::midi::device::{MidiDeviceInfo, MidiDeviceManager};
 use crate::midi::event::{MidiEvent, MidiEventTimed};
 use crate::midi::manager::MidiConnectionManager;
+use crate::sampler::loader::{Sample, load_sample};
+use crate::synth::envelope::AdsrParams;
+use crate::synth::filter::FilterType;
+use crate::synth::lfo::{LfoDestination, LfoParams};
+use crate::synth::modulation::{ModDestination, ModRouting, ModSource};
 use crate::synth::oscillator::WaveformType;
-use crate::synth::modulation::{ModSource, ModDestination, ModRouting};
-use rfd::FileDialog;
+use crate::synth::poly_mode::PolyMode;
+use crate::synth::portamento::PortamentoParams;
+use crate::synth::voice_manager::VoiceMode;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints, VLine};
+use rfd::FileDialog;
 use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -117,15 +120,13 @@ impl DawApp {
             .unwrap_or_default();
 
         // Synchroniser avec le device cible du manager MIDI
-        let selected_midi_device = midi_connection_manager
-            .target_device()
-            .unwrap_or_else(|| {
-                available_midi_devices
-                    .iter()
-                    .find(|d| d.is_default)
-                    .map(|d| d.name.clone())
-                    .unwrap_or_default()
-            });
+        let selected_midi_device = midi_connection_manager.target_device().unwrap_or_else(|| {
+            available_midi_devices
+                .iter()
+                .find(|d| d.is_default)
+                .map(|d| d.name.clone())
+                .unwrap_or_default()
+        });
 
         // Initialize Command Pattern with shared command producer
         let command_manager = CommandManager::new();
@@ -163,10 +164,30 @@ impl DawApp {
             notification_queue: VecDeque::new(),
             max_notifications: 10,
             mod_routings_ui: [
-                ModRouting { source: ModSource::Lfo(0), destination: ModDestination::OscillatorPitch(0), amount: 2.0, enabled: false },
-                ModRouting { source: ModSource::Lfo(0), destination: ModDestination::Amplitude, amount: 0.5, enabled: false },
-                ModRouting { source: ModSource::Velocity, destination: ModDestination::Amplitude, amount: 0.5, enabled: false },
-                ModRouting { source: ModSource::Aftertouch, destination: ModDestination::Amplitude, amount: 0.5, enabled: false },
+                ModRouting {
+                    source: ModSource::Lfo(0),
+                    destination: ModDestination::OscillatorPitch(0),
+                    amount: 2.0,
+                    enabled: false,
+                },
+                ModRouting {
+                    source: ModSource::Lfo(0),
+                    destination: ModDestination::Amplitude,
+                    amount: 0.5,
+                    enabled: false,
+                },
+                ModRouting {
+                    source: ModSource::Velocity,
+                    destination: ModDestination::Amplitude,
+                    amount: 0.5,
+                    enabled: false,
+                },
+                ModRouting {
+                    source: ModSource::Aftertouch,
+                    destination: ModDestination::Amplitude,
+                    amount: 0.5,
+                    enabled: false,
+                },
             ],
             loaded_samples: Vec::new(),
             note_map_input: Vec::new(),
@@ -184,7 +205,8 @@ impl DawApp {
     /// Lit les nouvelles notifications depuis le ringbuffer et les ajoute à la queue
     fn update_notifications(&mut self) {
         // Lire toutes les notifications disponibles
-        while let Some(notification) = ringbuf::traits::Consumer::try_pop(&mut self.notification_rx) {
+        while let Some(notification) = ringbuf::traits::Consumer::try_pop(&mut self.notification_rx)
+        {
             self.notification_queue.push_back(notification);
 
             // Limiter la taille de la queue
@@ -337,7 +359,8 @@ impl DawApp {
         ];
 
         for (key, note) in &key_map {
-            let key_code = egui::Key::from_name(&key.to_string().to_uppercase()).unwrap_or(egui::Key::A);
+            let key_code =
+                egui::Key::from_name(&key.to_string().to_uppercase()).unwrap_or(egui::Key::A);
             if ctx.input(|i| i.key_pressed(key_code)) {
                 self.send_note_on(*note);
             }
@@ -474,69 +497,69 @@ impl eframe::App for DawApp {
         // Check if preview timer has expired
         self.check_preview_timer();
 
-            // Handle Undo/Redo keyboard shortcuts
-            ctx.input(|i| {
-                // Ctrl+Z for Undo
-                if i.modifiers.command && i.key_pressed(egui::Key::Z) && !i.modifiers.shift {
-                    if self.command_manager.can_undo() {
-                        match self.command_manager.undo(&mut self.daw_state) {
-                            Ok(description) => {
-                                // Update UI state from DawState after undo
-                                self.volume_ui = self.daw_state.volume;
-                                self.selected_waveform = self.daw_state.waveform;
-                                self.adsr_attack = self.daw_state.adsr.attack;
-                                self.adsr_decay = self.daw_state.adsr.decay;
-                                self.adsr_sustain = self.daw_state.adsr.sustain;
-                                self.adsr_release = self.daw_state.adsr.release;
-                                self.lfo_waveform = self.daw_state.lfo.waveform;
-                                self.lfo_rate = self.daw_state.lfo.rate;
-                                self.lfo_depth = self.daw_state.lfo.depth;
-                                self.lfo_destination = self.daw_state.lfo.destination;
-                                self.poly_mode = self.daw_state.poly_mode;
-                                self.portamento_time = self.daw_state.portamento.time;
-                                // Sync modulation UI from state mirror
-                                for idx in 0..self.mod_routings_ui.len() {
-                                    self.mod_routings_ui[idx] = self.daw_state.mod_routings[idx];
-                                }
-                                self.volume_atomic.set(self.daw_state.volume);
-                                println!("Undo: {}", description);
+        // Handle Undo/Redo keyboard shortcuts
+        ctx.input(|i| {
+            // Ctrl+Z for Undo
+            if i.modifiers.command && i.key_pressed(egui::Key::Z) && !i.modifiers.shift {
+                if self.command_manager.can_undo() {
+                    match self.command_manager.undo(&mut self.daw_state) {
+                        Ok(description) => {
+                            // Update UI state from DawState after undo
+                            self.volume_ui = self.daw_state.volume;
+                            self.selected_waveform = self.daw_state.waveform;
+                            self.adsr_attack = self.daw_state.adsr.attack;
+                            self.adsr_decay = self.daw_state.adsr.decay;
+                            self.adsr_sustain = self.daw_state.adsr.sustain;
+                            self.adsr_release = self.daw_state.adsr.release;
+                            self.lfo_waveform = self.daw_state.lfo.waveform;
+                            self.lfo_rate = self.daw_state.lfo.rate;
+                            self.lfo_depth = self.daw_state.lfo.depth;
+                            self.lfo_destination = self.daw_state.lfo.destination;
+                            self.poly_mode = self.daw_state.poly_mode;
+                            self.portamento_time = self.daw_state.portamento.time;
+                            // Sync modulation UI from state mirror
+                            for idx in 0..self.mod_routings_ui.len() {
+                                self.mod_routings_ui[idx] = self.daw_state.mod_routings[idx];
                             }
-                            Err(e) => eprintln!("Undo failed: {}", e),
+                            self.volume_atomic.set(self.daw_state.volume);
+                            println!("Undo: {}", description);
                         }
+                        Err(e) => eprintln!("Undo failed: {}", e),
                     }
                 }
+            }
 
             // Ctrl+Shift+Z or Ctrl+Y for Redo
-                if (i.modifiers.command && i.key_pressed(egui::Key::Z) && i.modifiers.shift)
-                    || (i.modifiers.command && i.key_pressed(egui::Key::Y))
-                {
-                    if self.command_manager.can_redo() {
-                        match self.command_manager.redo(&mut self.daw_state) {
-                            Ok(description) => {
-                                // Update UI state from DawState after redo
-                                self.volume_ui = self.daw_state.volume;
-                                self.selected_waveform = self.daw_state.waveform;
-                                self.adsr_attack = self.daw_state.adsr.attack;
-                                self.adsr_decay = self.daw_state.adsr.decay;
-                                self.adsr_sustain = self.daw_state.adsr.sustain;
-                                self.adsr_release = self.daw_state.adsr.release;
-                                self.lfo_waveform = self.daw_state.lfo.waveform;
-                                self.lfo_rate = self.daw_state.lfo.rate;
-                                self.lfo_depth = self.daw_state.lfo.depth;
-                                self.lfo_destination = self.daw_state.lfo.destination;
-                                self.poly_mode = self.daw_state.poly_mode;
-                                self.portamento_time = self.daw_state.portamento.time;
-                                // Sync modulation UI from state mirror
-                                for idx in 0..self.mod_routings_ui.len() {
-                                    self.mod_routings_ui[idx] = self.daw_state.mod_routings[idx];
-                                }
-                                self.volume_atomic.set(self.daw_state.volume);
-                                println!("Redo: {}", description);
+            if (i.modifiers.command && i.key_pressed(egui::Key::Z) && i.modifiers.shift)
+                || (i.modifiers.command && i.key_pressed(egui::Key::Y))
+            {
+                if self.command_manager.can_redo() {
+                    match self.command_manager.redo(&mut self.daw_state) {
+                        Ok(description) => {
+                            // Update UI state from DawState after redo
+                            self.volume_ui = self.daw_state.volume;
+                            self.selected_waveform = self.daw_state.waveform;
+                            self.adsr_attack = self.daw_state.adsr.attack;
+                            self.adsr_decay = self.daw_state.adsr.decay;
+                            self.adsr_sustain = self.daw_state.adsr.sustain;
+                            self.adsr_release = self.daw_state.adsr.release;
+                            self.lfo_waveform = self.daw_state.lfo.waveform;
+                            self.lfo_rate = self.daw_state.lfo.rate;
+                            self.lfo_depth = self.daw_state.lfo.depth;
+                            self.lfo_destination = self.daw_state.lfo.destination;
+                            self.poly_mode = self.daw_state.poly_mode;
+                            self.portamento_time = self.daw_state.portamento.time;
+                            // Sync modulation UI from state mirror
+                            for idx in 0..self.mod_routings_ui.len() {
+                                self.mod_routings_ui[idx] = self.daw_state.mod_routings[idx];
                             }
-                            Err(e) => eprintln!("Redo failed: {}", e),
+                            self.volume_atomic.set(self.daw_state.volume);
+                            println!("Redo: {}", description);
                         }
+                        Err(e) => eprintln!("Redo failed: {}", e),
                     }
                 }
+            }
         });
 
         // Update notifications from ringbuffer

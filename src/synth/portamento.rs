@@ -111,11 +111,8 @@ impl PortamentoGlide {
 
         // Update smoother time constant
         let time_ms = params.time * 1000.0;
-        self.smoother = OnePoleSmoother::new(
-            self.smoother.get(),
-            time_ms.max(0.1),
-            self.sample_rate,
-        );
+        self.smoother =
+            OnePoleSmoother::new(self.smoother.get(), time_ms.max(0.1), self.sample_rate);
     }
 
     /// Get current portamento parameters
@@ -196,7 +193,11 @@ mod tests {
             glide.process(880.0);
         }
         let final_freq = glide.current_frequency();
-        assert!((final_freq - 880.0).abs() < 20.0, "Final freq: {}", final_freq); // Within 20Hz
+        assert!(
+            (final_freq - 880.0).abs() < 20.0,
+            "Final freq: {}",
+            final_freq
+        ); // Within 20Hz
     }
 
     #[test]
@@ -266,6 +267,10 @@ mod tests {
             glide.process(440.0);
         }
         let final_freq = glide.current_frequency();
-        assert!((final_freq - 440.0).abs() < 20.0, "Final freq: {}", final_freq);
+        assert!(
+            (final_freq - 440.0).abs() < 20.0,
+            "Final freq: {}",
+            final_freq
+        );
     }
 }

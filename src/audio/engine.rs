@@ -28,7 +28,7 @@ use cpal::{Device, FromSample, SampleFormat, SizedSample, Stream, StreamConfig};
 use std::sync::{Arc, Mutex};
 
 use crate::audio::cpu_monitor::CpuMonitor;
-use crate::audio::dsp_utils::{flush_denormals_to_zero, soft_clip, OnePoleSmoother};
+use crate::audio::dsp_utils::{OnePoleSmoother, flush_denormals_to_zero, soft_clip};
 use crate::audio::format_conversion::write_stereo_to_interleaved_frame;
 use crate::audio::parameters::AtomicF32;
 use crate::connection::status::{AtomicDeviceStatus, DeviceStatus};
@@ -100,8 +100,8 @@ impl AudioEngine {
 
         // Create volume smoother (10ms smoothing to avoid clicks, moved into callback)
         let volume_smoother = OnePoleSmoother::new(
-            0.5,        // Initial value (50%)
-            10.0,       // 10ms time constant
+            0.5,  // Initial value (50%)
+            10.0, // 10ms time constant
             sample_rate,
         );
 
@@ -119,14 +119,14 @@ impl AudioEngine {
                 &device,
                 &config,
                 channels,
-                command_rx_ui,           // Moved (no Arc/Mutex)
-                command_rx_midi,         // Moved (no Arc/Mutex)
-                voice_manager,           // Moved (no Arc/Mutex)
-                volume_clone,            // Clone (AtomicF32 is Arc internally)
-                volume_smoother,         // Moved (no Arc/Mutex)
-                cpu_monitor_clone,       // Clone (CpuMonitor is Arc internally for stats)
-                status_clone,            // Clone (AtomicDeviceStatus is Arc internally)
-                notification_tx_err,     // Clone (Arc<Mutex> only for error callback)
+                command_rx_ui,       // Moved (no Arc/Mutex)
+                command_rx_midi,     // Moved (no Arc/Mutex)
+                voice_manager,       // Moved (no Arc/Mutex)
+                volume_clone,        // Clone (AtomicF32 is Arc internally)
+                volume_smoother,     // Moved (no Arc/Mutex)
+                cpu_monitor_clone,   // Clone (CpuMonitor is Arc internally for stats)
+                status_clone,        // Clone (AtomicDeviceStatus is Arc internally)
+                notification_tx_err, // Clone (Arc<Mutex> only for error callback)
             ),
             SampleFormat::I16 => Self::build_stream::<i16>(
                 &device,
@@ -158,7 +158,7 @@ impl AudioEngine {
                 return Err(format!(
                     "Unsupported sample format: {:?}. Supported formats: F32, I16, U16",
                     sample_format
-                ))
+                ));
             }
         }?;
 
@@ -380,13 +380,13 @@ impl AudioEngine {
         device: &Device,
         config: &StreamConfig,
         channels: usize,
-        mut command_rx_ui: CommandConsumer,       // Moved into closure (no Mutex)
-        mut command_rx_midi: CommandConsumer,     // Moved into closure (no Mutex)
-        mut voice_manager: VoiceManager,          // Moved into closure (no Mutex)
-        volume: AtomicF32,                        // Clone (Arc internally, read-only atomic)
-        mut volume_smoother: OnePoleSmoother,     // Moved into closure (no Mutex)
-        cpu_monitor: CpuMonitor,                  // Clone (Arc internally for stats)
-        status: AtomicDeviceStatus,               // Clone (Arc internally, atomic)
+        mut command_rx_ui: CommandConsumer, // Moved into closure (no Mutex)
+        mut command_rx_midi: CommandConsumer, // Moved into closure (no Mutex)
+        mut voice_manager: VoiceManager,    // Moved into closure (no Mutex)
+        volume: AtomicF32,                  // Clone (Arc internally, read-only atomic)
+        mut volume_smoother: OnePoleSmoother, // Moved into closure (no Mutex)
+        cpu_monitor: CpuMonitor,            // Clone (Arc internally for stats)
+        status: AtomicDeviceStatus,         // Clone (Arc internally, atomic)
         notification_tx: Arc<Mutex<NotificationProducer>>, // Keep Mutex (only error callback)
     ) -> Result<Stream, String>
     where
@@ -403,29 +403,33 @@ impl AudioEngine {
                     let measure_start = cpu_monitor.start_measure();
 
                     // helper function to process MIDI events
-                    let process_midi_event = |timed_event: MidiEventTimed, vm: &mut VoiceManager| {
-                        // TODO: Implement proper scheduling based on samples_from_now
-                        // For now, process immediately if samples_from_now == 0
-                        if timed_event.samples_from_now == 0 {
-                            match timed_event.event {
-                                MidiEvent::NoteOn { note, velocity } => {
-                                    vm.note_on(note, velocity);
+                    let process_midi_event =
+                        |timed_event: MidiEventTimed, vm: &mut VoiceManager| {
+                            // TODO: Implement proper scheduling based on samples_from_now
+                            // For now, process immediately if samples_from_now == 0
+                            if timed_event.samples_from_now == 0 {
+                                match timed_event.event {
+                                    MidiEvent::NoteOn { note, velocity } => {
+                                        vm.note_on(note, velocity);
+                                    }
+                                    MidiEvent::NoteOff { note } => {
+                                        vm.note_off(note);
+                                    }
+                                    MidiEvent::ChannelAftertouch { value } => {
+                                        vm.set_aftertouch(value);
+                                    }
+                                    MidiEvent::PolyAftertouch {
+                                        note: _n,
+                                        value: _v,
+                                    } => {
+                                        // TODO: Poly aftertouch per-note support (Phase 2+)
+                                    }
+                                    _ => {} // Ignore other events for now
                                 }
-                                MidiEvent::NoteOff { note } => {
-                                    vm.note_off(note);
-                                }
-                                MidiEvent::ChannelAftertouch { value } => {
-                                    vm.set_aftertouch(value);
-                                }
-                                MidiEvent::PolyAftertouch { note: _n, value: _v } => {
-                                    // TODO: Poly aftertouch per-note support (Phase 2+)
-                                }
-                                _ => {} // Ignore other events for now
                             }
-                        }
-                        // Events with samples_from_now > 0 are ignored for now
-                        // Future: store in pre-allocated queue and process at the right time
-                    };
+                            // Events with samples_from_now > 0 are ignored for now
+                            // Future: store in pre-allocated queue and process at the right time
+                        };
 
                     // helper function to process commands
                     let process_command = |cmd: Command, vm: &mut VoiceManager| {

@@ -1,13 +1,13 @@
 // Voice Manager - Polyphony handling
 
+use super::modulation::{MAX_ROUTINGS, ModRouting, ModulationMatrix};
 use super::oscillator::WaveformType;
 use super::poly_mode::PolyMode;
 use super::voice::Voice;
-use super::modulation::{ModulationMatrix, ModRouting, MAX_ROUTINGS};
-use crate::sampler::loader::{Sample, LoopMode, SampleData};
-use std::sync::Arc;
-use std::f32::consts::PI;
+use crate::sampler::loader::{LoopMode, Sample, SampleData};
 use std::collections::HashMap;
+use std::f32::consts::PI;
+use std::sync::Arc;
 
 const MAX_VOICES: usize = 16;
 
@@ -143,8 +143,16 @@ impl VoiceManager {
             VoiceMode::Sampler => {
                 let sample_index = self.note_to_sample_map.get(&note).copied();
                 let sample_to_use = match sample_index {
-                    Some(index) => self.samples.get(index).cloned().unwrap_or_else(|| self.dummy_sample.clone()),
-                    None => self.samples.last().cloned().unwrap_or_else(|| self.dummy_sample.clone()),
+                    Some(index) => self
+                        .samples
+                        .get(index)
+                        .cloned()
+                        .unwrap_or_else(|| self.dummy_sample.clone()),
+                    None => self
+                        .samples
+                        .last()
+                        .cloned()
+                        .unwrap_or_else(|| self.dummy_sample.clone()),
                 };
                 *voice = Voice::new_sampler(sample_to_use, self.sample_rate);
             }
@@ -168,8 +176,16 @@ impl VoiceManager {
             VoiceMode::Sampler => {
                 let sample_index = self.note_to_sample_map.get(&note).copied();
                 let sample_to_use = match sample_index {
-                    Some(index) => self.samples.get(index).cloned().unwrap_or_else(|| self.dummy_sample.clone()),
-                    None => self.samples.last().cloned().unwrap_or_else(|| self.dummy_sample.clone()),
+                    Some(index) => self
+                        .samples
+                        .get(index)
+                        .cloned()
+                        .unwrap_or_else(|| self.dummy_sample.clone()),
+                    None => self
+                        .samples
+                        .last()
+                        .cloned()
+                        .unwrap_or_else(|| self.dummy_sample.clone()),
                 };
                 *voice = Voice::new_sampler(sample_to_use, self.sample_rate);
             }
@@ -191,8 +207,16 @@ impl VoiceManager {
                 VoiceMode::Sampler => {
                     let sample_index = self.note_to_sample_map.get(&note).copied();
                     let sample_to_use = match sample_index {
-                        Some(index) => self.samples.get(index).cloned().unwrap_or_else(|| self.dummy_sample.clone()),
-                        None => self.samples.last().cloned().unwrap_or_else(|| self.dummy_sample.clone()),
+                        Some(index) => self
+                            .samples
+                            .get(index)
+                            .cloned()
+                            .unwrap_or_else(|| self.dummy_sample.clone()),
+                        None => self
+                            .samples
+                            .last()
+                            .cloned()
+                            .unwrap_or_else(|| self.dummy_sample.clone()),
                     };
                     *voice = Voice::new_sampler(sample_to_use, self.sample_rate);
                 }
@@ -307,7 +331,8 @@ impl VoiceManager {
         let matrix = self.mod_matrix;
 
         // Sum all voice outputs
-        let (left_sum, right_sum) = self.voices
+        let (left_sum, right_sum) = self
+            .voices
             .iter_mut()
             .map(|v| v.next_sample_with_matrix(&matrix))
             .fold((0.0, 0.0), |(acc_l, acc_r), (voice_l, voice_r)| {
@@ -374,8 +399,16 @@ mod tests {
         // Process samples and verify no clipping
         for _ in 0..100 {
             let (left, right) = vm.next_sample();
-            assert!(left.abs() <= 1.0, "Left channel should not clip with 4 voices: {}", left);
-            assert!(right.abs() <= 1.0, "Right channel should not clip with 4 voices: {}", right);
+            assert!(
+                left.abs() <= 1.0,
+                "Left channel should not clip with 4 voices: {}",
+                left
+            );
+            assert!(
+                right.abs() <= 1.0,
+                "Right channel should not clip with 4 voices: {}",
+                right
+            );
         }
     }
 

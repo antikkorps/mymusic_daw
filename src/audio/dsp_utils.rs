@@ -12,11 +12,7 @@
 /// Seuil: 1e-15 (largement sous le bruit numérique à 32-bit float)
 #[inline]
 pub fn flush_denormals_to_zero(x: f32) -> f32 {
-    if x.abs() < 1e-15 {
-        0.0
-    } else {
-        x
-    }
+    if x.abs() < 1e-15 { 0.0 } else { x }
 }
 
 /// Soft clipping avec tanh (saturation douce)

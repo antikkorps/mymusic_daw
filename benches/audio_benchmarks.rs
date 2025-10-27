@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use mymusic_daw::audio::timing::AudioTiming;
 use mymusic_daw::synth::filter::{FilterParams, FilterType, StateVariableFilter};
 use mymusic_daw::synth::modulation::{ModDestination, ModRouting, ModSource, ModulationMatrix};

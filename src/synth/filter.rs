@@ -51,8 +51,8 @@ pub struct FilterParams {
 impl Default for FilterParams {
     fn default() -> Self {
         Self {
-            cutoff: 1000.0,      // 1kHz default
-            resonance: 0.707,     // Butterworth response (Q = 0.707)
+            cutoff: 1000.0,   // 1kHz default
+            resonance: 0.707, // Butterworth response (Q = 0.707)
             filter_type: FilterType::LowPass,
             enabled: true,
         }

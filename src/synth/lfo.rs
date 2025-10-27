@@ -59,8 +59,8 @@ impl Default for LfoParams {
     fn default() -> Self {
         Self {
             waveform: WaveformType::Sine,
-            rate: 5.0,           // 5 Hz
-            depth: 0.5,          // 50% modulation depth
+            rate: 5.0,  // 5 Hz
+            depth: 0.5, // 50% modulation depth
             destination: LfoDestination::None,
         }
     }
@@ -81,10 +81,7 @@ impl Lfo {
         let mut oscillator = SimpleOscillator::new(params.waveform, sample_rate);
         oscillator.set_frequency(params.rate);
 
-        Self {
-            params,
-            oscillator,
-        }
+        Self { params, oscillator }
     }
 
     /// Set new LFO parameters
@@ -308,6 +305,10 @@ mod tests {
         // Reset and check that first value is close to 0 (sine starts at 0)
         lfo.reset();
         let first_value = lfo.process();
-        assert!(first_value.abs() < 0.1, "Expected ~0 after reset, got {}", first_value);
+        assert!(
+            first_value.abs() < 0.1,
+            "Expected ~0 after reset, got {}",
+            first_value
+        );
     }
 }

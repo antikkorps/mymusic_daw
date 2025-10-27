@@ -1,7 +1,7 @@
 // Concrete command implementations
 
 use crate::command::state::DawState;
-use crate::command::trait_def::{UndoableCommand, CommandResult, CommandError};
+use crate::command::trait_def::{CommandError, CommandResult, UndoableCommand};
 use crate::messaging::command::Command;
 use crate::synth::envelope::AdsrParams;
 use crate::synth::filter::FilterParams;
@@ -45,7 +45,7 @@ impl UndoableCommand for SetVolumeCommand {
         // Send to audio thread
         if !state.send_to_audio(Command::SetVolume(self.new_volume)) {
             return Err(CommandError::ExecutionFailed(
-                "Failed to send volume command to audio thread (ringbuffer full)".into()
+                "Failed to send volume command to audio thread (ringbuffer full)".into(),
             ));
         }
 
@@ -53,7 +53,8 @@ impl UndoableCommand for SetVolumeCommand {
     }
 
     fn undo(&mut self, state: &mut DawState) -> CommandResult<()> {
-        let old_volume = self.old_volume
+        let old_volume = self
+            .old_volume
             .ok_or_else(|| CommandError::UndoFailed("No previous volume stored".into()))?;
 
         // Restore old value
@@ -62,7 +63,7 @@ impl UndoableCommand for SetVolumeCommand {
         // Send to audio thread
         if !state.send_to_audio(Command::SetVolume(old_volume)) {
             return Err(CommandError::UndoFailed(
-                "Failed to send volume command to audio thread (ringbuffer full)".into()
+                "Failed to send volume command to audio thread (ringbuffer full)".into(),
             ));
         }
 
@@ -127,7 +128,7 @@ impl UndoableCommand for SetWaveformCommand {
         // Send to audio thread
         if !state.send_to_audio(Command::SetWaveform(self.new_waveform)) {
             return Err(CommandError::ExecutionFailed(
-                "Failed to send waveform command to audio thread (ringbuffer full)".into()
+                "Failed to send waveform command to audio thread (ringbuffer full)".into(),
             ));
         }
 
@@ -135,7 +136,8 @@ impl UndoableCommand for SetWaveformCommand {
     }
 
     fn undo(&mut self, state: &mut DawState) -> CommandResult<()> {
-        let old_waveform = self.old_waveform
+        let old_waveform = self
+            .old_waveform
             .ok_or_else(|| CommandError::UndoFailed("No previous waveform stored".into()))?;
 
         // Restore old value
@@ -144,7 +146,7 @@ impl UndoableCommand for SetWaveformCommand {
         // Send to audio thread
         if !state.send_to_audio(Command::SetWaveform(old_waveform)) {
             return Err(CommandError::UndoFailed(
-                "Failed to send waveform command to audio thread (ringbuffer full)".into()
+                "Failed to send waveform command to audio thread (ringbuffer full)".into(),
             ));
         }
 
@@ -210,7 +212,7 @@ impl UndoableCommand for SetAdsrCommand {
         // Send to audio thread
         if !state.send_to_audio(Command::SetAdsr(self.new_params)) {
             return Err(CommandError::ExecutionFailed(
-                "Failed to send ADSR command to audio thread (ringbuffer full)".into()
+                "Failed to send ADSR command to audio thread (ringbuffer full)".into(),
             ));
         }
 
@@ -218,7 +220,8 @@ impl UndoableCommand for SetAdsrCommand {
     }
 
     fn undo(&mut self, state: &mut DawState) -> CommandResult<()> {
-        let old_params = self.old_params
+        let old_params = self
+            .old_params
             .ok_or_else(|| CommandError::UndoFailed("No previous ADSR parameters stored".into()))?;
 
         // Restore old value
@@ -227,7 +230,7 @@ impl UndoableCommand for SetAdsrCommand {
         // Send to audio thread
         if !state.send_to_audio(Command::SetAdsr(old_params)) {
             return Err(CommandError::UndoFailed(
-                "Failed to send ADSR command to audio thread (ringbuffer full)".into()
+                "Failed to send ADSR command to audio thread (ringbuffer full)".into(),
             ));
         }
 
@@ -278,7 +281,7 @@ impl UndoableCommand for SetLfoCommand {
         // Send to audio thread
         if !state.send_to_audio(Command::SetLfo(self.new_params)) {
             return Err(CommandError::ExecutionFailed(
-                "Failed to send LFO command to audio thread (ringbuffer full)".into()
+                "Failed to send LFO command to audio thread (ringbuffer full)".into(),
             ));
         }
 
@@ -286,7 +289,8 @@ impl UndoableCommand for SetLfoCommand {
     }
 
     fn undo(&mut self, state: &mut DawState) -> CommandResult<()> {
-        let old_params = self.old_params
+        let old_params = self
+            .old_params
             .ok_or_else(|| CommandError::UndoFailed("No previous LFO parameters stored".into()))?;
 
         // Restore old value
@@ -295,7 +299,7 @@ impl UndoableCommand for SetLfoCommand {
         // Send to audio thread
         if !state.send_to_audio(Command::SetLfo(old_params)) {
             return Err(CommandError::UndoFailed(
-                "Failed to send LFO command to audio thread (ringbuffer full)".into()
+                "Failed to send LFO command to audio thread (ringbuffer full)".into(),
             ));
         }
 
@@ -341,12 +345,20 @@ pub struct SetModRoutingCommand {
 
 impl SetModRoutingCommand {
     pub fn new(index: u8, routing: ModRouting) -> Self {
-        Self { index, new_routing: routing, old_routing: None }
+        Self {
+            index,
+            new_routing: routing,
+            old_routing: None,
+        }
     }
 
     /// Provide the previous routing so undo can fully restore it
     pub fn new_with_old(index: u8, new_routing: ModRouting, old_routing: ModRouting) -> Self {
-        Self { index, new_routing, old_routing: Some(old_routing) }
+        Self {
+            index,
+            new_routing,
+            old_routing: Some(old_routing),
+        }
     }
 }
 
@@ -363,9 +375,12 @@ impl UndoableCommand for SetModRoutingCommand {
         }
 
         // Send to audio thread
-        if !state.send_to_audio(Command::SetModRouting { index: self.index, routing: self.new_routing }) {
+        if !state.send_to_audio(Command::SetModRouting {
+            index: self.index,
+            routing: self.new_routing,
+        }) {
             return Err(CommandError::ExecutionFailed(
-                "Failed to send SetModRouting to audio thread (ringbuffer full)".into()
+                "Failed to send SetModRouting to audio thread (ringbuffer full)".into(),
             ));
         }
 
@@ -379,9 +394,12 @@ impl UndoableCommand for SetModRoutingCommand {
             if idx < state.mod_routings.len() {
                 state.mod_routings[idx] = old;
             }
-            if !state.send_to_audio(Command::SetModRouting { index: self.index, routing: old }) {
+            if !state.send_to_audio(Command::SetModRouting {
+                index: self.index,
+                routing: old,
+            }) {
                 return Err(CommandError::UndoFailed(
-                    "Failed to send SetModRouting (undo) to audio thread".into()
+                    "Failed to send SetModRouting (undo) to audio thread".into(),
                 ));
             }
             Ok(())
@@ -394,7 +412,7 @@ impl UndoableCommand for SetModRoutingCommand {
             }
             if !state.send_to_audio(Command::ClearModRouting { index: self.index }) {
                 return Err(CommandError::UndoFailed(
-                    "Failed to send ClearModRouting (undo fallback) to audio thread".into()
+                    "Failed to send ClearModRouting (undo fallback) to audio thread".into(),
                 ));
             }
             Ok(())
@@ -450,7 +468,7 @@ impl UndoableCommand for SetPolyModeCommand {
         // Send to audio thread
         if !state.send_to_audio(Command::SetPolyMode(self.new_mode)) {
             return Err(CommandError::ExecutionFailed(
-                "Failed to send PolyMode command to audio thread (ringbuffer full)".into()
+                "Failed to send PolyMode command to audio thread (ringbuffer full)".into(),
             ));
         }
 
@@ -458,7 +476,8 @@ impl UndoableCommand for SetPolyModeCommand {
     }
 
     fn undo(&mut self, state: &mut DawState) -> CommandResult<()> {
-        let old_mode = self.old_mode
+        let old_mode = self
+            .old_mode
             .ok_or_else(|| CommandError::UndoFailed("No previous polyphony mode stored".into()))?;
 
         // Restore old value
@@ -467,7 +486,7 @@ impl UndoableCommand for SetPolyModeCommand {
         // Send to audio thread
         if !state.send_to_audio(Command::SetPolyMode(old_mode)) {
             return Err(CommandError::UndoFailed(
-                "Failed to send PolyMode command to audio thread (ringbuffer full)".into()
+                "Failed to send PolyMode command to audio thread (ringbuffer full)".into(),
             ));
         }
 
@@ -512,7 +531,7 @@ impl UndoableCommand for SetPortamentoCommand {
         // Send to audio thread
         if !state.send_to_audio(Command::SetPortamento(self.new_params)) {
             return Err(CommandError::ExecutionFailed(
-                "Failed to send Portamento command to audio thread (ringbuffer full)".into()
+                "Failed to send Portamento command to audio thread (ringbuffer full)".into(),
             ));
         }
 
@@ -520,8 +539,9 @@ impl UndoableCommand for SetPortamentoCommand {
     }
 
     fn undo(&mut self, state: &mut DawState) -> CommandResult<()> {
-        let old_params = self.old_params
-            .ok_or_else(|| CommandError::UndoFailed("No previous portamento parameters stored".into()))?;
+        let old_params = self.old_params.ok_or_else(|| {
+            CommandError::UndoFailed("No previous portamento parameters stored".into())
+        })?;
 
         // Restore old value
         state.portamento = old_params;
@@ -529,7 +549,7 @@ impl UndoableCommand for SetPortamentoCommand {
         // Send to audio thread
         if !state.send_to_audio(Command::SetPortamento(old_params)) {
             return Err(CommandError::UndoFailed(
-                "Failed to send Portamento command to audio thread (ringbuffer full)".into()
+                "Failed to send Portamento command to audio thread (ringbuffer full)".into(),
             ));
         }
 
@@ -552,7 +572,8 @@ impl UndoableCommand for SetPortamentoCommand {
 
     fn merge_with(&mut self, other: Box<dyn UndoableCommand>) -> CommandResult<()> {
         // Downcast to SetPortamentoCommand
-        let other_any = Box::into_raw(other) as *mut dyn UndoableCommand as *mut SetPortamentoCommand;
+        let other_any =
+            Box::into_raw(other) as *mut dyn UndoableCommand as *mut SetPortamentoCommand;
 
         unsafe {
             let other_cmd = Box::from_raw(other_any);
@@ -597,7 +618,7 @@ impl UndoableCommand for SetFilterCommand {
         // Send to audio thread
         if !state.send_to_audio(Command::SetFilter(self.new_params)) {
             return Err(CommandError::ExecutionFailed(
-                "Failed to send Filter command to audio thread (ringbuffer full)".into()
+                "Failed to send Filter command to audio thread (ringbuffer full)".into(),
             ));
         }
 
@@ -605,8 +626,9 @@ impl UndoableCommand for SetFilterCommand {
     }
 
     fn undo(&mut self, state: &mut DawState) -> CommandResult<()> {
-        let old_params = self.old_params
-            .ok_or_else(|| CommandError::UndoFailed("No previous filter parameters stored".into()))?;
+        let old_params = self.old_params.ok_or_else(|| {
+            CommandError::UndoFailed("No previous filter parameters stored".into())
+        })?;
 
         // Restore old value
         state.filter = old_params;
@@ -614,7 +636,7 @@ impl UndoableCommand for SetFilterCommand {
         // Send to audio thread
         if !state.send_to_audio(Command::SetFilter(old_params)) {
             return Err(CommandError::UndoFailed(
-                "Failed to send Filter command to audio thread (ringbuffer full)".into()
+                "Failed to send Filter command to audio thread (ringbuffer full)".into(),
             ));
         }
 
@@ -624,9 +646,7 @@ impl UndoableCommand for SetFilterCommand {
     fn description(&self) -> String {
         format!(
             "Set Filter ({:?} cutoff:{:.0}Hz Q:{:.2})",
-            self.new_params.filter_type,
-            self.new_params.cutoff,
-            self.new_params.resonance
+            self.new_params.filter_type, self.new_params.cutoff, self.new_params.resonance
         )
     }
 
@@ -671,18 +691,20 @@ impl UndoableCommand for SetVoiceModeCommand {
         state.voice_mode = self.new_mode;
         if !state.send_to_audio(Command::SetVoiceMode(self.new_mode)) {
             return Err(CommandError::ExecutionFailed(
-                "Failed to send VoiceMode command to audio thread (ringbuffer full)".into()
+                "Failed to send VoiceMode command to audio thread (ringbuffer full)".into(),
             ));
         }
         Ok(())
     }
 
     fn undo(&mut self, state: &mut DawState) -> CommandResult<()> {
-        let old_mode = self.old_mode.ok_or_else(|| CommandError::UndoFailed("No previous voice mode stored".into()))?;
+        let old_mode = self
+            .old_mode
+            .ok_or_else(|| CommandError::UndoFailed("No previous voice mode stored".into()))?;
         state.voice_mode = old_mode;
         if !state.send_to_audio(Command::SetVoiceMode(old_mode)) {
             return Err(CommandError::UndoFailed(
-                "Failed to send VoiceMode command to audio thread (ringbuffer full)".into()
+                "Failed to send VoiceMode command to audio thread (ringbuffer full)".into(),
             ));
         }
         Ok(())
