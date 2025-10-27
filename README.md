@@ -1,5 +1,7 @@
 # MyMusic DAW
 
+[![Test](https://github.com/franck/my-music-daw/actions/workflows/test.yml/badge.svg)](https://github.com/franck/my-music-daw/actions/workflows/test.yml)
+
 Un DAW (Digital Audio Workstation) minimaliste écrit en Rust.
 
 ## Architecture
