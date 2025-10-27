@@ -212,7 +212,7 @@ mod tests {
         assert_eq!(loaded.samples[0].loop_mode, LoopMode::Forward);
         assert_eq!(loaded.samples[0].loop_start, 1000);
         assert_eq!(loaded.samples[0].loop_end, 20000);
-        assert_eq!(loaded.samples[0].reverse, false);
+        assert!(!loaded.samples[0].reverse);
         assert_eq!(loaded.samples[0].pitch_offset, 2);
     }
 

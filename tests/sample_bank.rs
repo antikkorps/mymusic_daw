@@ -77,7 +77,7 @@ fn test_sample_bank_save_load_integration() {
     assert_eq!(kick_mapping.volume, 1.5);
     assert_eq!(kick_mapping.pan, 0.0);
     assert_eq!(kick_mapping.loop_mode, LoopMode::Off);
-    assert_eq!(kick_mapping.reverse, false);
+    assert!(!kick_mapping.reverse);
     assert_eq!(kick_mapping.pitch_offset, 0);
 
     // Check snare mapping (D1/38)
@@ -88,7 +88,7 @@ fn test_sample_bank_save_load_integration() {
     assert_eq!(snare_mapping.loop_mode, LoopMode::Forward);
     assert_eq!(snare_mapping.loop_start, 1);
     assert_eq!(snare_mapping.loop_end, 3);
-    assert_eq!(snare_mapping.reverse, true);
+    assert!(snare_mapping.reverse);
     assert_eq!(snare_mapping.pitch_offset, 2);
 }
 
