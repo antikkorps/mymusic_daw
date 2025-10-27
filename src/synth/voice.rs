@@ -511,7 +511,10 @@ mod tests {
             })
             .sum::<f32>()
             / outputs.len() as f32;
-        assert!(variance > 0.0001, "LFO modulation should create variance in output");
+        assert!(
+            variance > 0.0001,
+            "LFO modulation should create variance in output"
+        );
     }
 
     #[test]

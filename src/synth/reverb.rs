@@ -33,9 +33,9 @@ pub struct ReverbParams {
 impl Default for ReverbParams {
     fn default() -> Self {
         Self {
-            room_size: 0.5,     // Medium room
-            damping: 0.5,       // Medium damping
-            mix: 0.25,          // 25% wet
+            room_size: 0.5, // Medium room
+            damping: 0.5,   // Medium damping
+            mix: 0.25,      // 25% wet
             enabled: true,
         }
     }
@@ -502,7 +502,10 @@ mod tests {
         let small_energy: f32 = small_tail.iter().sum();
         let large_energy: f32 = large_tail.iter().sum();
 
-        assert!(large_energy > small_energy, "Larger room should have longer decay");
+        assert!(
+            large_energy > small_energy,
+            "Larger room should have longer decay"
+        );
     }
 
     #[test]
@@ -520,7 +523,10 @@ mod tests {
 
         // Process silence - should be silent
         let output = reverb.process(0.0);
-        assert!(output.abs() < 0.01, "After reset, silence should produce silence");
+        assert!(
+            output.abs() < 0.01,
+            "After reset, silence should produce silence"
+        );
     }
 
     #[test]

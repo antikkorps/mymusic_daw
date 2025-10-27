@@ -76,10 +76,7 @@ mod tests {
 
     #[test]
     fn test_notification_creation() {
-        let notif = Notification::error(
-            NotificationCategory::Midi,
-            "Test error".to_string(),
-        );
+        let notif = Notification::error(NotificationCategory::Midi, "Test error".to_string());
 
         assert_eq!(notif.level, NotificationLevel::Error);
         assert_eq!(notif.category, NotificationCategory::Midi);

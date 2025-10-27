@@ -1,5 +1,5 @@
-pub mod loader;
 pub mod engine;
+pub mod loader;
 
 #[cfg(test)]
 mod tests;

@@ -7,9 +7,9 @@ use crate::messaging::channels::CommandProducer;
 use crate::synth::envelope::AdsrParams;
 use crate::synth::filter::FilterParams;
 use crate::synth::lfo::LfoParams;
+use crate::synth::modulation::{ModDestination, ModRouting, ModSource};
 use crate::synth::oscillator::WaveformType;
 use crate::synth::poly_mode::PolyMode;
-use crate::synth::modulation::{ModRouting, ModSource, ModDestination};
 use crate::synth::portamento::PortamentoParams;
 use std::sync::{Arc, Mutex};
 
@@ -66,7 +66,12 @@ impl DawState {
             poly_mode: PolyMode::default(),
             portamento: PortamentoParams::default(),
             filter: FilterParams::default(),
-            mod_routings: [ModRouting { source: ModSource::Velocity, destination: ModDestination::Amplitude, amount: 0.0, enabled: false }; 8],
+            mod_routings: [ModRouting {
+                source: ModSource::Velocity,
+                destination: ModDestination::Amplitude,
+                amount: 0.0,
+                enabled: false,
+            }; 8],
             command_sender,
         }
     }

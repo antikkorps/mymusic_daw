@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::sampler::loader::*;
     use crate::sampler::engine::SamplerVoice;
+    use crate::sampler::loader::*;
     use std::path::PathBuf;
     use std::sync::Arc;
 
@@ -9,7 +9,7 @@ mod tests {
     fn test_load_mp3_support() {
         // Test that MP3 format is recognized
         let mp3_path = PathBuf::from("test.mp3");
-        
+
         // This should not panic - just checking format recognition
         match load_sample(&mp3_path) {
             Err(msg) => {
@@ -25,14 +25,18 @@ mod tests {
     #[test]
     fn test_supported_formats() {
         let extensions = vec!["wav", "flac", "mp3"];
-        
+
         for ext in extensions {
             let path = PathBuf::from(format!("test.{}", ext));
             match load_sample(&path) {
                 Err(msg) => {
                     // Should not be "unsupported format" error
-                    assert!(!msg.contains("Unsupported file format"), 
-                           "Format {} should be supported but got: {}", ext, msg);
+                    assert!(
+                        !msg.contains("Unsupported file format"),
+                        "Format {} should be supported but got: {}",
+                        ext,
+                        msg
+                    );
                 }
                 Ok(_) => {
                     // File doesn't exist, but format is supported
@@ -121,7 +125,10 @@ mod tests {
         }
 
         // Voice should stop when reaching the end (no loop)
-        assert!(!voice.is_active(), "Voice should stop at end when not looping");
+        assert!(
+            !voice.is_active(),
+            "Voice should stop at end when not looping"
+        );
     }
 
     #[test]
@@ -133,8 +140,14 @@ mod tests {
         sample.loop_end = 900;
         sample.loop_mode = LoopMode::Forward;
 
-        assert!(sample.loop_start < sample.loop_end, "loop_start should be less than loop_end");
-        assert!(sample.loop_end <= 1000, "loop_end should not exceed sample size");
+        assert!(
+            sample.loop_start < sample.loop_end,
+            "loop_start should be less than loop_end"
+        );
+        assert!(
+            sample.loop_end <= 1000,
+            "loop_end should not exceed sample size"
+        );
     }
 
     #[test]
@@ -155,12 +168,21 @@ mod tests {
         for _ in 0..100 {
             let (left, right) = voice.next_sample_with_matrix(&matrix);
             // Should produce valid output (not NaN, not infinite)
-            assert!(left.is_finite(), "Left channel should produce finite values");
-            assert!(right.is_finite(), "Right channel should produce finite values");
+            assert!(
+                left.is_finite(),
+                "Left channel should produce finite values"
+            );
+            assert!(
+                right.is_finite(),
+                "Right channel should produce finite values"
+            );
         }
 
         // Voice should still be active due to looping
-        assert!(voice.is_active(), "Voice should remain active with pitched loop");
+        assert!(
+            voice.is_active(),
+            "Voice should remain active with pitched loop"
+        );
     }
 
     #[test]
@@ -192,7 +214,11 @@ mod tests {
 
         // Check that we got continuous output (not all zeros after first loop)
         let non_zero_count = output_samples.iter().filter(|&&x| x.abs() > 0.001).count();
-        assert!(non_zero_count > 150, "Should produce continuous non-zero output when looping, got {} non-zero samples", non_zero_count);
+        assert!(
+            non_zero_count > 150,
+            "Should produce continuous non-zero output when looping, got {} non-zero samples",
+            non_zero_count
+        );
     }
 
     #[test]
@@ -208,11 +234,17 @@ mod tests {
         let matrix = crate::synth::modulation::ModulationMatrix::new_empty();
         for _ in 0..10 {
             let (left, right) = voice.next_sample_with_matrix(&matrix);
-            assert!(left.is_finite() && right.is_finite(), "Reverse playback should produce valid audio");
+            assert!(
+                left.is_finite() && right.is_finite(),
+                "Reverse playback should produce valid audio"
+            );
         }
 
         // Voice should still be active
-        assert!(voice.is_active(), "Reverse playback should keep voice active");
+        assert!(
+            voice.is_active(),
+            "Reverse playback should keep voice active"
+        );
     }
 
     #[test]
@@ -232,7 +264,10 @@ mod tests {
         }
 
         // Voice should stop when reaching the start (no loop)
-        assert!(!voice.is_active(), "Reverse playback should stop at start when not looping");
+        assert!(
+            !voice.is_active(),
+            "Reverse playback should stop at start when not looping"
+        );
     }
 
     #[test]
@@ -254,7 +289,10 @@ mod tests {
         }
 
         // Voice should still be active due to looping
-        assert!(voice.is_active(), "Reverse playback with loop should keep voice active");
+        assert!(
+            voice.is_active(),
+            "Reverse playback with loop should keep voice active"
+        );
     }
 
     #[test]
@@ -274,7 +312,10 @@ mod tests {
         let matrix = crate::synth::modulation::ModulationMatrix::new_empty();
         let (left, right) = voice.next_sample_with_matrix(&matrix);
 
-        assert!(left.is_finite() && right.is_finite(), "Should produce valid audio with default pitch offset");
+        assert!(
+            left.is_finite() && right.is_finite(),
+            "Should produce valid audio with default pitch offset"
+        );
         assert!(voice.is_active(), "Voice should be active");
     }
 
@@ -298,10 +339,16 @@ mod tests {
         // Process many samples to verify stability
         for _ in 0..500 {
             let (left, right) = voice.next_sample_with_matrix(&matrix);
-            assert!(left.is_finite() && right.is_finite(), "Should produce valid audio with positive pitch offset");
+            assert!(
+                left.is_finite() && right.is_finite(),
+                "Should produce valid audio with positive pitch offset"
+            );
         }
 
-        assert!(voice.is_active(), "Voice should remain active with pitch offset");
+        assert!(
+            voice.is_active(),
+            "Voice should remain active with pitch offset"
+        );
     }
 
     #[test]
@@ -324,10 +371,16 @@ mod tests {
         // Process many samples to verify stability
         for _ in 0..200 {
             let (left, right) = voice.next_sample_with_matrix(&matrix);
-            assert!(left.is_finite() && right.is_finite(), "Should produce valid audio with negative pitch offset");
+            assert!(
+                left.is_finite() && right.is_finite(),
+                "Should produce valid audio with negative pitch offset"
+            );
         }
 
-        assert!(voice.is_active(), "Voice should remain active with negative pitch offset");
+        assert!(
+            voice.is_active(),
+            "Voice should remain active with negative pitch offset"
+        );
     }
 
     #[test]
@@ -354,7 +407,11 @@ mod tests {
                 );
             }
 
-            assert!(voice.is_active(), "Voice should be active with pitch_offset = {}", offset);
+            assert!(
+                voice.is_active(),
+                "Voice should be active with pitch_offset = {}",
+                offset
+            );
         }
     }
 
@@ -383,7 +440,11 @@ mod tests {
                 );
             }
 
-            assert!(voice.is_active(), "Voice should be active for note {}", note);
+            assert!(
+                voice.is_active(),
+                "Voice should be active for note {}",
+                note
+            );
         }
     }
 }

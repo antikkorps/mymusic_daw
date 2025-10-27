@@ -1,13 +1,15 @@
-use std::path::Path;
-use hound::{WavReader, SampleFormat};
 use claxon::FlacReader;
+use hound::{SampleFormat, WavReader};
+use rubato::{
+    Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
+};
+use std::path::Path;
+use symphonia::core::audio::{AudioBufferRef, Signal};
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
-use symphonia::core::audio::{AudioBufferRef, Signal};
 use symphonia::default::get_probe;
-use rubato::{Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction};
 
 const TARGET_SAMPLE_RATE: u32 = 48000;
 
@@ -54,38 +56,68 @@ fn load_wav(path: &Path) -> Result<Sample, String> {
 
     let samples_mono: Vec<f32> = match (spec.sample_format, spec.bits_per_sample) {
         (SampleFormat::Int, 16) => {
-            let samples = reader.samples::<i16>().filter_map(Result::ok).collect::<Vec<_>>();
+            let samples = reader
+                .samples::<i16>()
+                .filter_map(Result::ok)
+                .collect::<Vec<_>>();
             if spec.channels == 2 {
-                samples.chunks_exact(2).map(|chunk| (chunk[0] as f32 + chunk[1] as f32) * 0.5 / i16::MAX as f32).collect()
+                samples
+                    .chunks_exact(2)
+                    .map(|chunk| (chunk[0] as f32 + chunk[1] as f32) * 0.5 / i16::MAX as f32)
+                    .collect()
             } else {
-                samples.into_iter().map(|s| s as f32 / i16::MAX as f32).collect()
+                samples
+                    .into_iter()
+                    .map(|s| s as f32 / i16::MAX as f32)
+                    .collect()
             }
-        },
+        }
         (SampleFormat::Int, 24) | (SampleFormat::Int, 32) => {
-            let samples = reader.samples::<i32>().filter_map(Result::ok).collect::<Vec<_>>();
+            let samples = reader
+                .samples::<i32>()
+                .filter_map(Result::ok)
+                .collect::<Vec<_>>();
             let divisor = (1 << (spec.bits_per_sample - 1)) as f32;
             if spec.channels == 2 {
-                samples.chunks_exact(2).map(|chunk| (chunk[0] as f32 + chunk[1] as f32) * 0.5 / divisor).collect()
+                samples
+                    .chunks_exact(2)
+                    .map(|chunk| (chunk[0] as f32 + chunk[1] as f32) * 0.5 / divisor)
+                    .collect()
             } else {
                 samples.into_iter().map(|s| s as f32 / divisor).collect()
             }
-        },
+        }
         (SampleFormat::Float, 32) => {
-            let samples = reader.samples::<f32>().filter_map(Result::ok).collect::<Vec<_>>();
+            let samples = reader
+                .samples::<f32>()
+                .filter_map(Result::ok)
+                .collect::<Vec<_>>();
             if spec.channels == 2 {
-                samples.chunks_exact(2).map(|chunk| (chunk[0] + chunk[1]) * 0.5).collect()
+                samples
+                    .chunks_exact(2)
+                    .map(|chunk| (chunk[0] + chunk[1]) * 0.5)
+                    .collect()
             } else {
                 samples
             }
-        },
-        _ => return Err(format!("Unsupported WAV format: {:?}, {} bits", spec.sample_format, spec.bits_per_sample)),
+        }
+        _ => {
+            return Err(format!(
+                "Unsupported WAV format: {:?}, {} bits",
+                spec.sample_format, spec.bits_per_sample
+            ));
+        }
     };
 
     let resampled = resample_if_needed(samples_mono, spec.sample_rate, TARGET_SAMPLE_RATE)?;
     let loop_end = resampled.len();
 
     Ok(Sample {
-        name: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+        name: path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string(),
         data: SampleData::F32(resampled),
         sample_rate: TARGET_SAMPLE_RATE,
         source_channels: spec.channels,
@@ -107,7 +139,10 @@ fn load_flac(path: &Path) -> Result<Sample, String> {
     let samples = reader.samples().filter_map(Result::ok).collect::<Vec<_>>();
 
     let samples_mono: Vec<f32> = if spec.channels == 2 {
-        samples.chunks_exact(2).map(|chunk| (chunk[0] as f32 + chunk[1] as f32) * 0.5 / divisor).collect()
+        samples
+            .chunks_exact(2)
+            .map(|chunk| (chunk[0] as f32 + chunk[1] as f32) * 0.5 / divisor)
+            .collect()
     } else {
         samples.into_iter().map(|s| s as f32 / divisor).collect()
     };
@@ -116,7 +151,11 @@ fn load_flac(path: &Path) -> Result<Sample, String> {
     let loop_end = resampled.len();
 
     Ok(Sample {
-        name: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+        name: path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string(),
         data: SampleData::F32(resampled),
         sample_rate: TARGET_SAMPLE_RATE,
         source_channels: spec.channels as u16,
@@ -130,7 +169,11 @@ fn load_flac(path: &Path) -> Result<Sample, String> {
     })
 }
 
-fn resample_if_needed(samples: Vec<f32>, source_rate: u32, target_rate: u32) -> Result<Vec<f32>, String> {
+fn resample_if_needed(
+    samples: Vec<f32>,
+    source_rate: u32,
+    target_rate: u32,
+) -> Result<Vec<f32>, String> {
     if source_rate == target_rate {
         return Ok(samples);
     }
@@ -149,10 +192,13 @@ fn resample_if_needed(samples: Vec<f32>, source_rate: u32, target_rate: u32) -> 
         params,
         samples.len(),
         1,
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     let waves_in = vec![samples];
-    let waves_out = resampler.process(&waves_in, None).map_err(|e| e.to_string())?;
+    let waves_out = resampler
+        .process(&waves_in, None)
+        .map_err(|e| e.to_string())?;
 
     Ok(waves_out.into_iter().next().unwrap())
 }
@@ -169,21 +215,31 @@ fn load_mp3(path: &Path) -> Result<Sample, String> {
     }
 
     // Probe the format
-    let probed = get_probe().format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+    let probed = get_probe()
+        .format(
+            &hint,
+            mss,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
         .map_err(|e| format!("Failed to probe format: {}", e))?;
 
     let mut format = probed.format;
-    let track_id = format.tracks().iter()
+    let track_id = format
+        .tracks()
+        .iter()
         .find(|t| t.codec_params.codec != symphonia::core::codecs::CODEC_TYPE_NULL)
         .ok_or("No audio track found")?
         .id;
 
-    let track = format.tracks().iter()
+    let track = format
+        .tracks()
+        .iter()
         .find(|t| t.id == track_id)
         .ok_or("Track not found")?;
 
     let codec_params = &track.codec_params;
-    
+
     let sample_rate = codec_params.sample_rate.ok_or("No sample rate")?;
     let channels = codec_params.channels.ok_or("No channel info")?.count() as u16;
 
@@ -203,7 +259,10 @@ fn load_mp3(path: &Path) -> Result<Sample, String> {
                 continue;
             }
             Err(symphonia::core::errors::Error::IoError(ref e))
-                if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                if e.kind() == std::io::ErrorKind::UnexpectedEof =>
+            {
+                break;
+            }
             Err(e) => return Err(format!("Decode error: {}", e)),
         };
 
@@ -349,7 +408,10 @@ fn load_mp3(path: &Path) -> Result<Sample, String> {
                 }
             }
             Err(symphonia::core::errors::Error::IoError(ref e))
-                if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                if e.kind() == std::io::ErrorKind::UnexpectedEof =>
+            {
+                break;
+            }
             Err(symphonia::core::errors::Error::DecodeError(_)) => {
                 // Skip decode errors that may occur with some MP3 files
                 continue;
@@ -367,7 +429,11 @@ fn load_mp3(path: &Path) -> Result<Sample, String> {
     let loop_end = resampled.len();
 
     Ok(Sample {
-        name: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+        name: path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string(),
         data: SampleData::F32(resampled),
         sample_rate: TARGET_SAMPLE_RATE,
         source_channels: channels,

@@ -3,8 +3,8 @@
 // This module monitors the CPU load of the audio callback to prevent dropouts.
 // Uses atomics for thread-safe metric sharing between audio and UI threads.
 
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::Instant;
 
 /// CPU monitor for audio callback
@@ -73,11 +73,14 @@ impl CpuMonitor {
             let elapsed_ns = start.elapsed().as_nanos() as u64;
 
             // Available time for this buffer (in nanoseconds)
-            let available_ns = ((self.buffer_size as f64 / self.sample_rate as f64) * 1_000_000_000.0) as u64;
+            let available_ns =
+                ((self.buffer_size as f64 / self.sample_rate as f64) * 1_000_000_000.0) as u64;
 
             // Accumulate statistics
-            self.total_callback_time_ns.fetch_add(elapsed_ns, Ordering::Relaxed);
-            self.total_available_time_ns.fetch_add(available_ns, Ordering::Relaxed);
+            self.total_callback_time_ns
+                .fetch_add(elapsed_ns, Ordering::Relaxed);
+            self.total_available_time_ns
+                .fetch_add(available_ns, Ordering::Relaxed);
             self.sample_count.fetch_add(1, Ordering::Relaxed);
         }
     }

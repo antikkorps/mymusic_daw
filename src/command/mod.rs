@@ -13,11 +13,11 @@
 // - They send low-level Command messages via ringbuffer to audio thread
 // - Store previous state for undo capability
 
-pub mod trait_def;
-pub mod manager;
 pub mod commands;
+pub mod manager;
 pub mod state;
+pub mod trait_def;
 
-pub use trait_def::UndoableCommand;
 pub use manager::CommandManager;
 pub use state::DawState;
+pub use trait_def::UndoableCommand;

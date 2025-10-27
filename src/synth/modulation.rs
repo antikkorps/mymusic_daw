@@ -56,7 +56,9 @@ pub struct ModulationMatrix {
 
 impl ModulationMatrix {
     pub fn new_empty() -> Self {
-        Self { routings: [ModRouting::disabled(); MAX_ROUTINGS] }
+        Self {
+            routings: [ModRouting::disabled(); MAX_ROUTINGS],
+        }
     }
 
     pub fn set_routing(&mut self, index: usize, routing: ModRouting) {
@@ -77,7 +79,9 @@ impl ModulationMatrix {
 
     /// Quick check if any pitch routing exists (for optional legacy LFO behavior switching)
     pub fn has_pitch_routing(&self) -> bool {
-        self.routings.iter().any(|r| r.enabled && matches!(r.destination, ModDestination::OscillatorPitch(_)))
+        self.routings
+            .iter()
+            .any(|r| r.enabled && matches!(r.destination, ModDestination::OscillatorPitch(_)))
     }
 
     /// Apply the matrix for a single voice sample
@@ -91,7 +95,13 @@ impl ModulationMatrix {
     /// - amplitude multiplier (>=0)
     /// - pan (-1..1)
     /// - filter cutoff multiplier (multiplicative, 1.0 = no change)
-    pub fn apply(&self, velocity: f32, aftertouch: f32, lfo_values: &[f32; 1], envelope_value: f32) -> (f32, f32, f32, f32) {
+    pub fn apply(
+        &self,
+        velocity: f32,
+        aftertouch: f32,
+        lfo_values: &[f32; 1],
+        envelope_value: f32,
+    ) -> (f32, f32, f32, f32) {
         let mut pitch_semitones = 0.0f32;
         let mut amp_mult = 1.0f32;
         let mut pan = 0.0f32;
@@ -99,7 +109,9 @@ impl ModulationMatrix {
 
         // Evaluate all enabled routings
         for r in &self.routings {
-            if !r.enabled { continue; }
+            if !r.enabled {
+                continue;
+            }
 
             // Compute source value in [-1, 1] (or [0,1] mapped to [-1,1] where relevant)
             let src = match r.source {
@@ -158,7 +170,15 @@ mod tests {
     #[test]
     fn test_lfo_to_pitch() {
         let mut m = ModulationMatrix::new_empty();
-        m.set_routing(0, ModRouting { source: ModSource::Lfo(0), destination: ModDestination::OscillatorPitch(0), amount: 2.0, enabled: true });
+        m.set_routing(
+            0,
+            ModRouting {
+                source: ModSource::Lfo(0),
+                destination: ModDestination::OscillatorPitch(0),
+                amount: 2.0,
+                enabled: true,
+            },
+        );
         // LFO value +1 → +2 semitones
         let (p, _a, _pan, _cutoff) = m.apply(0.5, 0.5, &[1.0], 0.5);
         assert!((p - 2.0).abs() < 1e-6);
@@ -167,7 +187,15 @@ mod tests {
     #[test]
     fn test_velocity_to_amp() {
         let mut m = ModulationMatrix::new_empty();
-        m.set_routing(0, ModRouting { source: ModSource::Velocity, destination: ModDestination::Amplitude, amount: 0.5, enabled: true });
+        m.set_routing(
+            0,
+            ModRouting {
+                source: ModSource::Velocity,
+                destination: ModDestination::Amplitude,
+                amount: 0.5,
+                enabled: true,
+            },
+        );
         // velocity 1.0 → src = +1.0 → amp = 1 + 0.5*1 = 1.5
         let (_p, a, _pan, _cutoff) = m.apply(1.0, 0.0, &[0.0], 0.5);
         assert!((a - 1.5).abs() < 1e-6);
@@ -176,15 +204,17 @@ mod tests {
     #[test]
     fn test_envelope_to_filter_cutoff() {
         let mut m = ModulationMatrix::new_empty();
-        m.set_routing(0, ModRouting {
-            source: ModSource::Envelope,
-            destination: ModDestination::FilterCutoff,
-            amount: 4.0,
-            enabled: true
-        });
+        m.set_routing(
+            0,
+            ModRouting {
+                source: ModSource::Envelope,
+                destination: ModDestination::FilterCutoff,
+                amount: 4.0,
+                enabled: true,
+            },
+        );
         // envelope 1.0 → src = +1.0 → cutoff_mult = 1 + 4*1 = 5.0
         let (_p, _a, _pan, cutoff) = m.apply(0.5, 0.5, &[0.0], 1.0);
         assert!((cutoff - 5.0).abs() < 1e-6);
     }
 }
-

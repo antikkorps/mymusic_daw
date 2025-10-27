@@ -1,7 +1,7 @@
-use crate::sampler::loader::{Sample, LoopMode};
-use std::sync::Arc;
+use crate::sampler::loader::{LoopMode, Sample};
 use crate::synth::envelope::{AdsrEnvelope, AdsrParams};
 use std::f32::consts::FRAC_PI_2;
+use std::sync::Arc;
 
 pub struct SamplerVoice {
     sample: Arc<Sample>,
@@ -97,7 +97,10 @@ impl SamplerVoice {
 
     pub fn set_aftertouch(&mut self, _value: f32) {}
 
-    pub fn next_sample_with_matrix(&mut self, _matrix: &crate::synth::modulation::ModulationMatrix) -> (f32, f32) {
+    pub fn next_sample_with_matrix(
+        &mut self,
+        _matrix: &crate::synth::modulation::ModulationMatrix,
+    ) -> (f32, f32) {
         if !self.is_active {
             return (0.0, 0.0);
         }

@@ -29,9 +29,9 @@ pub struct DelayParams {
 impl Default for DelayParams {
     fn default() -> Self {
         Self {
-            time_ms: 250.0,     // 250ms default delay
-            feedback: 0.5,      // Moderate feedback
-            mix: 0.3,           // 30% wet signal
+            time_ms: 250.0, // 250ms default delay
+            feedback: 0.5,  // Moderate feedback
+            mix: 0.3,       // 30% wet signal
             enabled: true,
         }
     }
@@ -329,8 +329,18 @@ mod tests {
 
         // Each echo should be quieter than the previous (due to feedback < 1.0)
         assert!(echo_levels.len() >= 3, "Not enough echo cycles captured");
-        assert!(echo_levels[1] < echo_levels[0], "Second echo ({}) should be < first ({})", echo_levels[1], echo_levels[0]);
-        assert!(echo_levels[2] < echo_levels[1], "Third echo ({}) should be < second ({})", echo_levels[2], echo_levels[1]);
+        assert!(
+            echo_levels[1] < echo_levels[0],
+            "Second echo ({}) should be < first ({})",
+            echo_levels[1],
+            echo_levels[0]
+        );
+        assert!(
+            echo_levels[2] < echo_levels[1],
+            "Third echo ({}) should be < second ({})",
+            echo_levels[2],
+            echo_levels[1]
+        );
     }
 
     #[test]
@@ -368,7 +378,12 @@ mod tests {
             let output = delay.process(input);
 
             assert!(output.is_finite(), "Sample {} is not finite: {}", i, output);
-            assert!(output.abs() < 10.0, "Sample {} exceeds reasonable bounds: {}", i, output);
+            assert!(
+                output.abs() < 10.0,
+                "Sample {} exceeds reasonable bounds: {}",
+                i,
+                output
+            );
         }
     }
 

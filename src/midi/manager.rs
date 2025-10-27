@@ -320,7 +320,8 @@ impl MidiConnectionManager {
 
                             if let Some(port) = port {
                                 // Cloner l'Arc pour le callback
-                                let cmd_tx_clone: Arc<Mutex<CommandProducer>> = Arc::clone(&command_tx);
+                                let cmd_tx_clone: Arc<Mutex<CommandProducer>> =
+                                    Arc::clone(&command_tx);
 
                                 // Tenter de se connecter
                                 let new_connection = midi_in.connect(

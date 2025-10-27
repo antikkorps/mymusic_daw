@@ -175,7 +175,10 @@ fn test_stability_polyphonic_stress() {
         }
     }
 
-    println!("Generated {} samples at full 16-voice polyphony", total_samples);
+    println!(
+        "Generated {} samples at full 16-voice polyphony",
+        total_samples
+    );
     println!("✅ Polyphonic stress test PASSED");
 }
 
@@ -194,7 +197,11 @@ fn test_stability_rapid_notes() {
         // Generate a few samples
         for _ in 0..10 {
             let sample = voice_manager.next_sample();
-            assert!(sample.0.is_finite() && sample.1.is_finite(), "Sample not finite at cycle {}", cycle);
+            assert!(
+                sample.0.is_finite() && sample.1.is_finite(),
+                "Sample not finite at cycle {}",
+                cycle
+            );
         }
 
         voice_manager.note_off(60 + (cycle % 12) as u8);

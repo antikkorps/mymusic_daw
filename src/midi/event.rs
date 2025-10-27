@@ -2,14 +2,29 @@
 
 #[derive(Debug, Clone, Copy)]
 pub enum MidiEvent {
-    NoteOn { note: u8, velocity: u8 },
-    NoteOff { note: u8 },
-    ControlChange { controller: u8, value: u8 },
-    PitchBend { value: i16 },
+    NoteOn {
+        note: u8,
+        velocity: u8,
+    },
+    NoteOff {
+        note: u8,
+    },
+    ControlChange {
+        controller: u8,
+        value: u8,
+    },
+    PitchBend {
+        value: i16,
+    },
     /// Channel Aftertouch (Channel Pressure) - applies to the whole channel
-    ChannelAftertouch { value: u8 },
+    ChannelAftertouch {
+        value: u8,
+    },
     /// Polyphonic Key Pressure (Poly Aftertouch) - pressure per note
-    PolyAftertouch { note: u8, value: u8 },
+    PolyAftertouch {
+        note: u8,
+        value: u8,
+    },
 }
 
 /// MIDI event with sample-accurate timing
@@ -90,7 +105,10 @@ impl MidiEvent {
                 // Polyphonic Key Pressure (Poly Aftertouch)
                 // Status 0xAn, 2 data bytes: note number, pressure
                 if bytes.len() >= 3 {
-                    Some(MidiEvent::PolyAftertouch { note: bytes[1], value: bytes[2] })
+                    Some(MidiEvent::PolyAftertouch {
+                        note: bytes[1],
+                        value: bytes[2],
+                    })
                 } else {
                     None
                 }
@@ -228,7 +246,16 @@ mod tests {
 
         // Les deux doivent être des NoteOn identiques
         match (event1, event2) {
-            (MidiEvent::NoteOn { note: n1, velocity: v1 }, MidiEvent::NoteOn { note: n2, velocity: v2 }) => {
+            (
+                MidiEvent::NoteOn {
+                    note: n1,
+                    velocity: v1,
+                },
+                MidiEvent::NoteOn {
+                    note: n2,
+                    velocity: v2,
+                },
+            ) => {
                 assert_eq!(n1, n2);
                 assert_eq!(v1, v2);
             }

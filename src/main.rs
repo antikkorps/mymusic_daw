@@ -1,5 +1,7 @@
-use mymusic_daw::{AudioEngine, create_command_channel, create_notification_channel, MidiConnectionManager};
 use mymusic_daw::ui::app::DawApp;
+use mymusic_daw::{
+    AudioEngine, MidiConnectionManager, create_command_channel, create_notification_channel,
+};
 use std::sync::{Arc, Mutex};
 
 // Ringbuffer capacity constants
@@ -22,17 +24,19 @@ fn main() {
     let (command_tx_midi, command_rx_midi) = create_command_channel(MIDI_RINGBUFFER_CAPACITY);
 
     // Create notification channel (for error handling)
-    let (notification_tx, notification_rx) = create_notification_channel(NOTIFICATION_RINGBUFFER_CAPACITY);
+    let (notification_tx, notification_rx) =
+        create_notification_channel(NOTIFICATION_RINGBUFFER_CAPACITY);
     let notification_tx = Arc::new(Mutex::new(notification_tx));
 
     println!("Audio engine initialisation...");
-    let audio_engine = match AudioEngine::new(command_rx_ui, command_rx_midi, notification_tx.clone()) {
-        Ok(engine) => engine,
-        Err(e) => {
-            eprintln!("ERROR: {}", e);
-            return;
-        }
-    };
+    let audio_engine =
+        match AudioEngine::new(command_rx_ui, command_rx_midi, notification_tx.clone()) {
+            Ok(engine) => engine,
+            Err(e) => {
+                eprintln!("ERROR: {}", e);
+                return;
+            }
+        };
 
     println!("\nMIDI Initialisation...");
     let midi_manager = MidiConnectionManager::new(command_tx_midi, notification_tx);

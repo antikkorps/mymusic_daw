@@ -1,7 +1,7 @@
 // CommandManager - Manages undo/redo stacks
 
 use crate::command::state::DawState;
-use crate::command::trait_def::{UndoableCommand, CommandResult, CommandError};
+use crate::command::trait_def::{CommandError, CommandResult, UndoableCommand};
 use std::collections::VecDeque;
 
 /// Default maximum number of commands to keep in history
@@ -58,7 +58,11 @@ impl CommandManager {
     ///
     /// # Errors
     /// Returns an error if the command execution fails.
-    pub fn execute(&mut self, mut command: Box<dyn UndoableCommand>, state: &mut DawState) -> CommandResult<()> {
+    pub fn execute(
+        &mut self,
+        mut command: Box<dyn UndoableCommand>,
+        state: &mut DawState,
+    ) -> CommandResult<()> {
         // Execute the command
         command.execute(state)?;
 
@@ -88,7 +92,9 @@ impl CommandManager {
     /// - There are no commands to undo
     /// - The undo operation fails
     pub fn undo(&mut self, state: &mut DawState) -> CommandResult<String> {
-        let mut command = self.undo_stack.pop_back()
+        let mut command = self
+            .undo_stack
+            .pop_back()
             .ok_or_else(|| CommandError::UndoFailed("Nothing to undo".into()))?;
 
         let description = command.description();
@@ -111,7 +117,9 @@ impl CommandManager {
     /// - There are no commands to redo
     /// - The execution fails
     pub fn redo(&mut self, state: &mut DawState) -> CommandResult<String> {
-        let mut command = self.redo_stack.pop_back()
+        let mut command = self
+            .redo_stack
+            .pop_back()
             .ok_or_else(|| CommandError::ExecutionFailed("Nothing to redo".into()))?;
 
         let description = command.description();
@@ -265,9 +273,13 @@ mod tests {
         let mut state = create_test_state();
 
         // Execute, undo, then execute a new command
-        manager.execute(Box::new(MockCommand::new(1)), &mut state).unwrap();
+        manager
+            .execute(Box::new(MockCommand::new(1)), &mut state)
+            .unwrap();
         manager.undo(&mut state).unwrap();
-        manager.execute(Box::new(MockCommand::new(2)), &mut state).unwrap();
+        manager
+            .execute(Box::new(MockCommand::new(2)), &mut state)
+            .unwrap();
 
         // Redo stack should be cleared
         assert!(!manager.can_redo());
@@ -281,7 +293,9 @@ mod tests {
 
         // Execute 5 commands (more than limit)
         for i in 0..5 {
-            manager.execute(Box::new(MockCommand::new(i)), &mut state).unwrap();
+            manager
+                .execute(Box::new(MockCommand::new(i)), &mut state)
+                .unwrap();
         }
 
         // Should only keep the last 3

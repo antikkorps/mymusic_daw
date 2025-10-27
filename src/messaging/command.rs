@@ -25,11 +25,19 @@ pub enum Command {
     SetVoiceMode(VoiceMode),
     AddSample(Arc<Sample>),
     RemoveSample(usize),
-    SetNoteSampleMapping { note: u8, sample_index: usize },
+    SetNoteSampleMapping {
+        note: u8,
+        sample_index: usize,
+    },
     UpdateSample(usize, Arc<Sample>),
     /// Update a modulation routing slot (UI → Audio)
-    SetModRouting { index: u8, routing: ModRouting },
+    SetModRouting {
+        index: u8,
+        routing: ModRouting,
+    },
     /// Clear a modulation routing slot
-    ClearModRouting { index: u8 },
+    ClearModRouting {
+        index: u8,
+    },
     Quit,
 }

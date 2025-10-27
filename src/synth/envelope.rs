@@ -31,10 +31,10 @@ impl AdsrParams {
 impl Default for AdsrParams {
     fn default() -> Self {
         Self {
-            attack: 0.01,   // 10ms attack
-            decay: 0.1,     // 100ms decay
-            sustain: 0.7,   // 70% sustain level
-            release: 0.2,   // 200ms release
+            attack: 0.01, // 10ms attack
+            decay: 0.1,   // 100ms decay
+            sustain: 0.7, // 70% sustain level
+            release: 0.2, // 200ms release
         }
     }
 }

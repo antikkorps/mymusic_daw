@@ -12,7 +12,7 @@ pub struct ReconnectionStrategy {
 impl ReconnectionStrategy {
     pub fn new() -> Self {
         Self {
-            max_attempts: 10, // 10 tentatives max
+            max_attempts: 10,    // 10 tentatives max
             base_delay_ms: 1000, // 1 seconde de base
             max_delay_ms: 30000, // 30 secondes max
             current_attempt: 0,

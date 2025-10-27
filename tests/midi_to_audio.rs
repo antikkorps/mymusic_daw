@@ -23,7 +23,10 @@ fn test_midi_to_audio_pipeline() {
             break;
         }
     }
-    assert!(silent, "Audio should be silent before any note is triggered");
+    assert!(
+        silent,
+        "Audio should be silent before any note is triggered"
+    );
 
     // Test 2: NoteOn generates audio
     voice_manager.note_on(60, 100); // Middle C, velocity 100
@@ -59,7 +62,10 @@ fn test_midi_to_audio_pipeline() {
             break;
         }
     }
-    assert!(silent, "Audio should be silent after NoteOff and release phase");
+    assert!(
+        silent,
+        "Audio should be silent after NoteOff and release phase"
+    );
 }
 
 #[test]
@@ -117,13 +123,19 @@ fn test_midi_polyphony() {
             break;
         }
     }
-    assert!(silent, "Audio should be silent after all notes are off and release phase");
+    assert!(
+        silent,
+        "Audio should be silent after all notes are off and release phase"
+    );
 }
 
 #[test]
 fn test_midi_event_timing() {
     // Test that MidiEventTimed can be created and processed
-    let midi_event = MidiEvent::NoteOn { note: 60, velocity: 100 };
+    let midi_event = MidiEvent::NoteOn {
+        note: 60,
+        velocity: 100,
+    };
     let timed_event = MidiEventTimed {
         event: midi_event,
         samples_from_now: 0, // Immediate processing
@@ -161,15 +173,7 @@ fn test_audio_output_range() {
 
         // Audio should be within reasonable range (with some headroom)
         // The /4.0 gain in VoiceManager should keep this under control
-        assert!(
-            sample.0.abs() < 10.0,
-            "Audio sample too loud: {:?}",
-            sample
-        );
-        assert!(
-            sample.1.abs() < 10.0,
-            "Audio sample too loud: {:?}",
-            sample
-        );
+        assert!(sample.0.abs() < 10.0, "Audio sample too loud: {:?}", sample);
+        assert!(sample.1.abs() < 10.0, "Audio sample too loud: {:?}", sample);
     }
 }
