@@ -42,12 +42,13 @@ fn bench_voice_processing(c: &mut Criterion) {
     let buffer_size = 512;
 
     c.bench_function("voice_single_note", |b| {
-        let mut voice = Voice::new(sample_rate);
+        let mut voice = Voice::new_synth(sample_rate);
         voice.note_on(69, 100, 0); // A4, velocity 100
 
+        let matrix = ModulationMatrix::new_empty();
         b.iter(|| {
             for _ in 0..buffer_size {
-                black_box(voice.next_sample());
+                black_box(voice.next_sample_with_matrix(&matrix));
             }
         });
     });
@@ -253,16 +254,19 @@ fn bench_voice_filter_overhead(c: &mut Criterion) {
 
     // Voice without filter (bypassed)
     {
-        let mut voice = Voice::new(sample_rate);
-        let mut filter_params = FilterParams::default();
-        filter_params.enabled = false; // Bypass
+        let mut voice = Voice::new_synth(sample_rate);
+        let filter_params = FilterParams {
+            enabled: false, // Bypass
+            ..Default::default()
+        };
         voice.set_filter(filter_params);
         voice.note_on(60, 100, 0);
 
+        let matrix = ModulationMatrix::new_empty();
         group.bench_function("voice_filter_bypassed", |b| {
             b.iter(|| {
                 for _ in 0..buffer_size {
-                    black_box(voice.next_sample());
+                    black_box(voice.next_sample_with_matrix(&matrix));
                 }
             });
         });
@@ -270,7 +274,7 @@ fn bench_voice_filter_overhead(c: &mut Criterion) {
 
     // Voice with filter enabled
     {
-        let mut voice = Voice::new(sample_rate);
+        let mut voice = Voice::new_synth(sample_rate);
         let filter_params = FilterParams {
             cutoff: 1000.0,
             resonance: 2.0,
@@ -280,10 +284,11 @@ fn bench_voice_filter_overhead(c: &mut Criterion) {
         voice.set_filter(filter_params);
         voice.note_on(60, 100, 0);
 
+        let matrix = ModulationMatrix::new_empty();
         group.bench_function("voice_filter_enabled", |b| {
             b.iter(|| {
                 for _ in 0..buffer_size {
-                    black_box(voice.next_sample());
+                    black_box(voice.next_sample_with_matrix(&matrix));
                 }
             });
         });
@@ -298,7 +303,7 @@ fn bench_voice_filter_with_modulation(c: &mut Criterion) {
     let buffer_size = 512;
 
     c.bench_function("voice_envelope_to_filter", |b| {
-        let mut voice = Voice::new(sample_rate);
+        let mut voice = Voice::new_synth(sample_rate);
         let filter_params = FilterParams {
             cutoff: 200.0,
             resonance: 2.0,
