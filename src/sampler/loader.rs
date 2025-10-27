@@ -245,7 +245,7 @@ fn load_mp3(path: &Path) -> Result<Sample, String> {
 
     // Create a decoder
     let mut decoder = symphonia::default::get_codecs()
-        .make(&codec_params, &Default::default())
+        .make(codec_params, &Default::default())
         .map_err(|e| format!("Failed to create decoder: {}", e))?;
 
     let mut samples = Vec::new();

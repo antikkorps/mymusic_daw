@@ -54,12 +54,7 @@ impl AudioTiming {
         current_time_micros: u64,
     ) -> u32 {
         // Calculate time delta in microseconds
-        let delta_micros = if midi_timestamp_micros >= current_time_micros {
-            midi_timestamp_micros - current_time_micros
-        } else {
-            // Event is in the past, process immediately
-            0
-        };
+        let delta_micros = midi_timestamp_micros.saturating_sub(current_time_micros);
 
         // Convert to samples
         let delta_samples = self.micros_to_samples(delta_micros);
@@ -141,9 +136,6 @@ mod tests {
         let midi_time = 1_000_000;
 
         let samples_from_now = timing.calculate_samples_from_now(midi_time, current_time);
-        assert_eq!(
-            timing.calculate_samples_from_now(midi_time, current_time),
-            0
-        );
+        assert_eq!(samples_from_now, 0);
     }
 }

@@ -227,7 +227,7 @@ impl VoiceManager {
 
     fn find_voice_to_steal(&self) -> usize {
         let mut best_index = 0;
-        let mut best_priority = (false, std::u64::MAX);
+        let mut best_priority = (false, u64::MAX);
         for (i, voice) in self.voices.iter().enumerate() {
             let is_releasing = voice.is_releasing();
             let age = voice.get_age();

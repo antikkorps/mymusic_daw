@@ -90,6 +90,7 @@ impl ModulationMatrix {
     /// - `aftertouch`: 0..1 (channel pressure)
     /// - `lfo_values`: current LFO outputs; for MVP, [lfo0]
     /// - `envelope_value`: current envelope output 0..1
+    ///
     /// Returns deltas to apply:
     /// - pitch in semitones
     /// - amplitude multiplier (>=0)

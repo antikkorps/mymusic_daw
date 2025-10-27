@@ -224,8 +224,10 @@ mod tests {
 
     #[test]
     fn test_delay_bypass() {
-        let mut params = DelayParams::default();
-        params.enabled = false;
+        let params = DelayParams {
+            enabled: false,
+            ..Default::default()
+        };
 
         let mut delay = Delay::new(params, 44100.0, 1000.0);
 
@@ -454,7 +456,7 @@ mod tests {
     fn test_delay_circular_buffer() {
         let sample_rate = 44100.0;
         let delay_time_ms = 10.0;
-        let delay_samples = (delay_time_ms / 1000.0 * sample_rate) as usize;
+        let _delay_samples = (delay_time_ms / 1000.0 * sample_rate) as usize;
 
         let params = DelayParams {
             time_ms: delay_time_ms,

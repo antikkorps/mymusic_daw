@@ -105,9 +105,7 @@ impl SamplerVoice {
             return (0.0, 0.0);
         }
 
-        let sample_data = match &self.sample.data {
-            crate::sampler::loader::SampleData::F32(data) => data,
-        };
+        let crate::sampler::loader::SampleData::F32(sample_data) = &self.sample.data;
 
         let pos_integer = self.position as usize;
         let pos_fractional = self.position.fract();

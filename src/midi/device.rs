@@ -57,10 +57,8 @@ impl MidiDeviceManager {
         let ports = midi_in.ports();
 
         for port in ports {
-            if let Ok(name) = midi_in.port_name(&port) {
-                if name == device_name {
-                    return Some((midi_in, port));
-                }
+            if let Ok(name) = midi_in.port_name(&port) && name == device_name {
+                return Some((midi_in, port));
             }
         }
 
