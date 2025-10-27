@@ -15,7 +15,7 @@ use crate::messaging::notification::{Notification, NotificationCategory};
 use crate::midi::device::{MidiDeviceInfo, MidiDeviceManager};
 use crate::midi::event::{MidiEvent, MidiEventTimed};
 use crate::midi::manager::MidiConnectionManager;
-use crate::sampler::loader::{load_sample, Sample};
+use crate::sampler::loader::{Sample, load_sample};
 use crate::synth::envelope::AdsrParams;
 use crate::synth::filter::FilterType;
 use crate::synth::lfo::{LfoDestination, LfoParams};
@@ -500,7 +500,11 @@ impl eframe::App for DawApp {
         // Handle Undo/Redo keyboard shortcuts
         ctx.input(|i| {
             // Ctrl+Z for Undo
-            if i.modifiers.command && i.key_pressed(egui::Key::Z) && !i.modifiers.shift && self.command_manager.can_undo() {
+            if i.modifiers.command
+                && i.key_pressed(egui::Key::Z)
+                && !i.modifiers.shift
+                && self.command_manager.can_undo()
+            {
                 match self.command_manager.undo(&mut self.daw_state) {
                     Ok(description) => {
                         // Update UI state from DawState after undo
@@ -529,7 +533,7 @@ impl eframe::App for DawApp {
 
             // Ctrl+Shift+Z or Ctrl+Y for Redo
             if ((i.modifiers.command && i.key_pressed(egui::Key::Z) && i.modifiers.shift)
-                || (i.modifiers.command && i.key_pressed(egui::Key::Y))) 
+                || (i.modifiers.command && i.key_pressed(egui::Key::Y)))
                 && self.command_manager.can_redo()
             {
                 match self.command_manager.redo(&mut self.daw_state) {

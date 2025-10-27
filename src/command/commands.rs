@@ -572,8 +572,7 @@ impl UndoableCommand for SetPortamentoCommand {
 
     fn merge_with(&mut self, other: Box<dyn UndoableCommand>) -> CommandResult<()> {
         // Downcast to SetPortamentoCommand
-        let other_any =
-            Box::into_raw(other) as *mut SetPortamentoCommand;
+        let other_any = Box::into_raw(other) as *mut SetPortamentoCommand;
 
         unsafe {
             let other_cmd = Box::from_raw(other_any);
