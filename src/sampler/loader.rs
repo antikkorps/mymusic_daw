@@ -18,7 +18,7 @@ pub enum SampleData {
     F32(Vec<f32>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LoopMode {
     Off,
     Forward,

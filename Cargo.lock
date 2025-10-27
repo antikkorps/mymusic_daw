@@ -2156,7 +2156,10 @@ dependencies = [
  "rfd",
  "ringbuf",
  "rubato",
+ "serde",
+ "serde_json",
  "symphonia",
+ "tempfile",
 ]
 
 [[package]]

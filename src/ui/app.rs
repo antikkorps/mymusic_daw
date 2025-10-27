@@ -15,6 +15,7 @@ use crate::messaging::notification::{Notification, NotificationCategory};
 use crate::midi::device::{MidiDeviceInfo, MidiDeviceManager};
 use crate::midi::event::{MidiEvent, MidiEventTimed};
 use crate::midi::manager::MidiConnectionManager;
+use crate::sampler::SampleBank;
 use crate::sampler::loader::{Sample, load_sample};
 use crate::synth::envelope::AdsrParams;
 use crate::synth::filter::FilterType;
@@ -484,6 +485,105 @@ impl DawApp {
             }
         });
     }
+
+    /// Save current sample bank to file
+    fn save_sample_bank(&self, path: &std::path::Path) -> Result<(), String> {
+        let bank_name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Untitled Bank")
+            .to_string();
+
+        // Convert note_map_input to expected format
+        let note_mappings: Vec<Option<String>> = (0..128)
+            .map(|i| {
+                if i < self.note_map_input.len() && !self.note_map_input[i].is_empty() {
+                    Some(self.note_map_input[i].clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let bank = SampleBank::from_samples_and_mappings(
+            bank_name,
+            &self.loaded_samples,
+            &note_mappings,
+            path.parent().unwrap_or_else(|| std::path::Path::new(".")),
+        );
+
+        bank.save_to_file(path)
+    }
+
+    /// Load sample bank from file
+    fn load_sample_bank(&mut self, path: &std::path::Path) -> Result<(), String> {
+        let bank = SampleBank::load_from_file(path)?;
+
+        // Clear current samples and mappings
+        self.loaded_samples.clear();
+        self.note_map_input.clear();
+
+        // Get base directory for resolving relative paths
+        let base_dir = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+
+        // Load samples from bank
+        for mapping in bank.get_sorted_mappings() {
+            let sample_path = if mapping.sample_path.is_absolute() {
+                mapping.sample_path.clone()
+            } else {
+                base_dir.join(&mapping.sample_path)
+            };
+
+            match load_sample(&sample_path) {
+                Ok(mut sample) => {
+                    // Apply bank settings to sample
+                    sample.name = mapping.name.clone();
+                    sample.volume = mapping.volume;
+                    sample.pan = mapping.pan;
+                    sample.loop_mode = mapping.loop_mode;
+                    sample.loop_start = mapping.loop_start;
+                    sample.loop_end = mapping.loop_end;
+                    sample.reverse = mapping.reverse;
+                    sample.pitch_offset = mapping.pitch_offset;
+
+                    // Clone sample: one for UI, one for audio thread
+                    let sample_for_audio = Arc::new(sample.clone());
+                    let cmd = Command::AddSample(sample_for_audio);
+                    if let Ok(mut tx) = self.command_tx.lock()
+                        && ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err()
+                    {
+                        eprintln!("Failed to send AddSample command: ringbuffer full");
+                    }
+
+                    self.loaded_samples.push(sample);
+
+                    // Extend note_map_input if needed
+                    while self.note_map_input.len() <= mapping.note as usize {
+                        self.note_map_input.push(String::new());
+                    }
+
+                    self.note_map_input[mapping.note as usize] = mapping.note.to_string();
+
+                    // Send note mapping command
+                    let cmd = Command::SetNoteSampleMapping {
+                        note: mapping.note,
+                        sample_index: self.loaded_samples.len() - 1,
+                    };
+                    if let Ok(mut tx) = self.command_tx.lock()
+                        && ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err()
+                    {
+                        eprintln!("Failed to send SetNoteSampleMapping command: ringbuffer full");
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to load sample '{}': {}", mapping.name, e);
+                    // Continue loading other samples instead of failing completely
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl eframe::App for DawApp {
@@ -928,29 +1028,64 @@ impl eframe::App for DawApp {
                 }
                 UiTab::Sampler => {
                     ui.heading("Sampler");
-                    if ui.button("Load Sample").clicked() {
-                        let file = FileDialog::new()
-                            .add_filter("Audio Files", &["wav", "flac", "mp3"])
-                            .pick_file();
+                    // Sample bank management
+                    ui.horizontal(|ui| {
+                        if ui.button("Load Sample").clicked() {
+                            let file = FileDialog::new()
+                                .add_filter("Audio Files", &["wav", "flac", "mp3"])
+                                .pick_file();
 
-                        if let Some(path) = file {
-                            match load_sample(&path) {
-                                Ok(sample) => {
-                                    // Clone the sample: one for the UI, one for the audio thread
-                                    let sample_for_audio = Arc::new(sample.clone());
-                                    let cmd = Command::AddSample(sample_for_audio);
-                                    if let Ok(mut tx) = self.command_tx.lock() && ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
-                                        eprintln!("Failed to send AddSample command: ringbuffer full");
+                            if let Some(path) = file {
+                                match load_sample(&path) {
+                                    Ok(sample) => {
+                    // Clone sample: one for UI, one for audio thread
+                    let sample_for_audio = Arc::new(sample.clone());
+                    let cmd = Command::AddSample(sample_for_audio);
+                    if let Ok(mut tx) = self.command_tx.lock()
+                        && ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err()
+                    {
+                        eprintln!("Failed to send AddSample command: ringbuffer full");
+                    }
+                                        self.loaded_samples.push(sample);
+                                        self.note_map_input.push(String::new());
                                     }
-                                    self.loaded_samples.push(sample);
-                                    self.note_map_input.push(String::new());
-                                }
-                                Err(e) => {
-                                    eprintln!("Failed to load sample: {}", e);
+                                    Err(e) => {
+                                        eprintln!("Failed to load sample: {}", e);
+                                    }
                                 }
                             }
                         }
-                    }
+
+                        if ui.button("Save Bank").clicked()
+                            && let Some(path) = FileDialog::new()
+                                .add_filter("Sample Bank", &["json"])
+                                .set_file_name("sample_bank.json")
+                                .save_file()
+                        {
+                            match self.save_sample_bank(&path) {
+                                Ok(()) => {
+                                    println!("Sample bank saved to: {:?}", path);
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to save sample bank: {}", e);
+                                }
+                            }
+                        }
+                        if ui.button("Load Bank").clicked()
+                            && let Some(path) = FileDialog::new()
+                                .add_filter("Sample Bank", &["json"])
+                                .pick_file()
+                        {
+                            match self.load_sample_bank(&path) {
+                                Ok(()) => {
+                                    println!("Sample bank loaded from: {:?}", path);
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to load sample bank: {}", e);
+                                }
+                            }
+                        }
+                    });
 
                     ui.add_space(10.0);
                     ui.heading("Loaded Samples");
@@ -1535,9 +1670,11 @@ impl eframe::App for DawApp {
                         if matches!(load_level, crate::audio::cpu_monitor::CpuLoad::High) {
                             ui.colored_label(egui::Color32::RED, "⚠ High CPU load!");
                         }
-                    });
-                }
-            }
+        });
+    }
+
+
+}
 
             // Status bar at the bottom
             ui.add_space(10.0);
