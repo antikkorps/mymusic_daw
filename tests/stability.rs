@@ -92,7 +92,7 @@ fn run_stability_test(duration: Duration, test_name: &str) {
 
         // Print progress every 10 seconds
         let elapsed = start_time.elapsed();
-        if elapsed.as_secs() % 10 == 0 && elapsed.as_millis() % 10000 < 100 {
+        if elapsed.as_secs().is_multiple_of(10) && elapsed.as_millis() % 10000 < 100 {
             let progress_pct = (elapsed.as_secs_f32() / duration.as_secs_f32()) * 100.0;
             println!(
                 "Progress: {:.1}% ({:.0}s / {:.0}s) - {} buffers, {} samples, {} notes",
