@@ -1,5 +1,4 @@
 #[cfg(test)]
-mod tests {
     use crate::sampler::engine::SamplerVoice;
     use crate::sampler::loader::*;
     use std::path::PathBuf;
@@ -189,10 +188,9 @@ mod tests {
     fn test_loop_produces_continuous_audio() {
         let mut sample = create_test_sample(100);
         // Fill with a simple pattern to detect loop
-        if let SampleData::F32(ref mut data) = sample.data {
-            for (i, val) in data.iter_mut().enumerate() {
-                *val = (i as f32 / 100.0).sin(); // Simple sine-like pattern
-            }
+        let SampleData::F32(ref mut data) = sample.data;
+        for (i, val) in data.iter_mut().enumerate() {
+            *val = (i as f32 / 100.0).sin(); // Simple sine-like pattern
         }
 
         sample.loop_mode = LoopMode::Forward;
@@ -447,4 +445,3 @@ mod tests {
             );
         }
     }
-}

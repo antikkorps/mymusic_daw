@@ -75,10 +75,7 @@ impl MidiConnectionManager {
     /// Check if MIDI subsystem is available (WSL-friendly)
     fn is_midi_available() -> bool {
         // Try to initialize MIDI input to check availability
-        match MidirInput::new("MIDI Availability Check") {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+        MidirInput::new("MIDI Availability Check").is_ok()
     }
 
     /// Tente de se connecter au premier device MIDI disponible

@@ -548,7 +548,7 @@ mod tests {
     fn test_bypass_effect() {
         let mut chain = EffectChain::new();
 
-        let mut filter_params = FilterParams {
+        let filter_params = FilterParams {
             cutoff: 100.0, // Very low cutoff to clearly affect signal
             resonance: 0.707,
             filter_type: FilterType::LowPass,

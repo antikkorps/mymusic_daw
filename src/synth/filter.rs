@@ -17,9 +17,10 @@ use crate::audio::dsp_utils::OnePoleSmoother;
 use std::f32::consts::PI;
 
 /// Filter type/mode
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FilterType {
     /// Low-pass filter (12dB/octave)
+    #[default]
     LowPass,
     /// High-pass filter (12dB/octave)
     HighPass,
@@ -27,12 +28,6 @@ pub enum FilterType {
     BandPass,
     /// Notch/band-reject filter
     Notch,
-}
-
-impl Default for FilterType {
-    fn default() -> Self {
-        FilterType::LowPass
-    }
 }
 
 /// Filter parameters
@@ -273,8 +268,10 @@ mod tests {
 
     #[test]
     fn test_filter_bypass() {
-        let mut params = FilterParams::default();
-        params.enabled = false;
+        let params = FilterParams {
+            enabled: false,
+            ..Default::default()
+        };
 
         let mut filter = StateVariableFilter::new(params, 44100.0);
 

@@ -200,7 +200,7 @@ mod tests {
         for _ in 0..10000 {
             let value = lfo.process();
             assert!(
-                value >= -0.5 && value <= 0.5,
+                (-0.5..=0.5).contains(&value),
                 "LFO value {} out of range [-0.5, 0.5]",
                 value
             );
@@ -228,7 +228,7 @@ mod tests {
         for _ in 0..10000 {
             let value = lfo.process();
             assert!(
-                value >= -1.0 && value <= 1.0,
+                (-1.0..=1.0).contains(&value),
                 "LFO value {} out of range [-1.0, 1.0]",
                 value
             );

@@ -393,11 +393,12 @@ mod tests {
     fn test_filter_modulation_with_envelope() {
         let sample_rate = 44100.0;
         let mut voice = SynthVoice::new(sample_rate);
-        let mut filter_params = FilterParams::default();
-        filter_params.cutoff = 200.0;
-        filter_params.resonance = 2.0;
-        filter_params.filter_type = FilterType::LowPass;
-        filter_params.enabled = true;
+        let filter_params = FilterParams {
+            cutoff: 200.0,
+            resonance: 2.0,
+            filter_type: FilterType::LowPass,
+            enabled: true,
+        };
         voice.set_filter(filter_params);
         let envelope_params = AdsrParams {
             attack: 0.05,
@@ -456,11 +457,12 @@ mod tests {
     fn test_filter_modulation_with_lfo() {
         let sample_rate = 44100.0;
         let mut voice = SynthVoice::new(sample_rate);
-        let mut filter_params = FilterParams::default();
-        filter_params.cutoff = 500.0;
-        filter_params.resonance = 2.0;
-        filter_params.filter_type = FilterType::LowPass;
-        filter_params.enabled = true;
+        let filter_params = FilterParams {
+            cutoff: 500.0,
+            resonance: 2.0,
+            filter_type: FilterType::LowPass,
+            enabled: true,
+        };
         voice.set_filter(filter_params);
         let lfo_params = LfoParams {
             waveform: WaveformType::Sine,
@@ -521,11 +523,12 @@ mod tests {
     fn test_filter_without_modulation() {
         let sample_rate = 44100.0;
         let mut voice = SynthVoice::new(sample_rate);
-        let mut filter_params = FilterParams::default();
-        filter_params.cutoff = 1000.0;
-        filter_params.resonance = 1.0;
-        filter_params.filter_type = FilterType::LowPass;
-        filter_params.enabled = true;
+        let filter_params = FilterParams {
+            cutoff: 1000.0,
+            resonance: 1.0,
+            filter_type: FilterType::LowPass,
+            enabled: true,
+        };
         voice.set_filter(filter_params);
         let envelope_params = AdsrParams {
             attack: 0.01,
@@ -556,8 +559,10 @@ mod tests {
     fn test_filter_bypass() {
         let sample_rate = 44100.0;
         let mut voice = SynthVoice::new(sample_rate);
-        let mut filter_params = FilterParams::default();
-        filter_params.enabled = false;
+        let filter_params = FilterParams {
+            enabled: false,
+            ..Default::default()
+        };
         voice.set_filter(filter_params);
         let envelope_params = AdsrParams {
             attack: 0.01,

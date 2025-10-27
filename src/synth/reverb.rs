@@ -332,8 +332,10 @@ mod tests {
 
     #[test]
     fn test_reverb_bypass() {
-        let mut params = ReverbParams::default();
-        params.enabled = false;
+        let params = ReverbParams {
+            enabled: false,
+            ..Default::default()
+        };
 
         let mut reverb = Reverb::new(params, 44100.0);
 

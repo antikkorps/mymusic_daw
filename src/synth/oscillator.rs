@@ -171,7 +171,7 @@ mod tests {
         for _ in 0..1000 {
             let sample = osc.next_sample();
             assert!(
-                sample >= -1.0 && sample <= 1.0,
+                (-1.0..=1.0).contains(&sample),
                 "Sample {} hors limites",
                 sample
             );
@@ -211,7 +211,7 @@ mod tests {
             let sample = osc.next_sample();
             assert!(sample.is_finite(), "Square wave sample must be finite");
             assert!(
-                sample >= -2.0 && sample <= 2.0,
+                (-2.0..=2.0).contains(&sample),
                 "Square wave PolyBLEP overshoot out of acceptable range: {}",
                 sample
             );
@@ -234,7 +234,7 @@ mod tests {
         for _ in 0..5000 {
             let sample = osc.next_sample();
             assert!(
-                sample >= -2.0 && sample <= 2.0,
+                (-2.0..=2.0).contains(&sample),
                 "Saw wave PolyBLEP overshoot out of acceptable range: {}",
                 sample
             );
@@ -250,7 +250,7 @@ mod tests {
         for _ in 0..1000 {
             let sample = osc.next_sample();
             assert!(
-                sample >= -1.0 && sample <= 1.0,
+                (-1.0..=1.0).contains(&sample),
                 "Triangle wave sample out of range: {}",
                 sample
             );

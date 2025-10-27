@@ -83,7 +83,7 @@ impl UndoableCommand for SetVolumeCommand {
     fn merge_with(&mut self, other: Box<dyn UndoableCommand>) -> CommandResult<()> {
         // Downcast to SetVolumeCommand
         // This is safe because can_merge_with already verified it's a SetVolumeCommand
-        let other_any = Box::into_raw(other) as *mut dyn UndoableCommand as *mut SetVolumeCommand;
+        let other_any = Box::into_raw(other) as *mut SetVolumeCommand;
 
         unsafe {
             let other_cmd = Box::from_raw(other_any);
@@ -324,7 +324,7 @@ impl UndoableCommand for SetLfoCommand {
 
     fn merge_with(&mut self, other: Box<dyn UndoableCommand>) -> CommandResult<()> {
         // Downcast to SetLfoCommand
-        let other_any = Box::into_raw(other) as *mut dyn UndoableCommand as *mut SetLfoCommand;
+        let other_any = Box::into_raw(other) as *mut SetLfoCommand;
 
         unsafe {
             let other_cmd = Box::from_raw(other_any);
@@ -573,7 +573,7 @@ impl UndoableCommand for SetPortamentoCommand {
     fn merge_with(&mut self, other: Box<dyn UndoableCommand>) -> CommandResult<()> {
         // Downcast to SetPortamentoCommand
         let other_any =
-            Box::into_raw(other) as *mut dyn UndoableCommand as *mut SetPortamentoCommand;
+            Box::into_raw(other) as *mut SetPortamentoCommand;
 
         unsafe {
             let other_cmd = Box::from_raw(other_any);
@@ -658,7 +658,7 @@ impl UndoableCommand for SetFilterCommand {
 
     fn merge_with(&mut self, other: Box<dyn UndoableCommand>) -> CommandResult<()> {
         // Downcast to SetFilterCommand
-        let other_any = Box::into_raw(other) as *mut dyn UndoableCommand as *mut SetFilterCommand;
+        let other_any = Box::into_raw(other) as *mut SetFilterCommand;
 
         unsafe {
             let other_cmd = Box::from_raw(other_any);

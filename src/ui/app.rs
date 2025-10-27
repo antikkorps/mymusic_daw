@@ -15,7 +15,7 @@ use crate::messaging::notification::{Notification, NotificationCategory};
 use crate::midi::device::{MidiDeviceInfo, MidiDeviceManager};
 use crate::midi::event::{MidiEvent, MidiEventTimed};
 use crate::midi::manager::MidiConnectionManager;
-use crate::sampler::loader::{Sample, load_sample};
+use crate::sampler::loader::{load_sample, Sample};
 use crate::synth::envelope::AdsrParams;
 use crate::synth::filter::FilterType;
 use crate::synth::lfo::{LfoDestination, LfoParams};
@@ -319,15 +319,15 @@ impl DawApp {
 
     /// Check if preview timer has expired and stop preview if needed
     fn check_preview_timer(&mut self) {
-        if let Some(timer) = self.preview_timer {
-            if timer.elapsed().as_secs_f32() > 2.0 {
-                // Stop preview after 2 seconds
-                if let Some((_, note)) = self.preview_sample_note {
-                    self.send_note_off_direct(note);
-                }
-                self.preview_sample_note = None;
-                self.preview_timer = None;
+        if let Some(timer) = self.preview_timer
+            && timer.elapsed().as_secs_f32() > 2.0
+        {
+            // Stop preview after 2 seconds
+            if let Some((_, note)) = self.preview_sample_note {
+                self.send_note_off_direct(note);
             }
+            self.preview_sample_note = None;
+            self.preview_timer = None;
         }
     }
 
@@ -500,64 +500,61 @@ impl eframe::App for DawApp {
         // Handle Undo/Redo keyboard shortcuts
         ctx.input(|i| {
             // Ctrl+Z for Undo
-            if i.modifiers.command && i.key_pressed(egui::Key::Z) && !i.modifiers.shift {
-                if self.command_manager.can_undo() {
-                    match self.command_manager.undo(&mut self.daw_state) {
-                        Ok(description) => {
-                            // Update UI state from DawState after undo
-                            self.volume_ui = self.daw_state.volume;
-                            self.selected_waveform = self.daw_state.waveform;
-                            self.adsr_attack = self.daw_state.adsr.attack;
-                            self.adsr_decay = self.daw_state.adsr.decay;
-                            self.adsr_sustain = self.daw_state.adsr.sustain;
-                            self.adsr_release = self.daw_state.adsr.release;
-                            self.lfo_waveform = self.daw_state.lfo.waveform;
-                            self.lfo_rate = self.daw_state.lfo.rate;
-                            self.lfo_depth = self.daw_state.lfo.depth;
-                            self.lfo_destination = self.daw_state.lfo.destination;
-                            self.poly_mode = self.daw_state.poly_mode;
-                            self.portamento_time = self.daw_state.portamento.time;
-                            // Sync modulation UI from state mirror
-                            for idx in 0..self.mod_routings_ui.len() {
-                                self.mod_routings_ui[idx] = self.daw_state.mod_routings[idx];
-                            }
-                            self.volume_atomic.set(self.daw_state.volume);
-                            println!("Undo: {}", description);
+            if i.modifiers.command && i.key_pressed(egui::Key::Z) && !i.modifiers.shift && self.command_manager.can_undo() {
+                match self.command_manager.undo(&mut self.daw_state) {
+                    Ok(description) => {
+                        // Update UI state from DawState after undo
+                        self.volume_ui = self.daw_state.volume;
+                        self.selected_waveform = self.daw_state.waveform;
+                        self.adsr_attack = self.daw_state.adsr.attack;
+                        self.adsr_decay = self.daw_state.adsr.decay;
+                        self.adsr_sustain = self.daw_state.adsr.sustain;
+                        self.adsr_release = self.daw_state.adsr.release;
+                        self.lfo_waveform = self.daw_state.lfo.waveform;
+                        self.lfo_rate = self.daw_state.lfo.rate;
+                        self.lfo_depth = self.daw_state.lfo.depth;
+                        self.lfo_destination = self.daw_state.lfo.destination;
+                        self.poly_mode = self.daw_state.poly_mode;
+                        self.portamento_time = self.daw_state.portamento.time;
+                        // Sync modulation UI from state mirror
+                        for idx in 0..self.mod_routings_ui.len() {
+                            self.mod_routings_ui[idx] = self.daw_state.mod_routings[idx];
                         }
-                        Err(e) => eprintln!("Undo failed: {}", e),
+                        self.volume_atomic.set(self.daw_state.volume);
+                        println!("Undo: {}", description);
                     }
+                    Err(e) => eprintln!("Undo failed: {}", e),
                 }
             }
 
             // Ctrl+Shift+Z or Ctrl+Y for Redo
-            if (i.modifiers.command && i.key_pressed(egui::Key::Z) && i.modifiers.shift)
-                || (i.modifiers.command && i.key_pressed(egui::Key::Y))
+            if ((i.modifiers.command && i.key_pressed(egui::Key::Z) && i.modifiers.shift)
+                || (i.modifiers.command && i.key_pressed(egui::Key::Y))) 
+                && self.command_manager.can_redo()
             {
-                if self.command_manager.can_redo() {
-                    match self.command_manager.redo(&mut self.daw_state) {
-                        Ok(description) => {
-                            // Update UI state from DawState after redo
-                            self.volume_ui = self.daw_state.volume;
-                            self.selected_waveform = self.daw_state.waveform;
-                            self.adsr_attack = self.daw_state.adsr.attack;
-                            self.adsr_decay = self.daw_state.adsr.decay;
-                            self.adsr_sustain = self.daw_state.adsr.sustain;
-                            self.adsr_release = self.daw_state.adsr.release;
-                            self.lfo_waveform = self.daw_state.lfo.waveform;
-                            self.lfo_rate = self.daw_state.lfo.rate;
-                            self.lfo_depth = self.daw_state.lfo.depth;
-                            self.lfo_destination = self.daw_state.lfo.destination;
-                            self.poly_mode = self.daw_state.poly_mode;
-                            self.portamento_time = self.daw_state.portamento.time;
-                            // Sync modulation UI from state mirror
-                            for idx in 0..self.mod_routings_ui.len() {
-                                self.mod_routings_ui[idx] = self.daw_state.mod_routings[idx];
-                            }
-                            self.volume_atomic.set(self.daw_state.volume);
-                            println!("Redo: {}", description);
+                match self.command_manager.redo(&mut self.daw_state) {
+                    Ok(description) => {
+                        // Update UI state from DawState after redo
+                        self.volume_ui = self.daw_state.volume;
+                        self.selected_waveform = self.daw_state.waveform;
+                        self.adsr_attack = self.daw_state.adsr.attack;
+                        self.adsr_decay = self.daw_state.adsr.decay;
+                        self.adsr_sustain = self.daw_state.adsr.sustain;
+                        self.adsr_release = self.daw_state.adsr.release;
+                        self.lfo_waveform = self.daw_state.lfo.waveform;
+                        self.lfo_rate = self.daw_state.lfo.rate;
+                        self.lfo_depth = self.daw_state.lfo.depth;
+                        self.lfo_destination = self.daw_state.lfo.destination;
+                        self.poly_mode = self.daw_state.poly_mode;
+                        self.portamento_time = self.daw_state.portamento.time;
+                        // Sync modulation UI from state mirror
+                        for idx in 0..self.mod_routings_ui.len() {
+                            self.mod_routings_ui[idx] = self.daw_state.mod_routings[idx];
                         }
-                        Err(e) => eprintln!("Redo failed: {}", e),
+                        self.volume_atomic.set(self.daw_state.volume);
+                        println!("Redo: {}", description);
                     }
+                    Err(e) => eprintln!("Redo failed: {}", e),
                 }
             }
         });
@@ -595,152 +592,207 @@ impl eframe::App for DawApp {
                     // Devices tab
                     ui.heading("Devices");
 
-            ui.horizontal(|ui| {
-                ui.label("MIDI Input:");
+                    ui.horizontal(|ui| {
+                        ui.label("MIDI Input:");
 
-                // Status indicator avec couleur
-                let midi_status = self.midi_connection_manager.status();
-                let (status_text, status_color) = match midi_status {
-                    DeviceStatus::Connected => ("●", egui::Color32::GREEN),
-                    DeviceStatus::Connecting => ("●", egui::Color32::YELLOW),
-                    DeviceStatus::Disconnected => ("○", egui::Color32::GRAY),
-                    DeviceStatus::Error => ("●", egui::Color32::RED),
-                };
-                ui.colored_label(status_color, status_text);
+                        // Status indicator avec couleur
+                        let midi_status = self.midi_connection_manager.status();
+                        let (status_text, status_color) = match midi_status {
+                            DeviceStatus::Connected => ("●", egui::Color32::GREEN),
+                            DeviceStatus::Connecting => ("●", egui::Color32::YELLOW),
+                            DeviceStatus::Disconnected => ("○", egui::Color32::GRAY),
+                            DeviceStatus::Error => ("●", egui::Color32::RED),
+                        };
+                        ui.colored_label(status_color, status_text);
 
-                let previous_device = self.selected_midi_device.clone();
-                egui::ComboBox::from_id_salt("midi_device_selector")
-                    .selected_text(&self.selected_midi_device)
-                    .show_ui(ui, |ui| {
-                        if self.available_midi_devices.is_empty() {
-                            ui.label("No MIDI device available");
-                        } else {
-                            for device in &self.available_midi_devices {
-                                let label = if device.is_default {
-                                    format!("{} (default)", device.name)
+                        let previous_device = self.selected_midi_device.clone();
+                        egui::ComboBox::from_id_salt("midi_device_selector")
+                            .selected_text(&self.selected_midi_device)
+                            .show_ui(ui, |ui| {
+                                if self.available_midi_devices.is_empty() {
+                                    ui.label("No MIDI device available");
                                 } else {
-                                    device.name.clone()
-                                };
-                                ui.selectable_value(&mut self.selected_midi_device, device.name.clone(), label);
-                            }
+                                    for device in &self.available_midi_devices {
+                                        let label = if device.is_default {
+                                            format!("{} (default)", device.name)
+                                        } else {
+                                            device.name.clone()
+                                        };
+                                        ui.selectable_value(
+                                            &mut self.selected_midi_device,
+                                            device.name.clone(),
+                                            label,
+                                        );
+                                    }
+                                }
+                            });
+
+                        // Si le device a changé, déclencher la reconnexion
+                        if previous_device != self.selected_midi_device {
+                            self.midi_connection_manager
+                                .set_target_device(self.selected_midi_device.clone());
+                        }
+
+                        if ui.button("🔄").on_hover_text("Refresh devices").clicked() {
+                            self.refresh_devices();
                         }
                     });
 
-                // Si le device a changé, déclencher la reconnexion
-                if previous_device != self.selected_midi_device {
-                    self.midi_connection_manager.set_target_device(self.selected_midi_device.clone());
-                }
-
-                if ui.button("🔄").on_hover_text("Refresh devices").clicked() {
-                    self.refresh_devices();
-                }
-            });
-
-            ui.horizontal(|ui| {
-                ui.label("Audio Output:");
-                egui::ComboBox::from_id_salt("audio_device_selector")
-                    .selected_text(&self.selected_audio_device)
-                    .show_ui(ui, |ui| {
-                        if self.available_audio_devices.is_empty() {
-                            ui.label("No audio device available");
-                        } else {
-                            for device in &self.available_audio_devices {
-                                let label = if device.is_default {
-                                    format!("{} (default)", device.name)
+                    ui.horizontal(|ui| {
+                        ui.label("Audio Output:");
+                        egui::ComboBox::from_id_salt("audio_device_selector")
+                            .selected_text(&self.selected_audio_device)
+                            .show_ui(ui, |ui| {
+                                if self.available_audio_devices.is_empty() {
+                                    ui.label("No audio device available");
                                 } else {
-                                    device.name.clone()
-                                };
-                                ui.selectable_value(&mut self.selected_audio_device, device.name.clone(), label);
-                            }
-                        }
+                                    for device in &self.available_audio_devices {
+                                        let label = if device.is_default {
+                                            format!("{} (default)", device.name)
+                                        } else {
+                                            device.name.clone()
+                                        };
+                                        ui.selectable_value(
+                                            &mut self.selected_audio_device,
+                                            device.name.clone(),
+                                            label,
+                                        );
+                                    }
+                                }
+                            });
                     });
-            });
-
                 }
                 UiTab::Modulation => {
                     // Modulation tab
                     ui.heading("Modulation Matrix (MVP)");
 
-            let src_labels = ["LFO 1", "Velocity", "Aftertouch", "Envelope"];
-            let dst_labels = ["Pitch", "Amplitude", "Pan"];
+                    let src_labels = ["LFO 1", "Velocity", "Aftertouch", "Envelope"];
+                    let dst_labels = ["Pitch", "Amplitude", "Pan"];
 
-            for (i, routing) in self.mod_routings_ui.iter_mut().enumerate() {
-                ui.horizontal(|ui| {
-                    ui.label(format!("Slot {}:", i + 1));
+                    for (i, routing) in self.mod_routings_ui.iter_mut().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.label(format!("Slot {}:", i + 1));
 
-                    // Enabled toggle
-                    let mut enabled = routing.enabled;
-                    if ui.checkbox(&mut enabled, "On").changed() {
-                        let old = *routing;
-                        routing.enabled = enabled;
-                        let cmd = Box::new(SetModRoutingCommand::new_with_old(i as u8, *routing, old));
-                        let _ = self.command_manager.execute(cmd, &mut self.daw_state);
-                    }
+                            // Enabled toggle
+                            let mut enabled = routing.enabled;
+                            if ui.checkbox(&mut enabled, "On").changed() {
+                                let old = *routing;
+                                routing.enabled = enabled;
+                                let cmd = Box::new(SetModRoutingCommand::new_with_old(
+                                    i as u8, *routing, old,
+                                ));
+                                let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                            }
 
-                    // Source selector
-                    let prev_source = routing.source;
-                    egui::ComboBox::from_id_salt(format!("mod_src_{}", i))
-                        .selected_text(match routing.source {
-                            ModSource::Lfo(0) => src_labels[0],
-                            ModSource::Velocity => src_labels[1],
-                            ModSource::Aftertouch => src_labels[2],
-                            ModSource::Envelope => src_labels[3],
-                            _ => "Unused",
-                        })
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut routing.source, ModSource::Lfo(0), src_labels[0]);
-                            ui.selectable_value(&mut routing.source, ModSource::Velocity, src_labels[1]);
-                            ui.selectable_value(&mut routing.source, ModSource::Aftertouch, src_labels[2]);
-                            ui.selectable_value(&mut routing.source, ModSource::Envelope, src_labels[3]);
+                            // Source selector
+                            let prev_source = routing.source;
+                            egui::ComboBox::from_id_salt(format!("mod_src_{}", i))
+                                .selected_text(match routing.source {
+                                    ModSource::Lfo(0) => src_labels[0],
+                                    ModSource::Velocity => src_labels[1],
+                                    ModSource::Aftertouch => src_labels[2],
+                                    ModSource::Envelope => src_labels[3],
+                                    _ => "Unused",
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut routing.source,
+                                        ModSource::Lfo(0),
+                                        src_labels[0],
+                                    );
+                                    ui.selectable_value(
+                                        &mut routing.source,
+                                        ModSource::Velocity,
+                                        src_labels[1],
+                                    );
+                                    ui.selectable_value(
+                                        &mut routing.source,
+                                        ModSource::Aftertouch,
+                                        src_labels[2],
+                                    );
+                                    ui.selectable_value(
+                                        &mut routing.source,
+                                        ModSource::Envelope,
+                                        src_labels[3],
+                                    );
+                                });
+                            if routing.source != prev_source {
+                                let old = ModRouting {
+                                    source: prev_source,
+                                    ..*routing
+                                };
+                                let cmd = Box::new(SetModRoutingCommand::new_with_old(
+                                    i as u8, *routing, old,
+                                ));
+                                let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                            }
+
+                            // Destination selector
+                            let prev_dest = routing.destination;
+                            egui::ComboBox::from_id_salt(format!("mod_dst_{}", i))
+                                .selected_text(match routing.destination {
+                                    ModDestination::OscillatorPitch(0) => dst_labels[0],
+                                    ModDestination::Amplitude => dst_labels[1],
+                                    ModDestination::Pan => dst_labels[2],
+                                    _ => "Unused",
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut routing.destination,
+                                        ModDestination::OscillatorPitch(0),
+                                        dst_labels[0],
+                                    );
+                                    ui.selectable_value(
+                                        &mut routing.destination,
+                                        ModDestination::Amplitude,
+                                        dst_labels[1],
+                                    );
+                                    ui.selectable_value(
+                                        &mut routing.destination,
+                                        ModDestination::Pan,
+                                        dst_labels[2],
+                                    );
+                                });
+                            if routing.destination != prev_dest {
+                                let old = ModRouting {
+                                    destination: prev_dest,
+                                    ..*routing
+                                };
+                                let cmd = Box::new(SetModRoutingCommand::new_with_old(
+                                    i as u8, *routing, old,
+                                ));
+                                let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                            }
+
+                            // Amount slider
+                            let prev_amount = routing.amount;
+                            let range = match routing.destination {
+                                ModDestination::OscillatorPitch(_) => -12.0..=12.0, // semitones
+                                ModDestination::Amplitude => -1.0..=1.0,            // multiplier delta
+                                ModDestination::Pan => -1.0..=1.0,                  // pan L/R
+                                ModDestination::FilterCutoff => 0.0..=10.0, // cutoff multiplier (0.1x to 10x)
+                            };
+                            if ui
+                                .add(egui::Slider::new(&mut routing.amount, range).fixed_decimals(2))
+                                .changed()
+                            {
+                                let old = *routing;
+                                // Clamp for safety
+                                routing.amount = match routing.destination {
+                                    ModDestination::OscillatorPitch(_) => {
+                                        routing.amount.clamp(-24.0, 24.0)
+                                    }
+                                    _ => routing.amount.clamp(-1.0, 1.0), // For Amplitude and Pan
+                                };
+                                let cmd = Box::new(SetModRoutingCommand::new_with_old(
+                                    i as u8, *routing, old,
+                                ));
+                                let _ = self.command_manager.execute(cmd, &mut self.daw_state);
+                            } else if (routing.amount - prev_amount).abs() > 0.0 {
+                                // no-op
+                            }
                         });
-                    if routing.source != prev_source {
-                        let old = ModRouting { source: prev_source, ..*routing };
-                        let cmd = Box::new(SetModRoutingCommand::new_with_old(i as u8, *routing, old));
-                        let _ = self.command_manager.execute(cmd, &mut self.daw_state);
                     }
-
-                    // Destination selector
-                    let prev_dest = routing.destination;
-                    egui::ComboBox::from_id_salt(format!("mod_dst_{}", i))
-                        .selected_text(match routing.destination {
-                            ModDestination::OscillatorPitch(0) => dst_labels[0],
-                            ModDestination::Amplitude => dst_labels[1],
-                            ModDestination::Pan => dst_labels[2],
-                            _ => "Unused",
-                        })
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut routing.destination, ModDestination::OscillatorPitch(0), dst_labels[0]);
-                            ui.selectable_value(&mut routing.destination, ModDestination::Amplitude, dst_labels[1]);
-                            ui.selectable_value(&mut routing.destination, ModDestination::Pan, dst_labels[2]);
-                        });
-                    if routing.destination != prev_dest {
-                        let old = ModRouting { destination: prev_dest, ..*routing };
-                        let cmd = Box::new(SetModRoutingCommand::new_with_old(i as u8, *routing, old));
-                        let _ = self.command_manager.execute(cmd, &mut self.daw_state);
-                    }
-
-                    // Amount slider
-                    let prev_amount = routing.amount;
-                    let range = match routing.destination {
-                        ModDestination::OscillatorPitch(_) => -12.0..=12.0, // semitones
-                        ModDestination::Amplitude => -1.0..=1.0,            // multiplier delta
-                        ModDestination::Pan => -1.0..=1.0,                  // pan L/R
-                        ModDestination::FilterCutoff => 0.0..=10.0,         // cutoff multiplier (0.1x to 10x)
-                    };
-                    if ui.add(egui::Slider::new(&mut routing.amount, range).fixed_decimals(2)).changed() {
-                        let old = *routing;
-                        // Clamp for safety
-                        routing.amount = match routing.destination {
-                            ModDestination::OscillatorPitch(_) => routing.amount.clamp(-24.0, 24.0),
-                            _ => routing.amount.clamp(-1.0, 1.0), // For Amplitude and Pan
-                        };
-                        let cmd = Box::new(SetModRoutingCommand::new_with_old(i as u8, *routing, old));
-                        let _ = self.command_manager.execute(cmd, &mut self.daw_state);
-                    } else if (routing.amount - prev_amount).abs() > 0.0 {
-                        // no-op
-                    }
-                });
-            }
 
                     ui.label("Sources are normalized to [-1,1]; pitch amount is semitones.");
                     ui.label("Aftertouch requires a controller that sends Channel Pressure.");
@@ -762,9 +814,17 @@ impl eframe::App for DawApp {
                             })
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(&mut self.lfo_waveform, WaveformType::Sine, "Sine");
-                                ui.selectable_value(&mut self.lfo_waveform, WaveformType::Square, "Square");
+                                ui.selectable_value(
+                                    &mut self.lfo_waveform,
+                                    WaveformType::Square,
+                                    "Square",
+                                );
                                 ui.selectable_value(&mut self.lfo_waveform, WaveformType::Saw, "Saw");
-                                ui.selectable_value(&mut self.lfo_waveform, WaveformType::Triangle, "Triangle");
+                                ui.selectable_value(
+                                    &mut self.lfo_waveform,
+                                    WaveformType::Triangle,
+                                    "Triangle",
+                                );
                             });
 
                         if previous_lfo_waveform != self.lfo_waveform {
@@ -781,7 +841,14 @@ impl eframe::App for DawApp {
 
                     ui.horizontal(|ui| {
                         ui.label("LFO Rate:");
-                        if ui.add(egui::Slider::new(&mut self.lfo_rate, 0.1..=20.0).text("Hz").logarithmic(true)).changed() {
+                        if ui
+                            .add(
+                                egui::Slider::new(&mut self.lfo_rate, 0.1..=20.0)
+                                    .text("Hz")
+                                    .logarithmic(true),
+                            )
+                            .changed()
+                        {
                             let params = LfoParams::new(
                                 self.lfo_waveform,
                                 self.lfo_rate,
@@ -795,7 +862,10 @@ impl eframe::App for DawApp {
 
                     ui.horizontal(|ui| {
                         ui.label("LFO Depth:");
-                        if ui.add(egui::Slider::new(&mut self.lfo_depth, 0.0..=1.0)).changed() {
+                        if ui
+                            .add(egui::Slider::new(&mut self.lfo_depth, 0.0..=1.0))
+                            .changed()
+                        {
                             let params = LfoParams::new(
                                 self.lfo_waveform,
                                 self.lfo_rate,
@@ -818,10 +888,26 @@ impl eframe::App for DawApp {
                                 LfoDestination::FilterCutoff => "Filter Cutoff (Phase 3a)",
                             })
                             .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut self.lfo_destination, LfoDestination::None, "None");
-                                ui.selectable_value(&mut self.lfo_destination, LfoDestination::Pitch, "Pitch (Vibrato)");
-                                ui.selectable_value(&mut self.lfo_destination, LfoDestination::Volume, "Volume (Tremolo)");
-                                ui.selectable_value(&mut self.lfo_destination, LfoDestination::FilterCutoff, "Filter Cutoff (Phase 3a)");
+                                ui.selectable_value(
+                                    &mut self.lfo_destination,
+                                    LfoDestination::None,
+                                    "None",
+                                );
+                                ui.selectable_value(
+                                    &mut self.lfo_destination,
+                                    LfoDestination::Pitch,
+                                    "Pitch (Vibrato)",
+                                );
+                                ui.selectable_value(
+                                    &mut self.lfo_destination,
+                                    LfoDestination::Volume,
+                                    "Volume (Tremolo)",
+                                );
+                                ui.selectable_value(
+                                    &mut self.lfo_destination,
+                                    LfoDestination::FilterCutoff,
+                                    "Filter Cutoff (Phase 3a)",
+                                );
                             });
 
                         if previous_destination != self.lfo_destination {
@@ -835,7 +921,7 @@ impl eframe::App for DawApp {
                             let _ = self.command_manager.execute(cmd, &mut self.daw_state);
                         }
                     });
-                },
+                }
                 UiTab::Sampler => {
                     ui.heading("Sampler");
                     if ui.button("Load Sample").clicked() {
@@ -849,10 +935,8 @@ impl eframe::App for DawApp {
                                     // Clone the sample: one for the UI, one for the audio thread
                                     let sample_for_audio = Arc::new(sample.clone());
                                     let cmd = Command::AddSample(sample_for_audio);
-                                    if let Ok(mut tx) = self.command_tx.lock() {
-                                        if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
-                                            eprintln!("Failed to send AddSample command: ringbuffer full");
-                                        }
+                                    if let Ok(mut tx) = self.command_tx.lock() && ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                        eprintln!("Failed to send AddSample command: ringbuffer full");
                                     }
                                     self.loaded_samples.push(sample);
                                     self.note_map_input.push(String::new());
@@ -873,7 +957,8 @@ impl eframe::App for DawApp {
 
                     for (i, sample) in self.loaded_samples.iter_mut().enumerate() {
                         // Extract preview state before ui.horizontal to avoid borrow issues
-                        let is_previewing = self.preview_sample_note.map(|(idx, _)| idx == i).unwrap_or(false);
+                        let is_previewing =
+                            self.preview_sample_note.map(|(idx, _)| idx == i).unwrap_or(false);
 
                         ui.horizontal(|ui| {
                             ui.label(&sample.name);
@@ -889,7 +974,8 @@ impl eframe::App for DawApp {
                                 delete_action = Some(i);
                             }
 
-                            let mut is_looping = sample.loop_mode == crate::sampler::loader::LoopMode::Forward;
+                            let mut is_looping =
+                                sample.loop_mode == crate::sampler::loader::LoopMode::Forward;
                             if ui.checkbox(&mut is_looping, "Loop").changed() {
                                 sample.loop_mode = if is_looping {
                                     crate::sampler::loader::LoopMode::Forward
@@ -898,10 +984,8 @@ impl eframe::App for DawApp {
                                 };
                                 let sample_arc = Arc::new(sample.clone());
                                 let cmd = Command::UpdateSample(i, sample_arc);
-                                if let Ok(mut tx) = self.command_tx.lock() {
-                                    if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
-                                        eprintln!("Failed to send UpdateSample command: ringbuffer full");
-                                    }
+                                if let Ok(mut tx) = self.command_tx.lock() && ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                    eprintln!("Failed to send UpdateSample command: ringbuffer full");
                                 }
                             }
 
@@ -909,10 +993,8 @@ impl eframe::App for DawApp {
                             if ui.checkbox(&mut sample.reverse, "Reverse").changed() {
                                 let sample_arc = Arc::new(sample.clone());
                                 let cmd = Command::UpdateSample(i, sample_arc);
-                                if let Ok(mut tx) = self.command_tx.lock() {
-                                    if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
-                                        eprintln!("Failed to send UpdateSample command: ringbuffer full");
-                                    }
+                                if let Ok(mut tx) = self.command_tx.lock() && ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                    eprintln!("Failed to send UpdateSample command: ringbuffer full");
                                 }
                             }
 
@@ -926,40 +1008,60 @@ impl eframe::App for DawApp {
                                     (samples as f32 / sample.sample_rate as f32) * 1000.0
                                 };
 
-                                ui.label(format!("Start: {} samples ({:.1} ms)", sample.loop_start, samples_to_ms(sample.loop_start)));
-                                if ui.add(egui::Slider::new(&mut sample.loop_start, 0..=sample.loop_end).suffix(" samples")).changed() {
+                                ui.label(format!(
+                                    "Start: {} samples ({:.1} ms)",
+                                    sample.loop_start,
+                                    samples_to_ms(sample.loop_start)
+                                ));
+                                if ui
+                                    .add(
+                                        egui::Slider::new(&mut sample.loop_start, 0..=sample.loop_end)
+                                            .suffix(" samples"),
+                                    )
+                                    .changed()
+                                {
                                     let sample_arc = Arc::new(sample.clone());
                                     let cmd = Command::UpdateSample(i, sample_arc);
-                                    if let Ok(mut tx) = self.command_tx.lock() {
-                                        if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
-                                            eprintln!("Failed to send UpdateSample command: ringbuffer full");
-                                        }
+                                    if let Ok(mut tx) = self.command_tx.lock() && ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                        eprintln!("Failed to send UpdateSample command: ringbuffer full");
                                     }
                                 }
-                                ui.label(format!("End: {} samples ({:.1} ms)", sample.loop_end, samples_to_ms(sample.loop_end)));
-                                if ui.add(egui::Slider::new(&mut sample.loop_end, sample.loop_start..=data_len).suffix(" samples")).changed() {
+                                ui.label(format!(
+                                    "End: {} samples ({:.1} ms)",
+                                    sample.loop_end,
+                                    samples_to_ms(sample.loop_end)
+                                ));
+                                if ui
+                                    .add(
+                                        egui::Slider::new(
+                                            &mut sample.loop_end,
+                                            sample.loop_start..=data_len,
+                                        )
+                                        .suffix(" samples"),
+                                    )
+                                    .changed()
+                                {
                                     let sample_arc = Arc::new(sample.clone());
                                     let cmd = Command::UpdateSample(i, sample_arc);
-                                    if let Ok(mut tx) = self.command_tx.lock() {
-                                        if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
-                                            eprintln!("Failed to send UpdateSample command: ringbuffer full");
-                                        }
+                                    if let Ok(mut tx) = self.command_tx.lock() && ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                        eprintln!("Failed to send UpdateSample command: ringbuffer full");
                                     }
                                 }
                             }
 
                             ui.label("Note:");
                             ui.text_edit_singleline(&mut self.note_map_input[i]);
-                            if ui.button("Assign").clicked() {
-                                if let Ok(note) = self.note_map_input[i].parse::<u8>() {
-                                    let cmd = Command::SetNoteSampleMapping { note, sample_index: i };
-                                    if let Ok(mut tx) = self.command_tx.lock() {
-                                        if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
-                                            eprintln!("Failed to send SetNoteSampleMapping command: ringbuffer full");
-                                        }
-                                    }
-                                }
-                            }
+                            if ui.button("Assign").clicked()
+                && let Ok(note) = self.note_map_input[i].parse::<u8>()
+            {
+                let cmd =
+                    Command::SetNoteSampleMapping { note, sample_index: i };
+                if let Ok(mut tx) = self.command_tx.lock() && ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                    eprintln!(
+                    "Failed to send SetNoteSampleMapping command: ringbuffer full"
+                );
+                }
+            }
                         });
 
                         // Waveform Plot with loop markers
@@ -987,47 +1089,54 @@ impl eframe::App for DawApp {
                                 // Add visual markers for loop points when looping is enabled
                                 if sample.loop_mode == crate::sampler::loader::LoopMode::Forward {
                                     // Loop start marker (green)
-                                    plot_ui.vline(VLine::new(sample.loop_start as f64)
-                                        .color(egui::Color32::from_rgb(0, 200, 0))
-                                        .width(2.0)
-                                        .name("Loop Start"));
+                                    plot_ui.vline(
+                                        VLine::new(sample.loop_start as f64)
+                                            .color(egui::Color32::from_rgb(0, 200, 0))
+                                            .width(2.0)
+                                            .name("Loop Start"),
+                                    );
                                     // Loop end marker (red)
-                                    plot_ui.vline(VLine::new(sample.loop_end as f64)
-                                        .color(egui::Color32::from_rgb(200, 0, 0))
-                                        .width(2.0)
-                                        .name("Loop End"));
+                                    plot_ui.vline(
+                                        VLine::new(sample.loop_end as f64)
+                                            .color(egui::Color32::from_rgb(200, 0, 0))
+                                            .width(2.0)
+                                            .name("Loop End"),
+                                    );
                                 }
                             });
 
                         ui.horizontal(|ui| {
                             ui.label("Volume:");
-                            if ui.add(egui::Slider::new(&mut sample.volume, 0.0..=1.0)).changed() {
+                            if ui
+                                .add(egui::Slider::new(&mut sample.volume, 0.0..=1.0))
+                                .changed()
+                            {
                                 let sample_arc = Arc::new(sample.clone());
                                 let cmd = Command::UpdateSample(i, sample_arc);
-                                if let Ok(mut tx) = self.command_tx.lock() {
-                                    if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
-                                        eprintln!("Failed to send UpdateSample command: ringbuffer full");
-                                    }
+                                if let Ok(mut tx) = self.command_tx.lock() && ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                    eprintln!("Failed to send UpdateSample command: ringbuffer full");
                                 }
                             }
                             ui.label("Pan:");
-                            if ui.add(egui::Slider::new(&mut sample.pan, -1.0..=1.0)).changed() {
+                            if ui
+                                .add(egui::Slider::new(&mut sample.pan, -1.0..=1.0))
+                                .changed()
+                            {
                                 let sample_arc = Arc::new(sample.clone());
                                 let cmd = Command::UpdateSample(i, sample_arc);
-                                if let Ok(mut tx) = self.command_tx.lock() {
-                                    if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
-                                        eprintln!("Failed to send UpdateSample command: ringbuffer full");
-                                    }
+                                if let Ok(mut tx) = self.command_tx.lock() && ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                    eprintln!("Failed to send UpdateSample command: ringbuffer full");
                                 }
                             }
                             ui.label("Pitch Offset:");
-                            if ui.add(egui::Slider::new(&mut sample.pitch_offset, -12..=12).suffix(" st")).changed() {
+                            if ui
+                                .add(egui::Slider::new(&mut sample.pitch_offset, -12..=12).suffix(" st"))
+                                .changed()
+                            {
                                 let sample_arc = Arc::new(sample.clone());
                                 let cmd = Command::UpdateSample(i, sample_arc);
-                                if let Ok(mut tx) = self.command_tx.lock() {
-                                    if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
-                                        eprintln!("Failed to send UpdateSample command: ringbuffer full");
-                                    }
+                                if let Ok(mut tx) = self.command_tx.lock() && ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                                    eprintln!("Failed to send UpdateSample command: ringbuffer full");
                                 }
                             }
                         });
@@ -1064,10 +1173,8 @@ impl eframe::App for DawApp {
 
                         // Send command to audio thread
                         let cmd = Command::RemoveSample(idx);
-                        if let Ok(mut tx) = self.command_tx.lock() {
-                            if ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
-                                eprintln!("Failed to send RemoveSample command: ringbuffer full");
-                            }
+                        if let Ok(mut tx) = self.command_tx.lock() && ringbuf::traits::Producer::try_push(&mut *tx, cmd).is_err() {
+                            eprintln!("Failed to send RemoveSample command: ringbuffer full");
                         }
 
                         // Remove from UI
@@ -1104,9 +1211,17 @@ impl eframe::App for DawApp {
                             })
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(&mut self.selected_waveform, WaveformType::Sine, "Sine");
-                                ui.selectable_value(&mut self.selected_waveform, WaveformType::Square, "Square");
+                                ui.selectable_value(
+                                    &mut self.selected_waveform,
+                                    WaveformType::Square,
+                                    "Square",
+                                );
                                 ui.selectable_value(&mut self.selected_waveform, WaveformType::Saw, "Saw");
-                                ui.selectable_value(&mut self.selected_waveform, WaveformType::Triangle, "Triangle");
+                                ui.selectable_value(
+                                    &mut self.selected_waveform,
+                                    WaveformType::Triangle,
+                                    "Triangle",
+                                );
                             });
 
                         if previous_waveform != self.selected_waveform {
@@ -1123,83 +1238,93 @@ impl eframe::App for DawApp {
                     // ADSR Envelope Section
                     ui.heading("ADSR Envelope");
 
-            ui.horizontal(|ui| {
-                ui.label("Attack:");
-                if ui.add(egui::Slider::new(&mut self.adsr_attack, 0.001..=2.0)
-                    .text("s")
-                    .logarithmic(true))
-                    .changed()
-                {
-                    let params = AdsrParams::new(
-                        self.adsr_attack,
-                        self.adsr_decay,
-                        self.adsr_sustain,
-                        self.adsr_release,
-                    );
-                    let cmd = Box::new(SetAdsrCommand::new(params));
-                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
-                        eprintln!("Failed to execute ADSR command: {}", e);
-                    }
-                }
-            });
+                    ui.horizontal(|ui| {
+                        ui.label("Attack:");
+                        if ui
+                            .add(
+                                egui::Slider::new(&mut self.adsr_attack, 0.001..=2.0)
+                                    .text("s")
+                                    .logarithmic(true),
+                            )
+                            .changed()
+                        {
+                            let params = AdsrParams::new(
+                                self.adsr_attack,
+                                self.adsr_decay,
+                                self.adsr_sustain,
+                                self.adsr_release,
+                            );
+                            let cmd = Box::new(SetAdsrCommand::new(params));
+                            if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                                eprintln!("Failed to execute ADSR command: {}", e);
+                            }
+                        }
+                    });
 
-            ui.horizontal(|ui| {
-                ui.label("Decay:");
-                if ui.add(egui::Slider::new(&mut self.adsr_decay, 0.001..=2.0)
-                    .text("s")
-                    .logarithmic(true))
-                    .changed()
-                {
-                    let params = AdsrParams::new(
-                        self.adsr_attack,
-                        self.adsr_decay,
-                        self.adsr_sustain,
-                        self.adsr_release,
-                    );
-                    let cmd = Box::new(SetAdsrCommand::new(params));
-                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
-                        eprintln!("Failed to execute ADSR command: {}", e);
-                    }
-                }
-            });
+                    ui.horizontal(|ui| {
+                        ui.label("Decay:");
+                        if ui
+                            .add(
+                                egui::Slider::new(&mut self.adsr_decay, 0.001..=2.0)
+                                    .text("s")
+                                    .logarithmic(true),
+                            )
+                            .changed()
+                        {
+                            let params = AdsrParams::new(
+                                self.adsr_attack,
+                                self.adsr_decay,
+                                self.adsr_sustain,
+                                self.adsr_release,
+                            );
+                            let cmd = Box::new(SetAdsrCommand::new(params));
+                            if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                                eprintln!("Failed to execute ADSR command: {}", e);
+                            }
+                        }
+                    });
 
-            ui.horizontal(|ui| {
-                ui.label("Sustain:");
-                if ui.add(egui::Slider::new(&mut self.adsr_sustain, 0.0..=1.0))
-                    .changed()
-                {
-                    let params = AdsrParams::new(
-                        self.adsr_attack,
-                        self.adsr_decay,
-                        self.adsr_sustain,
-                        self.adsr_release,
-                    );
-                    let cmd = Box::new(SetAdsrCommand::new(params));
-                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
-                        eprintln!("Failed to execute ADSR command: {}", e);
-                    }
-                }
-            });
+                    ui.horizontal(|ui| {
+                        ui.label("Sustain:");
+                        if ui
+                            .add(egui::Slider::new(&mut self.adsr_sustain, 0.0..=1.0))
+                            .changed()
+                        {
+                            let params = AdsrParams::new(
+                                self.adsr_attack,
+                                self.adsr_decay,
+                                self.adsr_sustain,
+                                self.adsr_release,
+                            );
+                            let cmd = Box::new(SetAdsrCommand::new(params));
+                            if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                                eprintln!("Failed to execute ADSR command: {}", e);
+                            }
+                        }
+                    });
 
-            ui.horizontal(|ui| {
-                ui.label("Release:");
-                if ui.add(egui::Slider::new(&mut self.adsr_release, 0.001..=5.0)
-                    .text("s")
-                    .logarithmic(true))
-                    .changed()
-                {
-                    let params = AdsrParams::new(
-                        self.adsr_attack,
-                        self.adsr_decay,
-                        self.adsr_sustain,
-                        self.adsr_release,
-                    );
-                    let cmd = Box::new(SetAdsrCommand::new(params));
-                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
-                        eprintln!("Failed to execute ADSR command: {}", e);
-                    }
-                }
-            });
+                    ui.horizontal(|ui| {
+                        ui.label("Release:");
+                        if ui
+                            .add(
+                                egui::Slider::new(&mut self.adsr_release, 0.001..=5.0)
+                                    .text("s")
+                                    .logarithmic(true),
+                            )
+                            .changed()
+                        {
+                            let params = AdsrParams::new(
+                                self.adsr_attack,
+                                self.adsr_decay,
+                                self.adsr_sustain,
+                                self.adsr_release,
+                            );
+                            let cmd = Box::new(SetAdsrCommand::new(params));
+                            if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                                eprintln!("Failed to execute ADSR command: {}", e);
+                            }
+                        }
+                    });
 
                     ui.add_space(10.0);
                     ui.separator();
@@ -1207,43 +1332,58 @@ impl eframe::App for DawApp {
                     // Polyphony Mode Section
                     ui.heading("Polyphony Mode");
 
-            ui.horizontal(|ui| {
-                ui.label("Mode:");
-                let previous_mode = self.poly_mode;
-                egui::ComboBox::from_id_salt("poly_mode_selector")
-                    .selected_text(match self.poly_mode {
-                        PolyMode::Poly => "Poly (Multiple notes)",
-                        PolyMode::Mono => "Mono (One note, retriggered)",
-                        PolyMode::Legato => "Legato (Smooth pitch slide)",
-                    })
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut self.poly_mode, PolyMode::Poly, "Poly (Multiple notes)");
-                        ui.selectable_value(&mut self.poly_mode, PolyMode::Mono, "Mono (One note, retriggered)");
-                        ui.selectable_value(&mut self.poly_mode, PolyMode::Legato, "Legato (Smooth pitch slide)");
+                    ui.horizontal(|ui| {
+                        ui.label("Mode:");
+                        let previous_mode = self.poly_mode;
+                        egui::ComboBox::from_id_salt("poly_mode_selector")
+                            .selected_text(match self.poly_mode {
+                                PolyMode::Poly => "Poly (Multiple notes)",
+                                PolyMode::Mono => "Mono (One note, retriggered)",
+                                PolyMode::Legato => "Legato (Smooth pitch slide)",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.poly_mode,
+                                    PolyMode::Poly,
+                                    "Poly (Multiple notes)",
+                                );
+                                ui.selectable_value(
+                                    &mut self.poly_mode,
+                                    PolyMode::Mono,
+                                    "Mono (One note, retriggered)",
+                                );
+                                ui.selectable_value(
+                                    &mut self.poly_mode,
+                                    PolyMode::Legato,
+                                    "Legato (Smooth pitch slide)",
+                                );
+                            });
+
+                        if previous_mode != self.poly_mode {
+                            let cmd = Box::new(SetPolyModeCommand::new(self.poly_mode));
+                            if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                                eprintln!("Failed to execute PolyMode command: {}", e);
+                            }
+                        }
                     });
 
-                if previous_mode != self.poly_mode {
-                    let cmd = Box::new(SetPolyModeCommand::new(self.poly_mode));
-                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
-                        eprintln!("Failed to execute PolyMode command: {}", e);
-                    }
-                }
-            });
-
-            ui.horizontal(|ui| {
-                ui.label("Glide Time:");
-                if ui.add(egui::Slider::new(&mut self.portamento_time, 0.0..=2.0)
-                    .text("s")
-                    .logarithmic(false))
-                    .changed()
-                {
-                    let params = PortamentoParams::new(self.portamento_time);
-                    let cmd = Box::new(SetPortamentoCommand::new(params));
-                    if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
-                        eprintln!("Failed to execute Portamento command: {}", e);
-                    }
-                }
-            });
+                    ui.horizontal(|ui| {
+                        ui.label("Glide Time:");
+                        if ui
+                            .add(
+                                egui::Slider::new(&mut self.portamento_time, 0.0..=2.0)
+                                    .text("s")
+                                    .logarithmic(false),
+                            )
+                            .changed()
+                        {
+                            let params = PortamentoParams::new(self.portamento_time);
+                            let cmd = Box::new(SetPortamentoCommand::new(params));
+                            if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
+                                eprintln!("Failed to execute Portamento command: {}", e);
+                            }
+                        }
+                    });
                     ui.label("Set to 0 for instant pitch changes, >0 for smooth glides.");
                     ui.label("Works best in Mono/Legato modes.");
 
@@ -1297,10 +1437,34 @@ impl eframe::App for DawApp {
                             .selected_text(format!("{:?}", filter_params.filter_type))
                             .show_ui(ui, |ui| {
                                 let mut changed = false;
-                                changed |= ui.selectable_value(&mut filter_params.filter_type, FilterType::LowPass, "LowPass").changed();
-                                changed |= ui.selectable_value(&mut filter_params.filter_type, FilterType::HighPass, "HighPass").changed();
-                                changed |= ui.selectable_value(&mut filter_params.filter_type, FilterType::BandPass, "BandPass").changed();
-                                changed |= ui.selectable_value(&mut filter_params.filter_type, FilterType::Notch, "Notch").changed();
+                                changed |= ui
+                                    .selectable_value(
+                                        &mut filter_params.filter_type,
+                                        FilterType::LowPass,
+                                        "LowPass",
+                                    )
+                                    .changed();
+                                changed |= ui
+                                    .selectable_value(
+                                        &mut filter_params.filter_type,
+                                        FilterType::HighPass,
+                                        "HighPass",
+                                    )
+                                    .changed();
+                                changed |= ui
+                                    .selectable_value(
+                                        &mut filter_params.filter_type,
+                                        FilterType::BandPass,
+                                        "BandPass",
+                                    )
+                                    .changed();
+                                changed |= ui
+                                    .selectable_value(
+                                        &mut filter_params.filter_type,
+                                        FilterType::Notch,
+                                        "Notch",
+                                    )
+                                    .changed();
                                 changed
                             })
                             .inner
@@ -1315,9 +1479,12 @@ impl eframe::App for DawApp {
                     // Cutoff frequency
                     ui.horizontal(|ui| {
                         ui.label("Cutoff:");
-                        if ui.add(egui::Slider::new(&mut filter_params.cutoff, 20.0..=10000.0)
-                            .text("Hz")
-                            .logarithmic(true))
+                        if ui
+                            .add(
+                                egui::Slider::new(&mut filter_params.cutoff, 20.0..=10000.0)
+                                    .text("Hz")
+                                    .logarithmic(true),
+                            )
                             .changed()
                         {
                             let cmd = Box::new(SetFilterCommand::new(filter_params));
@@ -1328,8 +1495,8 @@ impl eframe::App for DawApp {
                     // Resonance (Q factor)
                     ui.horizontal(|ui| {
                         ui.label("Resonance (Q):");
-                        if ui.add(egui::Slider::new(&mut filter_params.resonance, 0.5..=20.0)
-                            .logarithmic(true))
+                        if ui
+                            .add(egui::Slider::new(&mut filter_params.resonance, 0.5..=20.0).logarithmic(true))
                             .changed()
                         {
                             let cmd = Box::new(SetFilterCommand::new(filter_params));
@@ -1354,7 +1521,9 @@ impl eframe::App for DawApp {
                         ui.label("CPU:");
                         let (cpu_color, status_text) = match load_level {
                             crate::audio::cpu_monitor::CpuLoad::Low => (egui::Color32::GREEN, "●"),
-                            crate::audio::cpu_monitor::CpuLoad::Medium => (egui::Color32::from_rgb(255, 165, 0), "●"),
+                            crate::audio::cpu_monitor::CpuLoad::Medium => {
+                                (egui::Color32::from_rgb(255, 165, 0), "●")
+                            }
                             crate::audio::cpu_monitor::CpuLoad::High => (egui::Color32::RED, "●"),
                         };
                         ui.colored_label(cpu_color, status_text);

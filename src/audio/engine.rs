@@ -79,7 +79,7 @@ impl AudioEngine {
         let channels = supported_config.channels() as usize;
 
         let config: StreamConfig = supported_config.into();
-        let buffer_size = config.buffer_size.clone();
+        let buffer_size = config.buffer_size;
 
         // Calculate buffer size (default to 512 if not specified)
         let buffer_frames = match buffer_size {

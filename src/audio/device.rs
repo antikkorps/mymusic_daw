@@ -58,10 +58,8 @@ impl AudioDeviceManager {
     pub fn get_output_device_by_name(&self, device_name: &str) -> Option<Device> {
         if let Ok(devices) = self.host.output_devices() {
             for device in devices {
-                if let Ok(name) = device.name() {
-                    if name == device_name {
-                        return Some(device);
-                    }
+                if let Ok(name) = device.name() && name == device_name {
+                    return Some(device);
                 }
             }
         }

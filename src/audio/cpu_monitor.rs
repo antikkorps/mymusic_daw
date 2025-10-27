@@ -56,7 +56,7 @@ impl CpuMonitor {
     pub fn start_measure(&self) -> Option<Instant> {
         let count = self.current_count.fetch_add(1, Ordering::Relaxed);
 
-        if count % self.measure_every_n == 0 {
+        if count.is_multiple_of(self.measure_every_n) {
             Some(Instant::now())
         } else {
             None
@@ -187,8 +187,8 @@ mod tests {
         }
 
         // About 10% of callbacks should be measured
-        assert!(measured >= 8 && measured <= 12);
-        assert!(not_measured >= 88 && not_measured <= 92);
+        assert!((8..=12).contains(&measured));
+        assert!((88..=92).contains(&not_measured));
     }
 
     #[test]
