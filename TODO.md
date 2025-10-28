@@ -632,12 +632,26 @@
 - Automation des effets
 - Export audio final
 
-### Timeline
+### Timeline ✅ (FONDATIONS TERMINÉES)
 
-- [ ] Système de timeline (BPM, mesures, signature)
-- [ ] Transport (play, stop, pause, loop)
+- [x] Système de timeline (BPM, mesures, signature) ✅
+  - [x] `TimeSignature` struct (numerator/denominator, beats_per_bar)
+  - [x] `Tempo` struct (BPM 20-999, beat/bar duration calculations)
+  - [x] `MusicalTime` (bars:beats:ticks with 480 PPQN)
+  - [x] `Position` (samples + musical time dual representation)
+  - [x] Conversion helpers (samples ↔ musical time)
+  - [x] Quantization (to beat, to subdivisions)
+  - [x] Tests unitaires complets (14 tests passing)
+- [x] Transport (play, stop, pause, loop) ✅
+  - [x] `Transport` controller with state management
+  - [x] `TransportState` enum (Stopped/Playing/Recording/Paused)
+  - [x] `SharedTransportState` (atomic thread-safe state)
+  - [x] Loop region support with automatic wrapping
+  - [x] Position tracking (samples + musical)
+  - [x] Tempo/TimeSignature management
 - [ ] Métronome
 - [ ] Position cursor avec snap-to-grid
+- [ ] **Intégration UI** (affichage timeline, transport controls)
 
 ### Piano Roll
 

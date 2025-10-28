@@ -6,6 +6,7 @@ pub mod connection;
 pub mod messaging;
 pub mod midi;
 pub mod sampler;
+pub mod sequencer;
 pub mod synth;
 pub mod ui;
 
@@ -16,6 +17,7 @@ pub use command::{CommandManager, DawState, UndoableCommand};
 pub use messaging::channels::{create_command_channel, create_notification_channel};
 pub use midi::event::{MidiEvent, MidiEventTimed};
 pub use midi::manager::MidiConnectionManager;
+pub use sequencer::{MusicalTime, Position, Tempo, TimeSignature, Transport, TransportState};
 pub use synth::envelope::AdsrParams;
 pub use synth::oscillator::{Oscillator, SimpleOscillator, WaveformType};
 pub use synth::voice::Voice;
