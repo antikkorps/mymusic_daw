@@ -10,7 +10,8 @@ The sequencer module provides the foundation for timeline-based music production
 sequencer/
 ├── mod.rs           # Module exports
 ├── timeline.rs      # Musical time representation
-└── transport.rs     # Playback control
+├── transport.rs     # Playback control
+└── metronome.rs     # Click track generator
 ```
 
 ## Core Concepts
@@ -262,6 +263,128 @@ cargo test --lib sequencer
 - [ ] MIDI recording
 - [ ] Automation lanes
 - [ ] Project save/load (with timeline state)
+
+## Metronome
+
+The metronome provides sample-accurate click track generation for musical timing.
+
+### Features
+
+- **Dual click sounds**: Accent (strong) for downbeats, Regular for other beats
+- **Pre-generated waveforms**: Short sine wave clicks (10ms) with exponential decay
+- **Sample-accurate scheduling**: Clicks triggered at exact beat positions
+- **Configurable**: Volume control (0.0-1.0), enable/disable
+- **Low CPU overhead**: Pre-generated samples, no real-time synthesis
+
+### Components
+
+#### MetronomeSound
+
+Generates and stores click waveforms:
+
+```rust
+let sound = MetronomeSound::new(48000.0);
+let accent_click = sound.get_click(ClickType::Accent);   // 1200 Hz, louder
+let regular_click = sound.get_click(ClickType::Regular); // 800 Hz, softer
+```
+
+#### Metronome
+
+Manages playback state and generates audio:
+
+```rust
+let mut metronome = Metronome::new(48000.0);
+metronome.set_enabled(true);
+metronome.set_volume(0.7);
+
+// Trigger a click
+metronome.trigger_click(ClickType::Accent);
+
+// In audio callback
+let click_sample = metronome.process_sample();
+```
+
+#### MetronomeScheduler
+
+Determines when clicks should occur based on musical time:
+
+```rust
+let mut scheduler = MetronomeScheduler::new();
+
+// In audio callback
+if let Some((offset, click_type)) = scheduler.check_for_click(
+    position_samples,
+    buffer_size,
+    sample_rate,
+    &tempo,
+    &time_signature,
+) {
+    // Click should happen at `offset` samples into the buffer
+    metronome.trigger_click(click_type);
+}
+```
+
+### Usage in Audio Callback
+
+```rust
+// Setup (once)
+let mut metronome = Metronome::new(48000.0);
+let mut scheduler = MetronomeScheduler::new();
+
+// In audio callback (per buffer)
+let position = shared_transport_state.position_samples();
+
+// Check for clicks
+if let Some((offset, click_type)) = scheduler.check_for_click(
+    position,
+    buffer.len(),
+    sample_rate,
+    &tempo,
+    &time_signature,
+) {
+    metronome.trigger_click(click_type);
+}
+
+// Generate metronome audio
+for sample in buffer.iter_mut() {
+    let click = metronome.process_sample();
+    *sample += click;  // Mix with other audio sources
+}
+```
+
+### Click Pattern
+
+The metronome automatically determines click types based on time signature:
+
+- **4/4 time**: Accent, Regular, Regular, Regular (repeats)
+- **3/4 time**: Accent, Regular, Regular (repeats)
+- **6/8 time**: Accent, Regular, Regular, Regular, Regular, Regular (repeats)
+
+First beat of each bar gets an accent click (higher frequency, louder).
+
+### Real-Time Safety
+
+✅ **RT-safe** in audio callback:
+- No allocations (clicks pre-generated)
+- No locks or blocking operations
+- Deterministic execution time
+- Simple integer/float arithmetic
+
+The metronome is designed to be called directly from the audio callback without any RT-safety violations.
+
+### Testing
+
+9 comprehensive unit tests covering:
+- Click sound generation (waveform quality, duration)
+- Playback state (trigger, volume, enable/disable)
+- Buffer processing (efficient batch mode)
+- Scheduler accuracy (beat detection, accent pattern)
+- Time signature handling (4/4, 3/4, 6/8)
+- Position reset and seeking
+
+### Example
+
+See `doc/examples/metronome_example.rs` for a complete integration example.
 
 ## Design Decisions
 

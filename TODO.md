@@ -649,9 +649,19 @@
   - [x] Loop region support with automatic wrapping
   - [x] Position tracking (samples + musical)
   - [x] Tempo/TimeSignature management
-- [ ] Métronome
+- [x] Métronome ✅
+  - [x] Click sound generator (pre-generated waveforms)
+  - [x] Dual clicks: Accent (1200 Hz) + Regular (800 Hz)
+  - [x] Sample-accurate scheduling via `MetronomeScheduler`
+  - [x] Automatic accent pattern based on time signature
+  - [x] Volume control (0.0-1.0) and enable/disable
+  - [x] RT-safe audio callback integration (no allocations)
+  - [x] Buffer processing (efficient batch mode)
+  - [x] 9 tests unitaires (sound generation, playback, scheduling)
+  - [x] Documentation complète avec exemples
+  - [x] Example code (doc/examples/metronome_example.rs)
 - [ ] Position cursor avec snap-to-grid
-- [ ] **Intégration UI** (affichage timeline, transport controls)
+- [ ] **Intégration UI** (affichage timeline, transport controls, metronome toggle)
 
 ### Piano Roll
 

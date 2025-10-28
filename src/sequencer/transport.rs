@@ -2,12 +2,13 @@
 // Controls play/stop/record state and playhead position
 
 use super::timeline::{Position, Tempo, TimeSignature};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 /// Transport state (play/stop/record)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TransportState {
+    #[default]
     Stopped,
     Playing,
     Recording,
@@ -28,12 +29,6 @@ impl TransportState {
     /// Check if transport is stopped or paused
     pub fn is_stopped(&self) -> bool {
         matches!(self, TransportState::Stopped | TransportState::Paused)
-    }
-}
-
-impl Default for TransportState {
-    fn default() -> Self {
-        TransportState::Stopped
     }
 }
 
@@ -126,7 +121,8 @@ impl SharedTransportState {
     /// Set loop region
     pub fn set_loop_region(&self, start_samples: u64, end_samples: u64) {
         assert!(end_samples > start_samples, "Loop end must be after start");
-        self.loop_start_samples.store(start_samples, Ordering::Relaxed);
+        self.loop_start_samples
+            .store(start_samples, Ordering::Relaxed);
         self.loop_end_samples.store(end_samples, Ordering::Relaxed);
     }
 
@@ -172,10 +168,7 @@ impl Transport {
     }
 
     /// Create with existing shared state (for audio thread)
-    pub fn with_shared_state(
-        shared_state: Arc<SharedTransportState>,
-        sample_rate: f64,
-    ) -> Self {
+    pub fn with_shared_state(shared_state: Arc<SharedTransportState>, sample_rate: f64) -> Self {
         Self {
             shared_state,
             tempo: Tempo::default(),
@@ -290,20 +283,32 @@ impl Transport {
 
     /// Set loop region (musical time)
     pub fn set_loop_region(&mut self, start: Position, end: Position) {
-        self.shared_state.set_loop_region(start.samples, end.samples);
+        self.shared_state
+            .set_loop_region(start.samples, end.samples);
     }
 
     /// Set loop region (samples)
     pub fn set_loop_region_samples(&mut self, start_samples: u64, end_samples: u64) {
-        self.shared_state.set_loop_region(start_samples, end_samples);
+        self.shared_state
+            .set_loop_region(start_samples, end_samples);
     }
 
     /// Get loop region as positions
     pub fn loop_region(&self) -> (Position, Position) {
         let (start_samples, end_samples) = self.shared_state.loop_region();
         (
-            Position::from_samples(start_samples, self.sample_rate, &self.tempo, &self.time_signature),
-            Position::from_samples(end_samples, self.sample_rate, &self.tempo, &self.time_signature),
+            Position::from_samples(
+                start_samples,
+                self.sample_rate,
+                &self.tempo,
+                &self.time_signature,
+            ),
+            Position::from_samples(
+                end_samples,
+                self.sample_rate,
+                &self.tempo,
+                &self.time_signature,
+            ),
         )
     }
 }
@@ -364,10 +369,10 @@ mod tests {
 
         // Advance to near loop end
         state.set_position_samples(47000);
-        
+
         // Advance past loop end
         let new_pos = state.advance_position(2000);
-        
+
         // Should wrap back to start + overflow
         // 47000 + 2000 = 49000
         // 49000 >= 48000, so overflow = 1000

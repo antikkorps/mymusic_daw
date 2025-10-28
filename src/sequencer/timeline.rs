@@ -111,11 +111,7 @@ impl Tempo {
     }
 
     /// Duration of one bar in samples at given sample rate and time signature
-    pub fn bar_duration_samples(
-        &self,
-        sample_rate: f64,
-        time_signature: &TimeSignature,
-    ) -> f64 {
+    pub fn bar_duration_samples(&self, sample_rate: f64, time_signature: &TimeSignature) -> f64 {
         self.bar_duration_seconds(time_signature) * sample_rate
     }
 }
@@ -137,9 +133,9 @@ impl fmt::Display for Tempo {
 /// Tick = subdivision of a beat (typically 480 or 960 ticks per quarter note)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MusicalTime {
-    pub bar: u32,   // Bar number (1-based)
-    pub beat: u8,   // Beat within bar (1-based)
-    pub tick: u16,  // Tick within beat (0-based)
+    pub bar: u32,  // Bar number (1-based)
+    pub beat: u8,  // Beat within bar (1-based)
+    pub tick: u16, // Tick within beat (0-based)
 }
 
 impl MusicalTime {
@@ -189,23 +185,28 @@ impl MusicalTime {
     pub fn quantize_to_beat(&self, time_signature: &TimeSignature) -> Self {
         let total_ticks = self.to_total_ticks(time_signature);
         let ticks_per_beat = Self::TICKS_PER_QUARTER as u64;
-        
+
         // Round to nearest beat
-        let quantized_ticks = ((total_ticks + ticks_per_beat / 2) / ticks_per_beat) * ticks_per_beat;
-        
+        let quantized_ticks =
+            ((total_ticks + ticks_per_beat / 2) / ticks_per_beat) * ticks_per_beat;
+
         Self::from_total_ticks(quantized_ticks, time_signature)
     }
 
     /// Quantize to nearest subdivision of a beat
     /// Example: subdivision = 4 for sixteenth notes
-    pub fn quantize_to_subdivision(&self, time_signature: &TimeSignature, subdivision: u16) -> Self {
+    pub fn quantize_to_subdivision(
+        &self,
+        time_signature: &TimeSignature,
+        subdivision: u16,
+    ) -> Self {
         let total_ticks = self.to_total_ticks(time_signature);
         let ticks_per_subdivision = (Self::TICKS_PER_QUARTER / subdivision) as u64;
-        
+
         // Round to nearest subdivision
-        let quantized_ticks = 
-            ((total_ticks + ticks_per_subdivision / 2) / ticks_per_subdivision) * ticks_per_subdivision;
-        
+        let quantized_ticks = ((total_ticks + ticks_per_subdivision / 2) / ticks_per_subdivision)
+            * ticks_per_subdivision;
+
         Self::from_total_ticks(quantized_ticks, time_signature)
     }
 }
@@ -226,8 +227,8 @@ impl fmt::Display for MusicalTime {
 /// Can represent time in multiple formats simultaneously
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Position {
-    pub samples: u64,           // Absolute position in samples
-    pub musical: MusicalTime,   // Musical position (bars:beats:ticks)
+    pub samples: u64,         // Absolute position in samples
+    pub musical: MusicalTime, // Musical position (bars:beats:ticks)
 }
 
 impl Position {
@@ -344,7 +345,7 @@ mod tests {
     #[test]
     fn test_musical_time_conversion() {
         let ts = TimeSignature::four_four();
-        
+
         // Bar 1, beat 1, tick 0 = 0 total ticks
         let time1 = MusicalTime::new(1, 1, 0);
         assert_eq!(time1.to_total_ticks(&ts), 0);
@@ -366,7 +367,7 @@ mod tests {
     #[test]
     fn test_musical_time_quantization() {
         let ts = TimeSignature::four_four();
-        
+
         // Bar 1, beat 1, tick 240 (halfway through beat)
         // Should quantize to bar 1, beat 1, tick 480 (start of beat 2)
         let time = MusicalTime::new(1, 1, 240);
@@ -408,7 +409,7 @@ mod tests {
 
         let pos = Position::zero();
         let new_pos = pos.add_samples(24000, sample_rate, &tempo, &ts);
-        
+
         assert_eq!(new_pos.samples, 24000);
         assert_eq!(new_pos.musical.bar, 1);
         assert_eq!(new_pos.musical.beat, 2);
