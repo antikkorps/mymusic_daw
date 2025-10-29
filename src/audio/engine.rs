@@ -36,6 +36,8 @@ use crate::messaging::channels::{CommandConsumer, NotificationProducer};
 use crate::messaging::command::Command;
 use crate::messaging::notification::{Notification, NotificationCategory};
 use crate::midi::event::{MidiEvent, MidiEventTimed};
+use crate::sequencer::metronome::{Metronome, MetronomeScheduler};
+use crate::sequencer::timeline::{Tempo, TimeSignature};
 use crate::synth::voice_manager::VoiceManager;
 
 pub struct AudioEngine {
@@ -105,6 +107,10 @@ impl AudioEngine {
             sample_rate,
         );
 
+        // Create sequencer components (metronome + scheduler)
+        let metronome = Metronome::new(sample_rate);
+        let metronome_scheduler = MetronomeScheduler::new();
+
         // Create device status (initially connecting, atomic for UI access)
         let status = AtomicDeviceStatus::new(DeviceStatus::Connecting);
         let status_clone = status.clone();
@@ -119,14 +125,17 @@ impl AudioEngine {
                 &device,
                 &config,
                 channels,
-                command_rx_ui,       // Moved (no Arc/Mutex)
-                command_rx_midi,     // Moved (no Arc/Mutex)
-                voice_manager,       // Moved (no Arc/Mutex)
-                volume_clone,        // Clone (AtomicF32 is Arc internally)
-                volume_smoother,     // Moved (no Arc/Mutex)
-                cpu_monitor_clone,   // Clone (CpuMonitor is Arc internally for stats)
-                status_clone,        // Clone (AtomicDeviceStatus is Arc internally)
-                notification_tx_err, // Clone (Arc<Mutex> only for error callback)
+                command_rx_ui,               // Moved (no Arc/Mutex)
+                command_rx_midi,             // Moved (no Arc/Mutex)
+                voice_manager,               // Moved (no Arc/Mutex)
+                volume_clone,                // Clone (AtomicF32 is Arc internally)
+                volume_smoother,             // Moved (no Arc/Mutex)
+                cpu_monitor_clone,           // Clone (CpuMonitor is Arc internally for stats)
+                status_clone,                // Clone (AtomicDeviceStatus is Arc internally)
+                notification_tx_err,         // Clone (Arc<Mutex> only for error callback)
+                metronome.clone(),           // Clone (for this stream)
+                metronome_scheduler.clone(), // Clone (for this stream)
+                sample_rate,                 // Pass sample rate for scheduler
             ),
             SampleFormat::I16 => Self::build_stream::<i16>(
                 &device,
@@ -140,6 +149,9 @@ impl AudioEngine {
                 cpu_monitor_clone,
                 status_clone,
                 notification_tx_err,
+                metronome.clone(),
+                metronome_scheduler.clone(),
+                sample_rate,
             ),
             SampleFormat::U16 => Self::build_stream::<u16>(
                 &device,
@@ -153,6 +165,9 @@ impl AudioEngine {
                 cpu_monitor_clone,
                 status_clone,
                 notification_tx_err,
+                metronome.clone(),
+                metronome_scheduler.clone(),
+                sample_rate,
             ),
             _ => {
                 return Err(format!(
@@ -231,6 +246,14 @@ impl AudioEngine {
                             }
                             Command::ClearModRouting { index } => {
                                 vm.clear_mod_routing(index as usize);
+                            }
+                            Command::SetMetronomeEnabled(_enabled) => {
+                                // Metronome is handled in the metronome module
+                                // TODO: Integrate with metronome state
+                            }
+                            Command::SetMetronomeVolume(_volume) => {
+                                // Metronome is handled in the metronome module
+                                // TODO: Integrate with metronome state
                             }
                             Command::Quit => {}
                         }
@@ -388,10 +411,19 @@ impl AudioEngine {
         cpu_monitor: CpuMonitor,            // Clone (Arc internally for stats)
         status: AtomicDeviceStatus,         // Clone (Arc internally, atomic)
         notification_tx: Arc<Mutex<NotificationProducer>>, // Keep Mutex (only error callback)
+        mut metronome: Metronome,           // Moved into closure (no Mutex)
+        mut metronome_scheduler: MetronomeScheduler, // Moved into closure (no Mutex)
+        sample_rate: f32,                   // Sample rate for scheduler calculations
     ) -> Result<Stream, String>
     where
         T: SizedSample + FromSample<f32> + Send + 'static,
     {
+        // Sequencer state (captured by closure, persists across callbacks)
+        let mut current_position: u64 = 0;
+        let mut current_tempo = Tempo::new(120.0);
+        let mut current_time_signature = TimeSignature::four_four();
+        let mut is_playing = false;
+
         let stream = device
             .build_output_stream(
                 config,
@@ -432,7 +464,7 @@ impl AudioEngine {
                         };
 
                     // helper function to process commands
-                    let process_command = |cmd: Command, vm: &mut VoiceManager| {
+                    let mut process_command = |cmd: Command, vm: &mut VoiceManager| {
                         match cmd {
                             Command::Midi(timed_event) => {
                                 process_midi_event(timed_event, vm);
@@ -479,6 +511,33 @@ impl AudioEngine {
                             Command::UpdateSample(index, sample) => {
                                 vm.update_sample(index, sample);
                             }
+                            Command::SetMetronomeEnabled(enabled) => {
+                                metronome.set_enabled(enabled);
+                            }
+                            Command::SetMetronomeVolume(volume) => {
+                                metronome.set_volume(volume);
+                            }
+                            Command::SetTempo(bpm) => {
+                                current_tempo = Tempo::new(bpm);
+                            }
+                            Command::SetTimeSignature(numerator, denominator) => {
+                                current_time_signature = TimeSignature::new(numerator, denominator);
+                            }
+                            Command::SetTransportPlaying(playing) => {
+                                if playing && !is_playing {
+                                    // Starting playback
+                                    is_playing = true;
+                                } else if !playing && is_playing {
+                                    // Stopping playback
+                                    is_playing = false;
+                                    current_position = 0;
+                                    metronome_scheduler.reset();
+                                }
+                            }
+                            Command::SetTransportPosition(position_samples) => {
+                                current_position = position_samples;
+                                metronome_scheduler.reset();
+                            }
                             Command::Quit => {}
                         }
                     };
@@ -493,6 +552,23 @@ impl AudioEngine {
                         process_command(cmd, &mut voice_manager);
                     }
 
+                    // Check for metronome clicks (if playing)
+                    if is_playing {
+                        let buffer_size = data.len() / channels;
+                        if let Some((_offset, click_type)) = metronome_scheduler.check_for_click(
+                            current_position,
+                            buffer_size,
+                            sample_rate as f64,
+                            &current_tempo,
+                            &current_time_signature,
+                        ) {
+                            // Trigger metronome click
+                            // Note: For now, we trigger at buffer start regardless of offset
+                            // TODO: Handle sample-accurate offset within buffer for perfect timing
+                            metronome.trigger_click(click_type);
+                        }
+                    }
+
                     // Generate audio samples (direct access, no locks!)
                     for frame in data.chunks_mut(channels) {
                         // Read target volume from atomic (once per sample for smoothing)
@@ -504,13 +580,21 @@ impl AudioEngine {
                         // Generate stereo sample
                         let (mut left, mut right) = voice_manager.next_sample();
 
+                        // Generate metronome click sample
+                        let metronome_sample = metronome.process_sample();
+
                         // Anti-denormals (flush tiny values to zero)
                         left = flush_denormals_to_zero(left);
                         right = flush_denormals_to_zero(right);
+                        let metronome_sample = flush_denormals_to_zero(metronome_sample);
 
                         // Apply volume
                         left *= smoothed_volume;
                         right *= smoothed_volume;
+
+                        // Mix in metronome (additive, doesn't affect main audio level)
+                        left += metronome_sample * 0.3; // Metronome at 30% of main volume
+                        right += metronome_sample * 0.3;
 
                         // Soft saturation (protection against hard clipping)
                         left = soft_clip(left);
@@ -518,6 +602,11 @@ impl AudioEngine {
 
                         // Write stereo sample to frame
                         write_stereo_to_interleaved_frame((left, right), frame);
+
+                        // Advance position counter if playing
+                        if is_playing {
+                            current_position += 1;
+                        }
                     }
 
                     // End CPU monitoring

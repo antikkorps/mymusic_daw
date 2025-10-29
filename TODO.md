@@ -200,7 +200,7 @@
   - [x] Métriques de performance documentées
   - [x] Commandes pour lancer tests et benchmarks
 
-**Total tests : 193 tests passent** 🎉 (55 tests Phase 1.5 + 13 tests Command Pattern + 10 tests ADSR + 11 tests LFO + 2 tests Voice Stealing + 14 tests Polyphony Modes + 9 tests Portamento + 18 tests Filter + 4 tests Filter Integration + 1 test Modulation Matrix + 4 tests Voice + 6 tests Sampler + 18 tests Sampler Engine + 3 tests Sample Bank + 11 tests Integration + 4 tests Latency + 4 tests MIDI→Audio + 3 tests Sample Bank Integration)
+**Total tests : 208 tests passent** 🎉 (55 tests Phase 1.5 + 13 tests Command Pattern + 10 tests ADSR + 11 tests LFO + 2 tests Voice Stealing + 14 tests Polyphony Modes + 9 tests Portamento + 18 tests Filter + 4 tests Filter Integration + 1 test Modulation Matrix + 4 tests Voice + 6 tests Sampler + 18 tests Sampler Engine + 3 tests Sample Bank + 11 tests Integration + 4 tests Latency + 4 tests MIDI→Audio + 3 tests Sample Bank Integration + 3 tests Sequencer UI)
 
 ### Documentation et communauté - **REPORTÉ POST-v1.0** ⏭️
 
@@ -632,12 +632,77 @@
 - Automation des effets
 - Export audio final
 
-### Timeline
+### Timeline ✅ (FONDATIONS TERMINÉES + INTÉGRATION UI COMPLÈTE)
 
-- [ ] Système de timeline (BPM, mesures, signature)
-- [ ] Transport (play, stop, pause, loop)
-- [ ] Métronome
-- [ ] Position cursor avec snap-to-grid
+- [x] Système de timeline (BPM, mesures, signature) ✅
+  - [x] `TimeSignature` struct (numerator/denominator, beats_per_bar)
+  - [x] `Tempo` struct (BPM 20-999, beat/bar duration calculations)
+  - [x] `MusicalTime` (bars:beats:ticks with 480 PPQN)
+  - [x] `Position` (samples + musical time dual representation)
+  - [x] Conversion helpers (samples ↔ musical time)
+  - [x] Quantization (to beat, to subdivisions)
+  - [x] Tests unitaires complets (14 tests passing)
+- [x] Transport (play, stop, pause, loop) ✅
+  - [x] `Transport` controller with state management
+  - [x] `TransportState` enum (Stopped/Playing/Recording/Paused)
+  - [x] `SharedTransportState` (atomic thread-safe state)
+  - [x] Loop region support with automatic wrapping
+  - [x] Position tracking (samples + musical)
+  - [x] Tempo/TimeSignature management
+- [x] Métronome ✅ **INTÉGRATION COMPLÈTE + SYNCHRONISATION TRANSPORT**
+  - [x] Click sound generator (pre-generated waveforms)
+  - [x] Dual clicks: Accent (1200 Hz) + Regular (800 Hz)
+  - [x] Sample-accurate scheduling via `MetronomeScheduler`
+  - [x] Automatic accent pattern based on time signature
+  - [x] Volume control (0.0-1.0) and enable/disable
+  - [x] RT-safe audio callback integration (no allocations)
+  - [x] Buffer processing (efficient batch mode)
+  - [x] 9 tests unitaires (sound generation, playback, scheduling)
+  - [x] Documentation complète avec exemples
+  - [x] Example code (doc/examples/metronome_example.rs)
+  - [x] **Intégration AudioEngine complète** : Métronome mixé dans le signal final
+  - [x] **Nouvelles commandes** : SetMetronomeEnabled, SetMetronomeVolume, SetTempo, SetTimeSignature, SetTransportPlaying
+  - [x] **Synchronisation Transport ↔ Audio** : Tempo, time signature et play state synchronisés
+  - [x] **Beat detection automatique** : MetronomeScheduler détecte les beats en temps réel
+  - [x] **Position tracking** : Compteur de samples pour synchronisation sample-accurate
+  - [x] **UI Controls** : Enable/disable + volume slider + transport sync
+- [x] **Intégration UI complète** ✅ **TERMINÉ**
+  - [x] Tab "Sequencer" dans l'interface utilisateur
+  - [x] Transport controls (Play/Pause/Stop/Record) avec états visuels
+  - [x] Position display (samples + musical time format)
+  - [x] Tempo control (slider 60-200 BPM) → synchronisé avec audio thread
+  - [x] Time signature controls (numerator/denominator avec validation) → synchronisé avec audio thread
+  - [x] Loop controls (enable/disable + start/end bars)
+  - [x] Metronome controls (enable/disable + volume) → synchronisé avec audio thread
+  - [x] Tests d'intégration UI (3 nouveaux tests)
+  - [x] **Communication UI → Audio** : Commandes envoyées via ringbuffer lock-free
+- [x] Position cursor avec snap-to-grid ✅ **TERMINÉ** 🎯
+   - [x] Curseur de position rouge sur timeline
+   - [x] Grille temporelle avec subdivisions (bar/beat/subdivision)
+   - [x] Snap-to-grid configurable (1/2/4/8/16 subdivisions)
+   - [x] Interface pour activer/désactiver snap
+   - [x] Clic pour positionner le curseur avec snap automatique
+   - [x] Affichage position en format musical et samples
+   - [x] Intégration complète UI ↔ Audio via Command::SetTransportPosition
+
+### Améliorations Timeline (optionnel Phase 4+)
+
+- [ ] **Modes de visualisation** 📐
+  - [ ] Mode "Follow" (actuel) : Timeline suit automatiquement le curseur
+  - [ ] Mode "Scroll" : Timeline scrollable indépendamment du curseur
+  - [ ] Toggle UI pour basculer entre les deux modes
+- [ ] **Zoom Timeline** 🔍
+  - [ ] Zoom in/out (bars_to_show configurable : 4, 8, 16, 32 bars)
+  - [ ] Raccourcis clavier (Ctrl+Scroll ou +/-)
+  - [ ] Boutons UI pour zoom presets
+- [ ] **Optimisation performance UI** ⚡
+  - [ ] Throttle position updates à 60 FPS (actuellement update à chaque frame)
+  - [ ] Ne redessiner la timeline que si position a changé significativement
+  - [ ] Considérer frame skipping pour grandes sessions
+- [ ] **Refactoring code** 🔧
+  - [ ] Nettoyer variable inutilisée `grid_subdivision` dans `update_cursor_position()` (ligne 413)
+  - [ ] Factoriser logique snap (actuellement dupliquée dans 3 endroits)
+  - [ ] Extraire timeline drawing dans module séparé si ça grossit
 
 ### Piano Roll
 
@@ -1044,19 +1109,25 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 
 ---
 
-**Priorité actuelle** : Phase 3.5 - Sampling 🎵
+**Priorité actuelle** : Phase 4 - Séquenceur 🎹
 
 **Phase 1.5** ✅ : Robustesse et tests - **TERMINÉE** (v0.2.0)
 **Phase 2** ✅ : ADSR, LFO, Modulation - **TERMINÉE** (v0.3.0)
 **Phase 3a** ✅ : Filtres et effets essentiels - **TERMINÉE** (v0.4.0)
 **Phase 3b** ✅ : Performance live - **TERMINÉE**
-**Phase 3.5** ✅ : Sampling - **TERMINÉE à 100%** (v0.5.0 PRÊT) 🎉
+**Phase 3.5** ✅ : Sampling - **TERMINÉE** (v0.5.0)
+**Phase 4** 🎯 : Séquenceur - **Timeline + Transport + Métronome TERMINÉS** ✅
+  - ✅ Timeline foundations (tempo, time signature, position tracking)
+  - ✅ Transport controls (play/pause/stop/record avec UI)
+  - ✅ Métronome avec synchronisation complète UI ↔ Audio
+  - 🔄 Piano Roll (en cours)
+  - 🔄 Recording MIDI (en cours)
 
-**Next milestone** : Finaliser Phase 3.5 → Release v0.5.0 🎉, puis Phase 4 (Séquenceur) → v1.0.0 🎉
+**Next milestone** : Piano Roll + Recording pour v1.0.0 🎉
 
 ---
 
-## Décisions Architecturales Critiques 🏗️
+**Décisions Architecturales Critiques** 🏗️
 
 Ces décisions doivent être prises **tôt** car elles impactent toute l'architecture du DAW.
 

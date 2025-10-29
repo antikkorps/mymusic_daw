@@ -39,5 +39,17 @@ pub enum Command {
     ClearModRouting {
         index: u8,
     },
+    /// Enable/disable metronome
+    SetMetronomeEnabled(bool),
+    /// Set metronome volume (0.0 to 1.0)
+    SetMetronomeVolume(f32),
+    /// Set transport tempo (BPM)
+    SetTempo(f64),
+    /// Set transport time signature (numerator, denominator)
+    SetTimeSignature(u8, u8),
+    /// Set transport playing state (true = playing, false = stopped)
+    SetTransportPlaying(bool),
+    /// Set transport position in samples
+    SetTransportPosition(u64),
     Quit,
 }
