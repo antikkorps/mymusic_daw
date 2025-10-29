@@ -534,6 +534,10 @@ impl AudioEngine {
                                     metronome_scheduler.reset();
                                 }
                             }
+                            Command::SetTransportPosition(position_samples) => {
+                                current_position = position_samples;
+                                metronome_scheduler.reset();
+                            }
                             Command::Quit => {}
                         }
                     };

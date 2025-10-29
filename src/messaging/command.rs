@@ -49,5 +49,7 @@ pub enum Command {
     SetTimeSignature(u8, u8),
     /// Set transport playing state (true = playing, false = stopped)
     SetTransportPlaying(bool),
+    /// Set transport position in samples
+    SetTransportPosition(u64),
     Quit,
 }

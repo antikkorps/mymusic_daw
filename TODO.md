@@ -676,7 +676,33 @@
   - [x] Metronome controls (enable/disable + volume) → synchronisé avec audio thread
   - [x] Tests d'intégration UI (3 nouveaux tests)
   - [x] **Communication UI → Audio** : Commandes envoyées via ringbuffer lock-free
-- [ ] Position cursor avec snap-to-grid
+- [x] Position cursor avec snap-to-grid ✅ **TERMINÉ** 🎯
+   - [x] Curseur de position rouge sur timeline
+   - [x] Grille temporelle avec subdivisions (bar/beat/subdivision)
+   - [x] Snap-to-grid configurable (1/2/4/8/16 subdivisions)
+   - [x] Interface pour activer/désactiver snap
+   - [x] Clic pour positionner le curseur avec snap automatique
+   - [x] Affichage position en format musical et samples
+   - [x] Intégration complète UI ↔ Audio via Command::SetTransportPosition
+
+### Améliorations Timeline (optionnel Phase 4+)
+
+- [ ] **Modes de visualisation** 📐
+  - [ ] Mode "Follow" (actuel) : Timeline suit automatiquement le curseur
+  - [ ] Mode "Scroll" : Timeline scrollable indépendamment du curseur
+  - [ ] Toggle UI pour basculer entre les deux modes
+- [ ] **Zoom Timeline** 🔍
+  - [ ] Zoom in/out (bars_to_show configurable : 4, 8, 16, 32 bars)
+  - [ ] Raccourcis clavier (Ctrl+Scroll ou +/-)
+  - [ ] Boutons UI pour zoom presets
+- [ ] **Optimisation performance UI** ⚡
+  - [ ] Throttle position updates à 60 FPS (actuellement update à chaque frame)
+  - [ ] Ne redessiner la timeline que si position a changé significativement
+  - [ ] Considérer frame skipping pour grandes sessions
+- [ ] **Refactoring code** 🔧
+  - [ ] Nettoyer variable inutilisée `grid_subdivision` dans `update_cursor_position()` (ligne 413)
+  - [ ] Factoriser logique snap (actuellement dupliquée dans 3 endroits)
+  - [ ] Extraire timeline drawing dans module séparé si ça grossit
 
 ### Piano Roll
 

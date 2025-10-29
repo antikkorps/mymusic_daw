@@ -105,6 +105,11 @@ pub struct DawApp {
     loop_start_bars: u32,
     loop_end_bars: u32,
 
+    // Position cursor and snap-to-grid state
+    cursor_position: Position,
+    snap_to_grid_enabled: bool,
+    grid_subdivision: u16, // 1=whole note, 2=half, 4=quarter, 8=eighth, 16=sixteenth
+
     // Active UI tab
     active_tab: UiTab,
 }
@@ -219,6 +224,11 @@ impl DawApp {
             loop_enabled: false,
             loop_start_bars: 1,
             loop_end_bars: 8,
+
+            // Initialize cursor position and snap-to-grid
+            cursor_position: Position::zero(),
+            snap_to_grid_enabled: true,
+            grid_subdivision: 4, // Default to quarter note snap
 
             active_tab: UiTab::Synth,
         }
@@ -355,6 +365,231 @@ impl DawApp {
             }
             self.preview_sample_note = None;
             self.preview_timer = None;
+        }
+    }
+
+    /// Snap position to grid if enabled
+    fn snap_to_grid(&self, position: Position) -> Position {
+        if !self.snap_to_grid_enabled {
+            return position;
+        }
+
+        let time_signature = TimeSignature::new(
+            self.time_signature_numerator,
+            self.time_signature_denominator,
+        );
+
+        let quantized_musical = position
+            .musical
+            .quantize_to_subdivision(&time_signature, self.grid_subdivision);
+
+        Position::from_musical(
+            quantized_musical,
+            self.sequencer.sample_rate(),
+            self.sequencer.tempo(),
+            &time_signature,
+        )
+    }
+
+    /// Update cursor position from sequencer current position
+    fn update_cursor_position(&mut self) {
+        self.cursor_position = self.sequencer.position();
+    }
+
+    /// Test snap-to-grid functionality
+    #[cfg(test)]
+    fn test_snap_to_grid() {
+        let tempo = Tempo::new(120.0);
+        let time_signature = TimeSignature::four_four();
+        let sample_rate = 48000.0;
+
+        // Create test position (bar 2, beat 2, tick 240 - halfway through beat)
+        let test_musical = MusicalTime::new(2, 2, 240);
+        let test_position =
+            Position::from_musical(test_musical, sample_rate, &tempo, &time_signature);
+
+        // Test snap to quarter note (subdivision = 4)
+        let snap_enabled = true;
+        let grid_subdivision = 4;
+
+        let snapped_position = if snap_enabled {
+            let quantized_musical = test_position
+                .musical
+                .quantize_to_subdivision(&time_signature, grid_subdivision);
+
+            Position::from_musical(quantized_musical, sample_rate, &tempo, &time_signature)
+        } else {
+            test_position
+        };
+
+        // Should snap to bar 2, beat 2, tick 0 (start of beat)
+        assert_eq!(snapped_position.musical.bar, 2);
+        assert_eq!(snapped_position.musical.beat, 2);
+        assert_eq!(snapped_position.musical.tick, 0);
+
+        // Test with snap disabled - should return original position
+        let unsnapped_position = test_position;
+        assert_eq!(unsnapped_position.musical, test_musical);
+    }
+
+    /// Draw timeline with cursor and grid
+    fn draw_timeline_with_cursor(&mut self, ui: &mut egui::Ui) {
+        let available_width = ui.available_width();
+        let timeline_height = 100.0;
+
+        // Update cursor position from sequencer
+        self.update_cursor_position();
+
+        // Draw timeline background
+        let painter = ui.painter();
+        let rect = egui::Rect::from_min_size(
+            ui.cursor().min,
+            egui::vec2(available_width, timeline_height),
+        );
+        painter.rect_filled(rect, 0.0, egui::Color32::from_rgb(40, 40, 40));
+
+        // Calculate pixels per bar (show 8 bars by default)
+        let bars_to_show = 8;
+        let pixels_per_bar = available_width / bars_to_show as f32;
+
+        // Draw grid lines and bar numbers
+        let time_signature = TimeSignature::new(
+            self.time_signature_numerator,
+            self.time_signature_denominator,
+        );
+
+        for bar in 0..=bars_to_show {
+            let x = rect.min.x + (bar as f32 * pixels_per_bar);
+
+            // Bar lines (thicker)
+            painter.line_segment(
+                [egui::pos2(x, rect.min.y), egui::pos2(x, rect.max.y)],
+                egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 80, 80)),
+            );
+
+            // Bar numbers
+            if bar < bars_to_show {
+                let bar_number = self.cursor_position.musical.bar + bar;
+                painter.text(
+                    egui::pos2(x + 5.0, rect.min.y + 5.0),
+                    egui::Align2::LEFT_TOP,
+                    format!("Bar {}", bar_number),
+                    egui::FontId::default(),
+                    egui::Color32::from_rgb(200, 200, 200),
+                );
+            }
+
+            // Draw beat lines if space permits
+            if pixels_per_bar >= 80.0 {
+                for beat in 1..time_signature.numerator {
+                    let beat_x =
+                        x + (beat as f32 * pixels_per_bar / time_signature.numerator as f32);
+                    painter.line_segment(
+                        [
+                            egui::pos2(beat_x, rect.min.y),
+                            egui::pos2(beat_x, rect.max.y),
+                        ],
+                        egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 60)),
+                    );
+                }
+            }
+
+            // Draw subdivision lines if snap is enabled and space permits
+            if self.snap_to_grid_enabled && pixels_per_bar >= 160.0 {
+                let subdivisions_per_beat = self.grid_subdivision;
+                if subdivisions_per_beat > 1 {
+                    for subdivision in 0..subdivisions_per_beat {
+                        let subdivision_x = x
+                            + (subdivision as f32 * pixels_per_bar / subdivisions_per_beat as f32);
+                        painter.line_segment(
+                            [
+                                egui::pos2(subdivision_x, rect.min.y),
+                                egui::pos2(subdivision_x, rect.max.y),
+                            ],
+                            egui::Stroke::new(0.5, egui::Color32::from_rgb(50, 50, 50)),
+                        );
+                    }
+                }
+            }
+        }
+
+        // Draw cursor position
+        let cursor_bar_offset = (self.cursor_position.musical.bar - 1) % bars_to_show;
+        let cursor_beat_offset =
+            (self.cursor_position.musical.beat - 1) as f32 / time_signature.numerator as f32;
+        let cursor_tick_offset = self.cursor_position.musical.tick as f32
+            / (MusicalTime::TICKS_PER_QUARTER as f32 * time_signature.numerator as f32);
+
+        let cursor_x = rect.min.x
+            + (cursor_bar_offset as f32 + cursor_beat_offset + cursor_tick_offset) * pixels_per_bar;
+
+        // Only draw cursor if within visible range
+        if cursor_x >= rect.min.x && cursor_x <= rect.max.x {
+            painter.line_segment(
+                [
+                    egui::pos2(cursor_x, rect.min.y),
+                    egui::pos2(cursor_x, rect.max.y),
+                ],
+                egui::Stroke::new(2.0, egui::Color32::RED),
+            );
+
+            // Cursor position text
+            painter.text(
+                egui::pos2(cursor_x + 5.0, rect.max.y - 20.0),
+                egui::Align2::LEFT_BOTTOM,
+                format!("{}", self.cursor_position.musical),
+                egui::FontId::default(),
+                egui::Color32::RED,
+            );
+        }
+
+        // Handle mouse interaction for cursor positioning
+        let (rect, response) = ui.allocate_exact_size(
+            egui::vec2(available_width, timeline_height),
+            egui::Sense::click(),
+        );
+
+        if response.clicked()
+            && let Some(pointer_pos) = response.interact_pointer_pos()
+        {
+            // Calculate clicked position in timeline
+            let relative_x = pointer_pos.x - rect.min.x;
+            let bar_offset = relative_x / pixels_per_bar;
+
+            // Convert to musical time
+            let clicked_bar = self.cursor_position.musical.bar - 1 + bar_offset as u32;
+            let clicked_beat = ((bar_offset % 1.0) * time_signature.numerator as f32) as u8 + 1;
+            let clicked_tick = ((bar_offset % 1.0 * time_signature.numerator as f32) % 1.0
+                * MusicalTime::TICKS_PER_QUARTER as f32) as u16;
+
+            let mut clicked_musical = MusicalTime::new(
+                clicked_bar.max(1),
+                clicked_beat.min(time_signature.numerator),
+                clicked_tick,
+            );
+
+            // Apply snap-to-grid if enabled
+            if self.snap_to_grid_enabled {
+                clicked_musical =
+                    clicked_musical.quantize_to_subdivision(&time_signature, self.grid_subdivision);
+            }
+
+            // Create new position and set it
+            let new_position = Position::from_musical(
+                clicked_musical,
+                self.sequencer.sample_rate(),
+                self.sequencer.tempo(),
+                &time_signature,
+            );
+
+            self.sequencer.set_position(new_position);
+            self.cursor_position = new_position;
+
+            // Send position update to audio thread
+            let cmd = Command::SetTransportPosition(new_position.samples);
+            if let Ok(mut tx) = self.command_tx.lock() {
+                let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+            }
         }
     }
 
@@ -1552,10 +1787,76 @@ impl eframe::App for DawApp {
 
                     ui.add_space(10.0);
 
+                    // Snap-to-grid controls
+                    ui.heading("Timeline & Cursor");
+                    ui.horizontal(|ui| {
+                        ui.label("Snap to Grid:");
+                        if ui.checkbox(&mut self.snap_to_grid_enabled, "Enable").changed() {
+                            // Cursor position will be snapped on next update
+                        }
+
+                        if self.snap_to_grid_enabled {
+                            ui.label("Grid:");
+                            let subdivision_options = [(1, "Whole"), (2, "Half"), (4, "Quarter"), (8, "Eighth"), (16, "Sixteenth")];
+                            let current_index = subdivision_options.iter().position(|&(div, _)| div == self.grid_subdivision).unwrap_or(2);
+                            let mut selected_index = current_index;
+
+                            egui::ComboBox::from_id_salt("grid_subdivision")
+                                .selected_text(format!("{} note", subdivision_options[current_index].1))
+                                .show_ui(ui, |ui| {
+                                    for (i, &(_div, label)) in subdivision_options.iter().enumerate() {
+                                        ui.selectable_value(&mut selected_index, i, format!("{} note", label));
+                                    }
+                                });
+
+                            if selected_index != current_index {
+                                self.grid_subdivision = subdivision_options[selected_index].0;
+                            }
+                        }
+                    });
+
+                    ui.add_space(10.0);
+
+                    // Draw timeline with cursor
+                    ui.heading("Timeline");
+                    self.draw_timeline_with_cursor(ui);
+
+                    ui.add_space(10.0);
+
+                    // Current position display with snap info
+                    ui.horizontal(|ui| {
+                        let display_position = if self.snap_to_grid_enabled {
+                            self.snap_to_grid(self.cursor_position)
+                        } else {
+                            self.cursor_position
+                        };
+
+                        ui.label(format!("Cursor: {}", display_position.musical));
+                        ui.label(format!("Samples: {}", display_position.samples));
+
+                        if self.snap_to_grid_enabled {
+                            ui.colored_label(egui::Color32::from_rgb(100, 200, 100),
+                                format!("📐 Snapped to {} note",
+                                    match self.grid_subdivision {
+                                        1 => "whole",
+                                        2 => "half", 
+                                        4 => "quarter",
+                                        8 => "eighth",
+                                        16 => "sixteenth",
+                                        _ => "custom"
+                                    }
+                                )
+                            );
+                        }
+                    });
+
+                    ui.add_space(10.0);
+
                     // Information display
                     ui.label("The sequencer provides timeline-based playback control.");
                     ui.label("Use transport controls to play, pause, stop, and record.");
                     ui.label("Métronome helps maintain timing during playback.");
+                    ui.label("Click on the timeline to set cursor position (snaps to grid if enabled).");
                 }
                 UiTab::Synth => {
                     // Synth tab
