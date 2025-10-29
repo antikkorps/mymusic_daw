@@ -552,23 +552,20 @@ impl AudioEngine {
                         process_command(cmd, &mut voice_manager);
                     }
 
-                    // Check for metronome clicks at buffer start (if playing)
+                    // Check for metronome clicks (if playing)
                     if is_playing {
                         let buffer_size = data.len() / channels;
-                        if let Some((offset, click_type)) = metronome_scheduler.check_for_click(
+                        if let Some((_offset, click_type)) = metronome_scheduler.check_for_click(
                             current_position,
                             buffer_size,
                             sample_rate as f64,
                             &current_tempo,
                             &current_time_signature,
                         ) {
-                            // Trigger metronome click at the detected offset
-                            // Note: offset is relative to buffer start, metronome handles per-sample playback
-                            if offset == 0 {
-                                // Click happens at buffer start
-                                metronome.trigger_click(click_type);
-                            }
-                            // TODO: Handle clicks that happen mid-buffer (requires sample-accurate scheduling)
+                            // Trigger metronome click
+                            // Note: For now, we trigger at buffer start regardless of offset
+                            // TODO: Handle sample-accurate offset within buffer for perfect timing
+                            metronome.trigger_click(click_type);
                         }
                     }
 
