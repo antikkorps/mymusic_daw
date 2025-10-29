@@ -17,6 +17,7 @@ use crate::midi::event::{MidiEvent, MidiEventTimed};
 use crate::midi::manager::MidiConnectionManager;
 use crate::sampler::SampleBank;
 use crate::sampler::loader::{Sample, load_sample};
+use crate::sequencer::{MusicalTime, Position, Tempo, TimeSignature, Transport, TransportState};
 use crate::synth::envelope::AdsrParams;
 use crate::synth::filter::FilterType;
 use crate::synth::lfo::{LfoDestination, LfoParams};
@@ -38,6 +39,7 @@ enum UiTab {
     Synth,
     Modulation,
     Sampler,
+    Sequencer,
     Play,
     Performance,
 }
@@ -91,6 +93,18 @@ pub struct DawApp {
     // Preview state (sample_index, note)
     preview_sample_note: Option<(usize, u8)>,
     preview_timer: Option<Instant>,
+
+    // Sequencer state
+    sequencer: Transport,
+    metronome_enabled: bool,
+    metronome_volume: f32,
+    sequencer_tempo: f64,
+    time_signature_numerator: u8,
+    time_signature_denominator: u8,
+    loop_enabled: bool,
+    loop_start_bars: u32,
+    loop_end_bars: u32,
+
     // Active UI tab
     active_tab: UiTab,
 }
@@ -194,6 +208,18 @@ impl DawApp {
             note_map_input: Vec::new(),
             preview_sample_note: None,
             preview_timer: None,
+
+            // Sequencer initialization (using 48kHz default sample rate)
+            sequencer: Transport::new(48000.0),
+            metronome_enabled: true,
+            metronome_volume: 0.5,
+            sequencer_tempo: 120.0,
+            time_signature_numerator: 4,
+            time_signature_denominator: 4,
+            loop_enabled: false,
+            loop_start_bars: 1,
+            loop_end_bars: 8,
+
             active_tab: UiTab::Synth,
         }
     }
@@ -685,6 +711,7 @@ impl eframe::App for DawApp {
                 button(ui, "Synth", UiTab::Synth, &mut self.active_tab);
                 button(ui, "Modulation", UiTab::Modulation, &mut self.active_tab);
                 button(ui, "Sampler", UiTab::Sampler, &mut self.active_tab);
+                button(ui, "Sequencer", UiTab::Sequencer, &mut self.active_tab);
                 button(ui, "Play", UiTab::Play, &mut self.active_tab);
                 button(ui, "Performance", UiTab::Performance, &mut self.active_tab);
             });
@@ -1320,6 +1347,215 @@ impl eframe::App for DawApp {
                         self.loaded_samples.remove(idx);
                         self.note_map_input.remove(idx);
                     }
+                }
+                UiTab::Sequencer => {
+                    // Sequencer tab - Timeline, transport controls, and metronome
+                    ui.heading("Sequencer");
+
+                    // Transport controls
+                    ui.horizontal(|ui| {
+                        ui.label("Transport:");
+
+                        let transport_state = self.sequencer.state();
+                        let (play_button, _pause_button, stop_button, record_button) = match transport_state {
+                            TransportState::Playing => ("⏸ Pause", "⏸ Pause", "⏹ Stop", "⏺ Record"),
+                            TransportState::Recording => ("⏸ Pause", "⏸ Pause", "⏹ Stop", "⏺ Recording..."),
+                            TransportState::Paused => ("▶ Play", "⏸ Pause", "⏹ Stop", "⏺ Record"),
+                            TransportState::Stopped => ("▶ Play", "⏸ Pause", "⏹ Stop", "⏺ Record"),
+                        };
+
+                        if ui.button(play_button).clicked() {
+                            if transport_state.is_playing() {
+                                self.sequencer.pause();
+                                // Send transport state to audio thread
+                                let cmd = Command::SetTransportPlaying(false);
+                                if let Ok(mut tx) = self.command_tx.lock() {
+                                    let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+                                }
+                            } else {
+                                self.sequencer.play();
+                                // Send transport state to audio thread
+                                let cmd = Command::SetTransportPlaying(true);
+                                if let Ok(mut tx) = self.command_tx.lock() {
+                                    let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+                                }
+                            }
+                        }
+
+                        if ui.button(stop_button).clicked() {
+                            self.sequencer.stop();
+                            // Send transport state to audio thread
+                            let cmd = Command::SetTransportPlaying(false);
+                            if let Ok(mut tx) = self.command_tx.lock() {
+                                let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+                            }
+                        }
+
+                        if ui.button(record_button).clicked() {
+                            if transport_state.is_recording() {
+                                self.sequencer.pause();
+                            } else {
+                                self.sequencer.record();
+                            }
+                        }
+                    });
+
+                    ui.add_space(10.0);
+
+                    // Position and tempo display
+                    ui.horizontal(|ui| {
+                        let current_position = self.sequencer.position();
+                        ui.label(format!(
+                            "Position: {} ({} samples)",
+                            current_position.musical,
+                            current_position.samples
+                        ));
+                    });
+
+                    // Tempo and time signature controls
+                    ui.horizontal(|ui| {
+                        ui.label("Tempo (BPM):");
+                        if ui.add(
+                            egui::Slider::new(&mut self.sequencer_tempo, 60.0..=200.0)
+                                .text("BPM")
+                                .fixed_decimals(1)
+                        ).changed() {
+                            self.sequencer.set_tempo(Tempo::new(self.sequencer_tempo));
+                            // Send tempo to audio thread
+                            let cmd = Command::SetTempo(self.sequencer_tempo);
+                            if let Ok(mut tx) = self.command_tx.lock() {
+                                let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+                            }
+                        }
+
+                        ui.add_space(20.0);
+
+                        ui.label("Time Signature:");
+                        ui.horizontal(|ui| {
+                            if ui.add(egui::DragValue::new(&mut self.time_signature_numerator).range(1..=16)).changed() {
+                                self.sequencer.set_time_signature(TimeSignature::new(
+                                    self.time_signature_numerator,
+                                    self.time_signature_denominator
+                                ));
+                                // Send time signature to audio thread
+                                let cmd = Command::SetTimeSignature(
+                                    self.time_signature_numerator,
+                                    self.time_signature_denominator
+                                );
+                                if let Ok(mut tx) = self.command_tx.lock() {
+                                    let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+                                }
+                            };
+                            ui.label("/");
+                            // Denominator must be power of 2 - restrict to common values
+                            let denominator_options = [1, 2, 4, 8, 16];
+                            let current_index = denominator_options.iter().position(|&x| x == self.time_signature_denominator).unwrap_or(1);
+                            let mut selected_index = current_index;
+
+                            egui::ComboBox::from_id_salt("time_sig_denominator")
+                                .selected_text(format!("{}", self.time_signature_denominator))
+                                .show_ui(ui, |ui| {
+                                    for (i, &denom) in denominator_options.iter().enumerate() {
+                                        ui.selectable_value(&mut selected_index, i, format!("{}", denom));
+                                    }
+                                });
+
+                            if selected_index != current_index {
+                                self.time_signature_denominator = denominator_options[selected_index];
+                                self.sequencer.set_time_signature(TimeSignature::new(
+                                    self.time_signature_numerator,
+                                    self.time_signature_denominator
+                                ));
+                                // Send time signature to audio thread
+                                let cmd = Command::SetTimeSignature(
+                                    self.time_signature_numerator,
+                                    self.time_signature_denominator
+                                );
+                                if let Ok(mut tx) = self.command_tx.lock() {
+                                    let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+                                }
+                            }
+                        });
+                    });
+
+                    ui.add_space(10.0);
+
+                    // Loop controls
+                    ui.horizontal(|ui| {
+                        ui.label("Loop:");
+                        if ui.checkbox(&mut self.loop_enabled, "Enable").changed() {
+                            self.sequencer.set_loop_enabled(self.loop_enabled);
+                        }
+
+                        if self.loop_enabled {
+                            ui.label("From:");
+                            if ui.add(egui::DragValue::new(&mut self.loop_start_bars).range(1..=999)).changed() {
+                                let start_pos = Position::from_musical(
+                                    MusicalTime::new(self.loop_start_bars, 1, 0),
+                                    self.sequencer.sample_rate(),
+                                    self.sequencer.tempo(),
+                                    self.sequencer.time_signature(),
+                                );
+                                let end_pos = Position::from_musical(
+                                    MusicalTime::new(self.loop_end_bars, 1, 0),
+                                    self.sequencer.sample_rate(),
+                                    self.sequencer.tempo(),
+                                    self.sequencer.time_signature(),
+                                );
+                                self.sequencer.set_loop_region(start_pos, end_pos);
+                            }
+
+                            ui.label("To:");
+                            if ui.add(egui::DragValue::new(&mut self.loop_end_bars).range(1..=999)).changed() {
+                                if self.loop_end_bars <= self.loop_start_bars {
+                                    self.loop_end_bars = self.loop_start_bars + 1;
+                                }
+                                let start_pos = Position::from_musical(
+                                    MusicalTime::new(self.loop_start_bars, 1, 0),
+                                    self.sequencer.sample_rate(),
+                                    self.sequencer.tempo(),
+                                    self.sequencer.time_signature(),
+                                );
+                                let end_pos = Position::from_musical(
+                                    MusicalTime::new(self.loop_end_bars, 1, 0),
+                                    self.sequencer.sample_rate(),
+                                    self.sequencer.tempo(),
+                                    self.sequencer.time_signature(),
+                                );
+                                self.sequencer.set_loop_region(start_pos, end_pos);
+                            }
+                        }
+                    });
+
+                    ui.add_space(10.0);
+
+                    // Metronome controls
+                    ui.horizontal(|ui| {
+                        ui.label("Metronome:");
+                        if ui.checkbox(&mut self.metronome_enabled, "Enable").changed() {
+                            // Send metronome enable command to audio thread
+                            let cmd = Command::SetMetronomeEnabled(self.metronome_enabled);
+                            if let Ok(mut tx) = self.command_tx.lock() {
+                                let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+                            }
+                        }
+
+                        ui.label("Volume:");
+                        if ui.add(egui::Slider::new(&mut self.metronome_volume, 0.0..=1.0)).changed() {
+                            // Send metronome volume command to audio thread
+                            let cmd = Command::SetMetronomeVolume(self.metronome_volume);
+                            if let Ok(mut tx) = self.command_tx.lock() {
+                                let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+                            }
+                        }
+                    });
+
+                    ui.add_space(10.0);
+
+                    // Information display
+                    ui.label("The sequencer provides timeline-based playback control.");
+                    ui.label("Use transport controls to play, pause, stop, and record.");
+                    ui.label("Métronome helps maintain timing during playback.");
                 }
                 UiTab::Synth => {
                     // Synth tab

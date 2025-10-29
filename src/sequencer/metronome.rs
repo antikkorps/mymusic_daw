@@ -15,6 +15,7 @@ pub enum ClickType {
 
 /// Metronome click sound generator
 /// Pre-generates short click samples for low CPU overhead
+#[derive(Debug, Clone)]
 pub struct MetronomeSound {
     accent_samples: Vec<f32>,
     regular_samples: Vec<f32>,
@@ -74,8 +75,16 @@ impl MetronomeSound {
     }
 }
 
+/// Active click playback state
+#[derive(Debug, Clone)]
+struct ClickPlayback {
+    click_type: ClickType,
+    position: usize, // Current position in click buffer
+}
+
 /// Metronome state for playback
 /// Tracks when to generate clicks and maintains playback state
+#[derive(Debug, Clone)]
 pub struct Metronome {
     sound: MetronomeSound,
     enabled: bool,
@@ -83,12 +92,6 @@ pub struct Metronome {
 
     // Playback state
     current_click: Option<ClickPlayback>,
-}
-
-/// Active click playback state
-struct ClickPlayback {
-    click_type: ClickType,
-    position: usize, // Current position in click buffer
 }
 
 impl Metronome {
@@ -173,6 +176,7 @@ impl Metronome {
 
 /// Metronome scheduler
 /// Determines when clicks should occur based on musical time
+#[derive(Debug, Clone)]
 pub struct MetronomeScheduler {
     last_beat: u64, // Last beat number that triggered a click
 }

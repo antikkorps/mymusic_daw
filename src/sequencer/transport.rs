@@ -431,3 +431,80 @@ mod tests {
         assert_eq!(transport.state(), TransportState::Playing);
     }
 }
+
+#[cfg(test)]
+mod ui_integration_tests {
+    use super::*;
+
+    /// Test sequencer UI state initialization
+    /// Tests the transport state that would be used by the UI layer
+    #[test]
+    fn test_sequencer_ui_initialization() {
+        let sequencer = Transport::new(44100.0);
+
+        // Should start in stopped state
+        assert_eq!(sequencer.state(), TransportState::Stopped);
+
+        // Should have default tempo (120 BPM)
+        assert_eq!(sequencer.tempo().bpm(), 120.0);
+
+        // Should have default time signature (4/4)
+        assert_eq!(sequencer.time_signature().numerator, 4);
+        assert_eq!(sequencer.time_signature().denominator, 4);
+
+        // Should be at position 0
+        assert_eq!(sequencer.position().samples, 0);
+    }
+
+    /// Test UI control state transitions
+    #[test]
+    fn test_ui_control_state_transitions() {
+        let mut sequencer = Transport::new(44100.0);
+
+        // Initial state
+        assert_eq!(sequencer.state(), TransportState::Stopped);
+        assert!(!sequencer.state().is_playing());
+
+        // Play should transition to Playing
+        sequencer.play();
+        assert_eq!(sequencer.state(), TransportState::Playing);
+        assert!(sequencer.state().is_playing());
+
+        // Pause should transition to Paused
+        sequencer.pause();
+        assert_eq!(sequencer.state(), TransportState::Paused);
+        assert!(!sequencer.state().is_playing());
+
+        // Record should transition to Recording
+        sequencer.record();
+        assert_eq!(sequencer.state(), TransportState::Recording);
+        assert!(sequencer.state().is_playing());
+        assert!(sequencer.state().is_recording());
+
+        // Stop should transition to Stopped and reset position
+        sequencer.stop();
+        assert_eq!(sequencer.state(), TransportState::Stopped);
+        assert!(!sequencer.state().is_playing());
+        assert_eq!(sequencer.position().samples, 0);
+    }
+
+    /// Test tempo and time signature updates from UI
+    #[test]
+    fn test_ui_tempo_time_signature_updates() {
+        let mut sequencer = Transport::new(44100.0);
+
+        // Change tempo from UI
+        sequencer.set_tempo(Tempo::new(140.0));
+        assert_eq!(sequencer.tempo().bpm(), 140.0);
+
+        // Change time signature from UI
+        sequencer.set_time_signature(TimeSignature::three_four());
+        assert_eq!(sequencer.time_signature().numerator, 3);
+        assert_eq!(sequencer.time_signature().denominator, 4);
+
+        // Test various time signatures
+        sequencer.set_time_signature(TimeSignature::six_eight());
+        assert_eq!(sequencer.time_signature().numerator, 6);
+        assert_eq!(sequencer.time_signature().denominator, 8);
+    }
+}
