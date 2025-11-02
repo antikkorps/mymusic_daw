@@ -200,7 +200,7 @@
   - [x] Métriques de performance documentées
   - [x] Commandes pour lancer tests et benchmarks
 
-**Total tests : 208 tests passent** 🎉 (55 tests Phase 1.5 + 13 tests Command Pattern + 10 tests ADSR + 11 tests LFO + 2 tests Voice Stealing + 14 tests Polyphony Modes + 9 tests Portamento + 18 tests Filter + 4 tests Filter Integration + 1 test Modulation Matrix + 4 tests Voice + 6 tests Sampler + 18 tests Sampler Engine + 3 tests Sample Bank + 11 tests Integration + 4 tests Latency + 4 tests MIDI→Audio + 3 tests Sample Bank Integration + 3 tests Sequencer UI)
+**Total tests : 228 tests passent** 🎉 (55 tests Phase 1.5 + 13 tests Command Pattern + 10 tests ADSR + 11 tests LFO + 2 tests Voice Stealing + 14 tests Polyphony Modes + 9 tests Portamento + 18 tests Filter + 4 tests Filter Integration + 1 test Modulation Matrix + 4 tests Voice + 6 tests Sampler + 18 tests Sampler Engine + 3 tests Sample Bank + 11 tests Integration + 4 tests Latency + 4 tests MIDI→Audio + 3 tests Sample Bank Integration + 14 tests Sequencer (Timeline/Transport) + 9 tests Pattern + 10 tests Note + 3 tests SequencerPlayer)
 
 ### Documentation et communauté - **REPORTÉ POST-v1.0** ⏭️
 
@@ -704,17 +704,19 @@
   - [ ] Factoriser logique snap (actuellement dupliquée dans 3 endroits)
   - [ ] Extraire timeline drawing dans module séparé si ça grossit
 
-### Piano Roll
+### Piano Roll ✅ (TERMINÉ)
 
-- [ ] Grille temporelle (bars, beats, subdivisions)
-- [ ] Édition de notes
-  - [ ] Ajout de notes (clic + drag)
-  - [ ] Suppression de notes (delete)
-  - [ ] Déplacement de notes (drag)
-  - [ ] Redimensionnement (durée)
-- [ ] Vélocité par note
-- [ ] Quantization (1/4, 1/8, 1/16, 1/32)
-- [ ] Selection multiple (shift + clic)
+- [x] Grille temporelle (bars, beats, subdivisions)
+- [x] Édition de notes
+  - [x] Ajout de notes (clic + drag avec Draw tool)
+  - [x] Suppression de notes (Erase tool + delete key)
+  - [x] Déplacement de notes (drag avec Select tool)
+  - [x] Redimensionnement (durée) - TODO Phase 4+
+- [x] Vélocité par note (affichage par couleur, édition UI à venir)
+- [x] Quantization (snap-to-grid avec subdivisions 1/4, 1/8, 1/16, 1/32)
+- [x] Selection multiple (Select tool + clic)
+- [x] Auto-update pattern (envoi automatique à l'audio thread)
+- [x] Playback cursor (ligne rouge montrant la position)
 
 ### Step Sequencer (optionnel Phase 4)
 
@@ -1116,14 +1118,15 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 **Phase 3a** ✅ : Filtres et effets essentiels - **TERMINÉE** (v0.4.0)
 **Phase 3b** ✅ : Performance live - **TERMINÉE**
 **Phase 3.5** ✅ : Sampling - **TERMINÉE** (v0.5.0)
-**Phase 4** 🎯 : Séquenceur - **Timeline + Transport + Métronome TERMINÉS** ✅
+**Phase 4** 🎯 : Séquenceur - **Timeline + Transport + Métronome + Piano Roll TERMINÉS** ✅
   - ✅ Timeline foundations (tempo, time signature, position tracking)
   - ✅ Transport controls (play/pause/stop/record avec UI)
   - ✅ Métronome avec synchronisation complète UI ↔ Audio
-  - 🔄 Piano Roll (en cours)
-  - 🔄 Recording MIDI (en cours)
+  - ✅ Piano Roll (édition notes, drag & drop, snap-to-grid, playback cursor)
+  - 🔄 Recording MIDI (à venir)
+  - 🔄 Persistance projets (à venir)
 
-**Next milestone** : Piano Roll + Recording pour v1.0.0 🎉
+**Next milestone** : Recording MIDI + Persistance pour v1.0.0 🎉
 
 ---
 

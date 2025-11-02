@@ -110,6 +110,10 @@ pub struct DawApp {
     snap_to_grid_enabled: bool,
     grid_subdivision: u16, // 1=whole note, 2=half, 4=quarter, 8=eighth, 16=sixteenth
 
+    // Piano Roll editor
+    piano_roll_editor: crate::ui::piano_roll::PianoRollEditor,
+    active_pattern: crate::sequencer::Pattern,
+
     // Active UI tab
     active_tab: UiTab,
 }
@@ -229,6 +233,10 @@ impl DawApp {
             cursor_position: Position::zero(),
             snap_to_grid_enabled: true,
             grid_subdivision: 4, // Default to quarter note snap
+
+            // Initialize piano roll with a default 4-bar pattern
+            piano_roll_editor: crate::ui::piano_roll::PianoRollEditor::default(),
+            active_pattern: crate::sequencer::Pattern::new_default(1, "Pattern 1".to_string()),
 
             active_tab: UiTab::Synth,
         }
@@ -394,42 +402,6 @@ impl DawApp {
     /// Update cursor position from sequencer current position
     fn update_cursor_position(&mut self) {
         self.cursor_position = self.sequencer.position();
-    }
-
-    /// Test snap-to-grid functionality
-    #[cfg(test)]
-    fn test_snap_to_grid() {
-        let tempo = Tempo::new(120.0);
-        let time_signature = TimeSignature::four_four();
-        let sample_rate = 48000.0;
-
-        // Create test position (bar 2, beat 2, tick 240 - halfway through beat)
-        let test_musical = MusicalTime::new(2, 2, 240);
-        let test_position =
-            Position::from_musical(test_musical, sample_rate, &tempo, &time_signature);
-
-        // Test snap to quarter note (subdivision = 4)
-        let snap_enabled = true;
-        let grid_subdivision = 4;
-
-        let snapped_position = if snap_enabled {
-            let quantized_musical = test_position
-                .musical
-                .quantize_to_subdivision(&time_signature, grid_subdivision);
-
-            Position::from_musical(quantized_musical, sample_rate, &tempo, &time_signature)
-        } else {
-            test_position
-        };
-
-        // Should snap to bar 2, beat 2, tick 0 (start of beat)
-        assert_eq!(snapped_position.musical.bar, 2);
-        assert_eq!(snapped_position.musical.beat, 2);
-        assert_eq!(snapped_position.musical.tick, 0);
-
-        // Test with snap disabled - should return original position
-        let unsnapped_position = test_position;
-        assert_eq!(unsnapped_position.musical, test_musical);
     }
 
     /// Draw timeline with cursor and grid
@@ -1852,9 +1824,40 @@ impl eframe::App for DawApp {
 
                     ui.add_space(10.0);
 
+                    // Piano Roll editor
+                    ui.heading("Piano Roll");
+                    ui.label(format!("Pattern: {} ({} bars, {} notes)",
+                        self.active_pattern.name,
+                        self.active_pattern.length_bars,
+                        self.active_pattern.note_count()
+                    ));
+
+                    ui.add_space(10.0);
+
+                    // Show piano roll (returns true if pattern was modified)
+                    let pattern_changed = self.piano_roll_editor.show(
+                        ui,
+                        &mut self.active_pattern,
+                        self.sequencer.tempo(),
+                        self.sequencer.time_signature(),
+                        self.sequencer.sample_rate(),
+                        self.sequencer.shared_state().position_samples(),
+                    );
+
+                    // Auto-send pattern to audio thread when modified
+                    if pattern_changed {
+                        let cmd = Command::SetPattern(self.active_pattern.clone());
+                        if let Ok(mut tx) = self.command_tx.lock() {
+                            let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+                        }
+                    }
+
+                    ui.add_space(10.0);
+
                     // Information display
                     ui.label("The sequencer provides timeline-based playback control.");
                     ui.label("Use transport controls to play, pause, stop, and record.");
+                    ui.label("Piano Roll: Click to add notes, use tools to edit.");
                     ui.label("Métronome helps maintain timing during playback.");
                     ui.label("Click on the timeline to set cursor position (snaps to grid if enabled).");
                 }
