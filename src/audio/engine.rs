@@ -135,6 +135,7 @@ impl AudioEngine {
                 notification_tx_err,         // Clone (Arc<Mutex> only for error callback)
                 metronome.clone(),           // Clone (for this stream)
                 metronome_scheduler.clone(), // Clone (for this stream)
+                crate::sequencer::SequencerPlayer::new(sample_rate as f64), // New instance
                 sample_rate,                 // Pass sample rate for scheduler
             ),
             SampleFormat::I16 => Self::build_stream::<i16>(
@@ -151,6 +152,7 @@ impl AudioEngine {
                 notification_tx_err,
                 metronome.clone(),
                 metronome_scheduler.clone(),
+                crate::sequencer::SequencerPlayer::new(sample_rate as f64), // New instance
                 sample_rate,
             ),
             SampleFormat::U16 => Self::build_stream::<u16>(
@@ -167,6 +169,7 @@ impl AudioEngine {
                 notification_tx_err,
                 metronome.clone(),
                 metronome_scheduler.clone(),
+                crate::sequencer::SequencerPlayer::new(sample_rate as f64), // New instance
                 sample_rate,
             ),
             _ => {
@@ -413,6 +416,7 @@ impl AudioEngine {
         notification_tx: Arc<Mutex<NotificationProducer>>, // Keep Mutex (only error callback)
         mut metronome: Metronome,           // Moved into closure (no Mutex)
         mut metronome_scheduler: MetronomeScheduler, // Moved into closure (no Mutex)
+        mut sequencer_player: crate::sequencer::SequencerPlayer, // Moved into closure (no Mutex)
         sample_rate: f32,                   // Sample rate for scheduler calculations
     ) -> Result<Stream, String>
     where
@@ -423,6 +427,9 @@ impl AudioEngine {
         let mut current_tempo = Tempo::new(120.0);
         let mut current_time_signature = TimeSignature::four_four();
         let mut is_playing = false;
+
+        // Active pattern for sequencer playback (default: empty pattern)
+        let mut active_pattern = crate::sequencer::Pattern::new_default(1, "Empty".to_string());
 
         let stream = device
             .build_output_stream(
@@ -437,30 +444,26 @@ impl AudioEngine {
                     // helper function to process MIDI events
                     let process_midi_event =
                         |timed_event: MidiEventTimed, vm: &mut VoiceManager| {
-                            // TODO: Implement proper scheduling based on samples_from_now
-                            // For now, process immediately if samples_from_now == 0
-                            if timed_event.samples_from_now == 0 {
-                                match timed_event.event {
-                                    MidiEvent::NoteOn { note, velocity } => {
-                                        vm.note_on(note, velocity);
-                                    }
-                                    MidiEvent::NoteOff { note } => {
-                                        vm.note_off(note);
-                                    }
-                                    MidiEvent::ChannelAftertouch { value } => {
-                                        vm.set_aftertouch(value);
-                                    }
-                                    MidiEvent::PolyAftertouch {
-                                        note: _n,
-                                        value: _v,
-                                    } => {
-                                        // TODO: Poly aftertouch per-note support (Phase 2+)
-                                    }
-                                    _ => {} // Ignore other events for now
+                            // TODO Phase 4+: Implement proper sample-accurate scheduling
+                            // For now, process all events immediately at buffer start
+                            match timed_event.event {
+                                MidiEvent::NoteOn { note, velocity } => {
+                                    vm.note_on(note, velocity);
                                 }
+                                MidiEvent::NoteOff { note } => {
+                                    vm.note_off(note);
+                                }
+                                MidiEvent::ChannelAftertouch { value } => {
+                                    vm.set_aftertouch(value);
+                                }
+                                MidiEvent::PolyAftertouch {
+                                    note: _n,
+                                    value: _v,
+                                } => {
+                                    // TODO: Poly aftertouch per-note support (Phase 2+)
+                                }
+                                _ => {} // Ignore other events for now
                             }
-                            // Events with samples_from_now > 0 are ignored for now
-                            // Future: store in pre-allocated queue and process at the right time
                         };
 
                     // helper function to process commands
@@ -538,6 +541,9 @@ impl AudioEngine {
                                 current_position = position_samples;
                                 metronome_scheduler.reset();
                             }
+                            Command::SetPattern(pattern) => {
+                                active_pattern = pattern;
+                            }
                             Command::Quit => {}
                         }
                     };
@@ -550,6 +556,25 @@ impl AudioEngine {
                     // Process MIDI commands (direct access, no locks!)
                     while let Some(cmd) = ringbuf::traits::Consumer::try_pop(&mut command_rx_midi) {
                         process_command(cmd, &mut voice_manager);
+                    }
+
+                    // Process sequencer pattern (generates MIDI events from notes)
+                    // IMPORTANT: Always call process() even when stopped, so it can send NoteOff events
+                    let buffer_size = data.len() / channels;
+
+                    // Generate MIDI events from pattern (RT-safe, no allocations)
+                    let sequencer_events = sequencer_player.process(
+                        &active_pattern,
+                        current_position,
+                        is_playing,
+                        &current_tempo,
+                        &current_time_signature,
+                        buffer_size,
+                    );
+
+                    // Process generated MIDI events
+                    for timed_event in sequencer_events {
+                        process_midi_event(timed_event, &mut voice_manager);
                     }
 
                     // Check for metronome clicks (if playing)

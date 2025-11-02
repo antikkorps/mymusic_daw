@@ -2,6 +2,7 @@
 
 use crate::midi::event::MidiEventTimed;
 use crate::sampler::loader::Sample;
+use crate::sequencer::Pattern;
 use crate::synth::envelope::AdsrParams;
 use crate::synth::filter::FilterParams;
 use crate::synth::lfo::LfoParams;
@@ -51,5 +52,7 @@ pub enum Command {
     SetTransportPlaying(bool),
     /// Set transport position in samples
     SetTransportPosition(u64),
+    /// Update the active pattern for sequencer playback
+    SetPattern(Pattern),
     Quit,
 }
