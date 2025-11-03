@@ -724,12 +724,17 @@
 - [ ] Patterns
 - [ ] Automation basique
 
-### Recording
+### Recording ✅ (TERMINÉ)
 
-- [ ] Enregistrement MIDI en temps réel
-- [ ] Overdub
-- [ ] Undo/Redo (command pattern)
-- [ ] Count-in avant recording
+- [x] Enregistrement MIDI en temps réel ✅
+  - [x] Module MidiRecorder avec capture NoteOn/NoteOff
+  - [x] Intégration dans Transport (record(), process_midi_for_recording(), finalize_recording())
+  - [x] Timing précis avec sample_rate, tempo, time_signature du transport
+  - [x] Gestion des notes actives (fermeture automatique lors de finalize_recording)
+  - [x] Tests unitaires (2 tests - basic recording, active notes closure)
+  - [ ] Overdub (optionnel - Phase 4+)
+  - [ ] Undo/Redo (command pattern) (optionnel - Phase 4+)
+  - [ ] Count-in avant recording (optionnel - Phase 4+)
 
 ### Synchronisation
 
@@ -1118,15 +1123,15 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 **Phase 3a** ✅ : Filtres et effets essentiels - **TERMINÉE** (v0.4.0)
 **Phase 3b** ✅ : Performance live - **TERMINÉE**
 **Phase 3.5** ✅ : Sampling - **TERMINÉE** (v0.5.0)
-**Phase 4** 🎯 : Séquenceur - **Timeline + Transport + Métronome + Piano Roll TERMINÉS** ✅
+**Phase 4** 🎯 : Séquenceur - **Timeline + Transport + Métronome + Piano Roll + Recording MIDI TERMINÉS** ✅
   - ✅ Timeline foundations (tempo, time signature, position tracking)
   - ✅ Transport controls (play/pause/stop/record avec UI)
   - ✅ Métronome avec synchronisation complète UI ↔ Audio
   - ✅ Piano Roll (édition notes, drag & drop, snap-to-grid, playback cursor)
-  - 🔄 Recording MIDI (à venir)
+  - ✅ **Recording MIDI** (MidiRecorder + Transport integration + proper timing + tests)
   - 🔄 Persistance projets (à venir)
 
-**Next milestone** : Recording MIDI + Persistance pour v1.0.0 🎉
+**Next milestone** : AudioEngine Integration + Persistance pour v1.0.0 🎉
 
 ---
 
