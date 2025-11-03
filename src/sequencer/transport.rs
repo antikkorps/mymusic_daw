@@ -1,6 +1,7 @@
 // Transport - Playback control and state management
 // Controls play/stop/record state and playhead position
 
+use super::midi_recorder::MidiRecorder;
 use super::timeline::{Position, Tempo, TimeSignature};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -154,6 +155,7 @@ pub struct Transport {
     tempo: Tempo,
     time_signature: TimeSignature,
     sample_rate: f64,
+    midi_recorder: Option<MidiRecorder>,
 }
 
 impl Transport {
@@ -164,6 +166,7 @@ impl Transport {
             tempo: Tempo::default(),
             time_signature: TimeSignature::default(),
             sample_rate,
+            midi_recorder: None,
         }
     }
 
@@ -174,6 +177,7 @@ impl Transport {
             tempo: Tempo::default(),
             time_signature: TimeSignature::default(),
             sample_rate,
+            midi_recorder: None,
         }
     }
 
@@ -225,11 +229,20 @@ impl Transport {
         self.shared_state.paused.store(true, Ordering::Relaxed);
     }
 
-    /// Record
+    /// Record - start recording MIDI
     pub fn record(&mut self) {
         self.shared_state.playing.store(true, Ordering::Relaxed);
         self.shared_state.recording.store(true, Ordering::Relaxed);
         self.shared_state.paused.store(false, Ordering::Relaxed);
+
+        // Initialize MIDI recorder with proper context
+        let recording_start_sample = self.shared_state.position_samples();
+        self.midi_recorder = Some(MidiRecorder::new(
+            recording_start_sample,
+            self.sample_rate,
+            self.tempo, // Copy trait, no clone needed
+            self.time_signature, // Copy trait, no clone needed
+        ));
     }
 
     /// Toggle play/pause
@@ -310,6 +323,49 @@ impl Transport {
                 &self.time_signature,
             ),
         )
+    }
+
+    /// Process a MIDI event for recording
+    pub fn process_midi_for_recording(
+        &mut self,
+        event: crate::midi::event::MidiEvent,
+        current_sample: u64,
+    ) {
+        // Check recording state first to avoid borrow conflicts
+        let is_recording = self.state().is_recording();
+        
+        #[allow(clippy::collapsible_if)]
+        if is_recording {
+            if let Some(recorder) = &mut self.midi_recorder {
+                recorder.process_event(event, current_sample);
+            }
+        }
+    }
+
+    /// Get recorded notes and finalize recording
+    pub fn finalize_recording(&mut self) -> Option<Vec<crate::sequencer::note::Note>> {
+        if self.state().is_recording() {
+            // Stop recording
+            self.shared_state.recording.store(false, Ordering::Relaxed);
+
+            // Get recorded notes from recorder
+            self.midi_recorder.take().map(|mut recorder| recorder.finalize_recording())
+        } else {
+            None
+        }
+    }
+
+    /// Stop recording without finalizing
+    pub fn stop_recording(&mut self) {
+        if self.state().is_recording() {
+            self.shared_state.recording.store(false, Ordering::Relaxed);
+            self.midi_recorder = None;
+        }
+    }
+
+    /// Check if recording is active
+    pub fn is_recording_active(&self) -> bool {
+        self.state().is_recording()
     }
 }
 
