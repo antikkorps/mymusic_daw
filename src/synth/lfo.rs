@@ -6,7 +6,7 @@
 use super::oscillator::{Oscillator, SimpleOscillator, WaveformType};
 
 /// LFO modulation destination
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LfoDestination {
     /// No modulation
     None,
@@ -25,7 +25,7 @@ impl Default for LfoDestination {
 }
 
 /// LFO parameters
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LfoParams {
     /// LFO waveform
     pub waveform: WaveformType,

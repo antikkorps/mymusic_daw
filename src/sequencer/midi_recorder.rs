@@ -22,8 +22,7 @@ pub struct MidiRecorder {
 
 impl MidiRecorder {
     pub fn new(
-    #[allow(dead_code)]
-    recording_start_sample: u64,
+        #[allow(dead_code)] recording_start_sample: u64,
         sample_rate: f64,
         tempo: Tempo,
         time_signature: TimeSignature,

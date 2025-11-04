@@ -4,7 +4,7 @@
 // Used to shape the amplitude of voices over time
 
 /// ADSR Envelope parameters
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AdsrParams {
     /// Attack time in seconds (0.001 to 5.0)
     pub attack: f32,

@@ -744,17 +744,35 @@
   - [ ] Sync avec boîtes à rythmes/séquenceurs externes
 - [ ] Support Ableton Link (optionnel)
 
-### Persistance projets
+### Persistance projets ✅ (TERMINÉ)
 
-- [ ] Format de projet (ZIP container - voir "Décisions Architecturales")
-  - [ ] Structure ZIP avec manifest.json, project.ron, tracks/*, audio/*
-  - [ ] Serialization/Deserialization avec serde
-  - [ ] Support versionning du format (migration)
-  - [ ] Compression automatique via ZIP
-- [ ] Save project (.mymusic)
-- [ ] Load project avec validation et migration de version
-- [ ] Export audio (WAV, FLAC)
-- [ ] Auto-save toutes les 5 min (en arrière-plan)
+- [x] Format de projet (ZIP container - voir "Décisions Architecturales")
+  - [x] Structure ZIP avec manifest.json, project.ron, tracks/*, audio/*
+  - [x] Serialization/Deserialization avec serde
+  - [x] Support versionning du format (migration)
+  - [x] Compression automatique via ZIP
+  - [x] Save project (.mymusic)
+  - [x] Load project avec validation et migration de version
+  - [ ] Export audio (WAV, FLAC)
+  - [ ] Auto-save toutes les 5 min (en arrière-plan)
+- [x] **Système de migration automatique** ✅
+  - [x] Version compatibility checking (v1.0→v1.1→v1.2)
+  - [x] Automatic backup creation before migration
+  - [x] Step-by-step migrations with error handling
+  - [x] Integration complète avec ProjectManager
+- [x] **UI de gestion de projets** ✅
+  - [x] Onglet "Project" avec New/Open/Save/Save As
+  - [x] Tracking des modifications non sauvegardées
+  - [x] Dialogues d'erreur modaux centrés
+  - [x] Dialogues de confirmation pour perte de données
+  - [x] File dialogs avec filtres .mymusic
+- [x] **Améliorations UX et robustesse** ✅
+  - [x] Correction synchronisation patterns (tous les patterns chargés)
+  - [x] Correction sample rate hardcodé (utilise rate du projet)
+  - [x] Correction statistiques UI (tracks vs notes)
+  - [x] Validation de projet renforcée (bounds stricts, IDs dupliqués)
+  - [x] Code quality : clippy-clean + rustfmt
+  - [x] Gestion d'erreurs utilisateur conviviale
 
 ---
 
@@ -764,43 +782,55 @@
 **Release** : v1.1.0
 **Durée** : 4-6 semaines
 
-### Architecture de plugins (Foundation)
+### Architecture de plugins (Foundation) ✅ (INFRASTRUCTURE COMPLÈTE)
 
-- [ ] Trait Plugin générique
-  - [ ] Interface process (buffer audio)
-  - [ ] Gestion des paramètres (get/set)
-  - [ ] Save/Load state (serialization)
-  - [ ] Latency reporting
-  - [ ] Category (Instrument, Effect, etc.)
-- [ ] Plugin Scanner
-  - [ ] Scan directories pour plugins (.clap)
-  - [ ] Validation (ne pas charger plugins cassés)
-  - [ ] Blacklist persistante (JSON)
-  - [ ] Cache des plugins scannés (accélération startup)
-- [ ] Plugin Host (moteur)
-  - [ ] Chargement dynamique (dll/so/dylib)
-  - [ ] Instance management (plusieurs instances du même plugin)
-  - [ ] Thread-safe parameter changes (ringbuffer UI → Audio)
-  - [ ] Bypass system (sans clics)
+**Note** : L'infrastructure est complète et testée (~2800 lignes), mais CLAP réel n'est pas encore implémenté (placeholder).
 
-### Support CLAP (apprentissage)
+- [x] **Fondations complètes** ✅
+  - [x] Trait Plugin générique avec Send + Sync
+  - [x] Interface process (buffer audio multi-port)
+  - [x] Gestion des paramètres (get/set + normalisation)
+  - [x] Save/Load state (serialization complète)
+  - [x] Support latence et tail length
+  - [x] Catégories (Instrument, Effect, Analyzer, etc.)
+  - [x] Plugin Instance avec bypass sans clics
+  - [x] 20 tests unitaires ✅
 
-- [ ] Intégration crate `clack`
-  - [ ] CLAP host implementation
-  - [ ] Plugin discovery (.clap files)
-  - [ ] Parameter automation (read/write)
-  - [ ] Audio process callback
-- [ ] GUI CLAP
+- [x] **Plugin Scanner** ✅
+  - [x] Scan directories pour plugins (.clap)
+  - [x] Validation (ne pas charger plugins cassés)
+  - [x] Blacklist persistante (JSON)
+  - [x] Cache des plugins scannés (accélération startup)
+  - [x] Vérification timestamp pour re-scan automatique
+
+- [x] **Plugin Host** ✅
+  - [x] Chargement dynamique (dll/so/dylib) avec libloading
+  - [x] Instance management (plusieurs instances du même plugin)
+  - [x] Thread-safe parameter changes (ringbuffer UI → Audio)
+  - [x] Bypass system (sans clics)
+  - [x] Host info pour identification
+
+- [ ] **Support CLAP réel** ⚠️ (Placeholder seulement)
+  - [ ] Intégration crate `clack` (à venir)
+  - [ ] CLAP host implementation réelle
+  - [ ] Plugin discovery fonctionnel
+  - [ ] Parameter automation CLAP
+  - [ ] Audio process callback réel
+  - [ ] GUI CLAP fonctionnel
   - [ ] Embedding fenêtre native CLAP
   - [ ] Gestion événements clavier/souris
   - [ ] Resize handling
-- [ ] Preset system CLAP
-  - [ ] Load/Save presets
-  - [ ] Browser de presets dans UI
-- [ ] Tests avec plugins CLAP
-  - [ ] Surge XT (synth)
-  - [ ] Airwindows (effets)
-  - [ ] Vital (synth)
+  - [ ] Preset system CLAP
+  - [ ] Tests avec vrais plugins CLAP
+    - [ ] Surge XT (synth)
+    - [ ] Airwindows (effets)
+    - [ ] Vital (synth)
+
+- [ ] **Intégration DAW**
+  - [ ] UI pour charger/gérer les plugins
+  - [ ] Routing audio vers plugins
+  - [ ] Affichage paramètres dans UI
+  - [ ] Automation dans séquenceur
 
 ### Routing audio
 
@@ -1110,28 +1140,18 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 - **v0.4.0** ✅ (Phase 3a) : Filtres et effets essentiels
 - **v0.5.0** 🎵 (Phase 3.5) : Support sampling - **TERMINÉ** 🎉
 - **v1.0.0** 🎉 (Phase 4) : DAW fonctionnel avec séquenceur + morceau complet (MILESTONE MAJEUR)
-- **v1.1.0** (Phase 5) : Support plugins CLAP (ouverture écosystème)
-- **v1.5.0** (Phase 6b) : Support VST3 (optionnel, complexe)
-- **v2.0.0** (Phase 7) : UI moderne + Distribution publique
+   - ✅ Timeline foundations (tempo, time signature, position tracking)
+   - ✅ Transport controls (play/pause/stop/record avec UI)
+   - ✅ Métronome avec synchronisation complète UI ↔ Audio
+   - ✅ Piano Roll (édition notes, drag & drop, snap-to-grid, playback cursor)
+   - ✅ **Recording MIDI** (MidiRecorder + Transport integration + proper timing + tests)
+   - ✅ **Persistance projets complète** (save/load avec migration + UI complète)
+- **v1.1.0** 🔌 (Phase 5) : Support plugins CLAP + Routing flexible
+   - ✅ **Infrastructure plugins complète** (~2800 lignes, 20 tests)
+   - ⚠️ CLAP réel à implémenter (placeholder actuel)
+   - 🔄 Routing audio + Mixeur à venir
 
----
-
-**Priorité actuelle** : Phase 4 - Séquenceur 🎹
-
-**Phase 1.5** ✅ : Robustesse et tests - **TERMINÉE** (v0.2.0)
-**Phase 2** ✅ : ADSR, LFO, Modulation - **TERMINÉE** (v0.3.0)
-**Phase 3a** ✅ : Filtres et effets essentiels - **TERMINÉE** (v0.4.0)
-**Phase 3b** ✅ : Performance live - **TERMINÉE**
-**Phase 3.5** ✅ : Sampling - **TERMINÉE** (v0.5.0)
-**Phase 4** 🎯 : Séquenceur - **Timeline + Transport + Métronome + Piano Roll + Recording MIDI TERMINÉS** ✅
-  - ✅ Timeline foundations (tempo, time signature, position tracking)
-  - ✅ Transport controls (play/pause/stop/record avec UI)
-  - ✅ Métronome avec synchronisation complète UI ↔ Audio
-  - ✅ Piano Roll (édition notes, drag & drop, snap-to-grid, playback cursor)
-  - ✅ **Recording MIDI** (MidiRecorder + Transport integration + proper timing + tests)
-  - 🔄 Persistance projets (à venir)
-
-**Next milestone** : AudioEngine Integration + Persistance pour v1.0.0 🎉
+**État actuel (Fin Phase 4)** : Phase 4 COMPLÈTE ✅ | Phase 5 Infrastructure prête (CLAP placeholder)
 
 ---
 

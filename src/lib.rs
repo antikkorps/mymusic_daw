@@ -5,6 +5,8 @@ pub mod command;
 pub mod connection;
 pub mod messaging;
 pub mod midi;
+pub mod plugin;
+pub mod project;
 pub mod sampler;
 pub mod sequencer;
 pub mod synth;
