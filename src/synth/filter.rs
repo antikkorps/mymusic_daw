@@ -17,7 +17,7 @@ use crate::audio::dsp_utils::OnePoleSmoother;
 use std::f32::consts::PI;
 
 /// Filter type/mode
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum FilterType {
     /// Low-pass filter (12dB/octave)
     #[default]
@@ -31,7 +31,7 @@ pub enum FilterType {
 }
 
 /// Filter parameters
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FilterParams {
     /// Cutoff frequency in Hz (20Hz - 20kHz)
     pub cutoff: f32,

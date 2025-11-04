@@ -15,6 +15,7 @@ use crate::messaging::notification::{Notification, NotificationCategory};
 use crate::midi::device::{MidiDeviceInfo, MidiDeviceManager};
 use crate::midi::event::{MidiEvent, MidiEventTimed};
 use crate::midi::manager::MidiConnectionManager;
+use crate::project::{ProjectError, ProjectLoadOptions, ProjectManager};
 use crate::sampler::SampleBank;
 use crate::sampler::loader::{Sample, load_sample};
 use crate::sequencer::{MusicalTime, Position, Tempo, TimeSignature, Transport, TransportState};
@@ -30,11 +31,27 @@ use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints, VLine};
 use rfd::FileDialog;
 use std::collections::{HashSet, VecDeque};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+/// Confirmation dialog for user actions
+#[derive(Debug, Clone)]
+struct ConfirmationDialog {
+    title: String,
+    message: String,
+    on_confirm: ConfirmationAction,
+}
+
+#[derive(Debug, Clone)]
+enum ConfirmationAction {
+    NewProject,
+    OpenProject,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum UiTab {
+    Project,
     Devices,
     Synth,
     Modulation,
@@ -85,6 +102,10 @@ pub struct DawApp {
     notification_rx: NotificationConsumer,
     notification_queue: VecDeque<Notification>,
     max_notifications: usize,
+    // Error dialog system
+    error_dialog: Option<String>,
+    // Confirmation dialog system
+    confirmation_dialog: Option<ConfirmationDialog>,
     // Modulation Matrix UI (MVP) - 4 slots
     mod_routings_ui: [ModRouting; 4],
     // Sampler state
@@ -113,9 +134,16 @@ pub struct DawApp {
     // Piano Roll editor
     piano_roll_editor: crate::ui::piano_roll::PianoRollEditor,
     active_pattern: crate::sequencer::Pattern,
+    project_patterns:
+        std::collections::HashMap<crate::sequencer::pattern::PatternId, crate::sequencer::Pattern>,
 
     // Active UI tab
     active_tab: UiTab,
+
+    // Project management
+    project_manager: ProjectManager,
+    current_project_path: Option<PathBuf>,
+    project_has_unsaved_changes: bool,
 }
 
 impl DawApp {
@@ -187,6 +215,8 @@ impl DawApp {
             notification_rx,
             notification_queue: VecDeque::new(),
             max_notifications: 10,
+            error_dialog: None,
+            confirmation_dialog: None,
             mod_routings_ui: [
                 ModRouting {
                     source: ModSource::Lfo(0),
@@ -237,8 +267,14 @@ impl DawApp {
             // Initialize piano roll with a default 4-bar pattern
             piano_roll_editor: crate::ui::piano_roll::PianoRollEditor::default(),
             active_pattern: crate::sequencer::Pattern::new_default(1, "Pattern 1".to_string()),
+            project_patterns: std::collections::HashMap::new(),
 
             active_tab: UiTab::Synth,
+
+            // Initialize project management
+            project_manager: ProjectManager::new(48000.0),
+            current_project_path: None,
+            project_has_unsaved_changes: false,
         }
     }
 
@@ -817,6 +853,300 @@ impl DawApp {
 
         Ok(())
     }
+
+    /// Create a new project
+    fn new_project(&mut self) {
+        // Check for unsaved changes
+        if self.project_has_unsaved_changes {
+            self.show_confirmation(
+                "Unsaved Changes".to_string(),
+                "You have unsaved changes. Do you want to continue without saving?".to_string(),
+                ConfirmationAction::NewProject,
+            );
+            return;
+        }
+
+        // Create new project
+        let project = self
+            .project_manager
+            .create_new_project("Untitled Project".to_string());
+
+        // Reset UI state to match new project
+        self.current_project_path = None;
+        self.project_has_unsaved_changes = false;
+
+        // Reset sequencer state
+        self.sequencer_tempo = 120.0;
+        self.time_signature_numerator = 4;
+        self.time_signature_denominator = 4;
+
+        // Clear patterns and samples
+        self.active_pattern = crate::sequencer::Pattern::new_default(1, "Pattern 1".to_string());
+
+        // Send new project state to audio thread
+        self.sync_project_to_audio_thread(&project);
+
+        println!("✅ Created new project: {}", project.metadata.name);
+    }
+
+    /// Open an existing project
+    fn open_project(&mut self) {
+        // Check for unsaved changes
+        if self.project_has_unsaved_changes {
+            self.show_confirmation(
+                "Unsaved Changes".to_string(),
+                "You have unsaved changes. Do you want to continue without saving?".to_string(),
+                ConfirmationAction::OpenProject,
+            );
+            return;
+        }
+
+        if let Some(path) = FileDialog::new()
+            .add_filter("MyMusic Projects", &["mymusic"])
+            .pick_file()
+        {
+            match self.load_project_from_path(&path) {
+                Ok(()) => {
+                    let path_clone = path.clone();
+                    self.current_project_path = Some(path);
+                    self.project_has_unsaved_changes = false;
+                    println!("✅ Successfully opened project: {:?}", path_clone);
+                }
+                Err(e) => {
+                    self.show_error(format!("Failed to open project: {}", e));
+                }
+            }
+        }
+    }
+
+    /// Save current project
+    fn save_project(&mut self) {
+        let path = if let Some(current_path) = &self.current_project_path {
+            current_path.clone()
+        } else {
+            // No current path, use Save As
+            if let Some(path) = FileDialog::new()
+                .add_filter("MyMusic Projects", &["mymusic"])
+                .set_file_name("untitled.mymusic")
+                .save_file()
+            {
+                self.current_project_path = Some(path.clone());
+                path
+            } else {
+                return; // User cancelled
+            }
+        };
+
+        match self.save_project_to_path(&path) {
+            Ok(()) => {
+                self.project_has_unsaved_changes = false;
+                println!("✅ Successfully saved project: {:?}", path);
+            }
+            Err(e) => {
+                self.show_error(format!("Failed to save project as: {}", e));
+            }
+        }
+    }
+
+    /// Save project with new name/location
+    fn save_project_as(&mut self) {
+        if let Some(path) = FileDialog::new()
+            .add_filter("MyMusic Projects", &["mymusic"])
+            .set_file_name(
+                self.current_project_path
+                    .as_ref()
+                    .and_then(|p| p.file_stem())
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("untitled"),
+            )
+            .save_file()
+        {
+            match self.save_project_to_path(&path) {
+                Ok(()) => {
+                    let path_clone = path.clone();
+                    self.current_project_path = Some(path);
+                    self.project_has_unsaved_changes = false;
+                    println!("✅ Successfully saved project as: {:?}", path_clone);
+                }
+                Err(e) => {
+                    self.show_error(format!("Failed to save project: {}", e));
+                }
+            }
+        }
+    }
+
+    /// Load project from specific path
+    fn load_project_from_path(&mut self, path: &PathBuf) -> Result<(), ProjectError> {
+        let options = ProjectLoadOptions {
+            validate: true,
+            load_samples: true,
+            sample_rate_override: None,
+        };
+
+        let project = self.project_manager.load_project(path, &options)?;
+
+        // Update UI state from loaded project
+        self.sequencer_tempo = project.metadata.tempo;
+        self.time_signature_numerator = project.metadata.time_signature.numerator;
+        self.time_signature_denominator = project.metadata.time_signature.denominator;
+
+        // Load all patterns from project
+        self.project_patterns.clear();
+        for (pattern_id, pattern) in &project.patterns {
+            // Use the serialization function with correct sample rate
+            let loaded_pattern = crate::project::serialization::pattern_from_serializable(
+                pattern,
+                project.metadata.sample_rate,
+            );
+            self.project_patterns.insert(*pattern_id, loaded_pattern);
+        }
+
+        // Set active pattern to the first one if available, or create default
+        if let Some((_, pattern)) = self.project_patterns.iter().next() {
+            self.active_pattern = pattern.clone();
+        } else {
+            // Create default pattern if none exist
+            self.active_pattern = crate::sequencer::Pattern::new(
+                crate::project::generate_pattern_id(),
+                "Default Pattern".to_string(),
+                4,
+            );
+        }
+
+        // Sync project state to audio thread
+        self.sync_project_to_audio_thread(&project);
+
+        Ok(())
+    }
+
+    /// Save project to specific path
+    fn save_project_to_path(&mut self, path: &PathBuf) -> Result<(), ProjectError> {
+        // Create project from current UI state
+        let mut project = self.project_manager.create_new_project(
+            self.current_project_path
+                .as_ref()
+                .and_then(|p| p.file_stem())
+                .and_then(|s| s.to_str())
+                .unwrap_or("Untitled Project")
+                .to_string(),
+        );
+
+        // Update project metadata from UI state
+        project.metadata.tempo = self.sequencer_tempo;
+        project.metadata.time_signature = crate::sequencer::timeline::TimeSignature::new(
+            self.time_signature_numerator,
+            self.time_signature_denominator,
+        );
+
+        // Update synth parameters from UI state
+        project.synth_params.waveform = self.selected_waveform;
+        project.synth_params.volume = self.volume_ui;
+        project.synth_params.adsr = AdsrParams::new(
+            self.adsr_attack,
+            self.adsr_decay,
+            self.adsr_sustain,
+            self.adsr_release,
+        );
+
+        // Add all patterns to project
+        for (pattern_id, pattern) in &self.project_patterns {
+            let serializable_pattern =
+                crate::project::serialization::pattern_to_serializable(pattern);
+            project.patterns.insert(*pattern_id, serializable_pattern);
+        }
+
+        // Also add the current active pattern if it's not already in the project
+        if !self.project_patterns.contains_key(&self.active_pattern.id) {
+            let serializable_pattern =
+                crate::project::serialization::pattern_to_serializable(&self.active_pattern);
+            project
+                .patterns
+                .insert(self.active_pattern.id, serializable_pattern);
+        }
+
+        // Save project
+        self.project_manager.save_project(&project, path)?;
+
+        Ok(())
+    }
+
+    /// Show error dialog
+    fn show_error(&mut self, error_message: String) {
+        self.error_dialog = Some(error_message);
+    }
+
+    /// Show confirmation dialog
+    fn show_confirmation(
+        &mut self,
+        title: String,
+        message: String,
+        on_confirm: ConfirmationAction,
+    ) {
+        self.confirmation_dialog = Some(ConfirmationDialog {
+            title,
+            message,
+            on_confirm,
+        });
+    }
+
+    /// Execute confirmation action
+    fn execute_confirmation_action(&mut self, action: ConfirmationAction) {
+        match action {
+            ConfirmationAction::NewProject => {
+                self.new_project();
+            }
+            ConfirmationAction::OpenProject => {
+                self.open_project();
+            }
+        }
+    }
+
+    /// Sync project state to audio thread
+    fn sync_project_to_audio_thread(&mut self, project: &crate::project::Project) {
+        // Send tempo
+        let cmd = Command::SetTempo(project.metadata.tempo);
+        if let Ok(mut tx) = self.command_tx.lock() {
+            let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+        }
+
+        // Send time signature
+        let cmd = Command::SetTimeSignature(
+            project.metadata.time_signature.numerator,
+            project.metadata.time_signature.denominator,
+        );
+        if let Ok(mut tx) = self.command_tx.lock() {
+            let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+        }
+
+        // Send synth parameters
+        let cmd = Command::SetVolume(project.synth_params.volume);
+        if let Ok(mut tx) = self.command_tx.lock() {
+            let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+        }
+
+        let cmd = Command::SetWaveform(project.synth_params.waveform);
+        if let Ok(mut tx) = self.command_tx.lock() {
+            let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+        }
+
+        let cmd = Command::SetAdsr(project.synth_params.adsr);
+        if let Ok(mut tx) = self.command_tx.lock() {
+            let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+        }
+
+        // Send pattern
+        let cmd = Command::SetPattern(self.active_pattern.clone());
+        if let Ok(mut tx) = self.command_tx.lock() {
+            let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
+        }
+    }
+
+    /// Mark project as having unsaved changes
+    fn mark_project_modified(&mut self) {
+        if !self.project_has_unsaved_changes {
+            self.project_has_unsaved_changes = true;
+        }
+    }
 }
 
 impl eframe::App for DawApp {
@@ -914,6 +1244,7 @@ impl eframe::App for DawApp {
                         *current = tab;
                     }
                 };
+                button(ui, "Project", UiTab::Project, &mut self.active_tab);
                 button(ui, "Devices", UiTab::Devices, &mut self.active_tab);
                 button(ui, "Synth", UiTab::Synth, &mut self.active_tab);
                 button(ui, "Modulation", UiTab::Modulation, &mut self.active_tab);
@@ -926,6 +1257,104 @@ impl eframe::App for DawApp {
             ui.separator();
 
             match self.active_tab {
+                UiTab::Project => {
+                    ui.heading("Project Management");
+
+                    // Project info display
+                    ui.horizontal(|ui| {
+                        ui.label("Current Project:");
+                        if let Some(path) = &self.current_project_path {
+                            ui.label(path.file_name()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("Untitled"));
+                        } else {
+                            ui.label("Untitled (Unsaved)");
+                        }
+
+                        // Unsaved changes indicator
+                        if self.project_has_unsaved_changes {
+                            ui.colored_label(egui::Color32::from_rgb(255, 165, 0), "● Modified");
+                        } else {
+                            ui.colored_label(egui::Color32::GREEN, "● Saved");
+                        }
+                    });
+
+                    ui.add_space(10.0);
+
+                    // File operations
+                    ui.horizontal(|ui| {
+                        if ui.button("📄 New Project").clicked() {
+                            self.new_project();
+                        }
+
+                        if ui.button("📂 Open Project").clicked() {
+                            self.open_project();
+                        }
+
+                        if ui.button("💾 Save Project").clicked() {
+                            self.save_project();
+                        }
+
+                        if ui.button("💾 Save As...").clicked() {
+                            self.save_project_as();
+                        }
+                    });
+
+                    ui.add_space(20.0);
+                    ui.separator();
+                    ui.add_space(10.0);
+
+                    // Project metadata display
+                    ui.heading("Project Information");
+                    ui.horizontal(|ui| {
+                        ui.label("Sample Rate:");
+                        ui.label(format!("{} Hz", self.project_manager.default_sample_rate()));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Tempo:");
+                        ui.label(format!("{} BPM", self.sequencer_tempo));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Time Signature:");
+                        ui.label(format!("{}/{}", self.time_signature_numerator, self.time_signature_denominator));
+                    });
+
+                    ui.add_space(20.0);
+                    ui.separator();
+                    ui.add_space(10.0);
+
+                    // Recent projects (placeholder for now)
+                    ui.heading("Recent Projects");
+                    ui.label("No recent projects yet");
+
+                    ui.add_space(20.0);
+                    ui.separator();
+                    ui.add_space(10.0);
+
+                    // Project statistics
+                    ui.heading("Project Statistics");
+                    ui.horizontal(|ui| {
+                        ui.label("Tracks:");
+                        ui.label(format!("{}", self.project_patterns.len()));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Notes:");
+                        ui.label(format!("{}", self.active_pattern.note_count()));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Loaded Samples:");
+                        ui.label(format!("{}", self.loaded_samples.len()));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Active Notes:");
+                        ui.label(format!("{}", self.active_notes.len()));
+                    });
+                }
                 UiTab::Devices => {
                     // Devices tab
                     ui.heading("Devices");
@@ -1283,9 +1712,9 @@ impl eframe::App for DawApp {
                                         self.loaded_samples.push(sample);
                                         self.note_map_input.push(String::new());
                                     }
-                                    Err(e) => {
-                                        eprintln!("Failed to load sample: {}", e);
-                                    }
+            Err(e) => {
+                self.show_error(format!("Failed to create new project: {}", e));
+            }
                                 }
                             }
                         }
@@ -1633,6 +2062,7 @@ impl eframe::App for DawApp {
                             if let Ok(mut tx) = self.command_tx.lock() {
                                 let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
                             }
+                            self.mark_project_modified();
                         }
 
                         ui.add_space(20.0);
@@ -1652,6 +2082,7 @@ impl eframe::App for DawApp {
                                 if let Ok(mut tx) = self.command_tx.lock() {
                                     let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
                                 }
+                                self.mark_project_modified();
                             };
                             ui.label("/");
                             // Denominator must be power of 2 - restrict to common values
@@ -1681,6 +2112,7 @@ impl eframe::App for DawApp {
                                 if let Ok(mut tx) = self.command_tx.lock() {
                                     let _ = ringbuf::traits::Producer::try_push(&mut *tx, cmd);
                                 }
+                                self.mark_project_modified();
                             }
                         });
                     });
@@ -1811,7 +2243,7 @@ impl eframe::App for DawApp {
                                 format!("📐 Snapped to {} note",
                                     match self.grid_subdivision {
                                         1 => "whole",
-                                        2 => "half", 
+                                        2 => "half",
                                         4 => "quarter",
                                         8 => "eighth",
                                         16 => "sixteenth",
@@ -1874,6 +2306,7 @@ impl eframe::App for DawApp {
                                 eprintln!("Failed to execute volume command: {}", e);
                             }
                             self.volume_atomic.set(self.volume_ui);
+                            self.mark_project_modified();
                         }
                     });
 
@@ -1908,6 +2341,7 @@ impl eframe::App for DawApp {
                             if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
                                 eprintln!("Failed to execute waveform command: {}", e);
                             }
+                            self.mark_project_modified();
                         }
                     });
 
@@ -1937,6 +2371,7 @@ impl eframe::App for DawApp {
                             if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
                                 eprintln!("Failed to execute ADSR command: {}", e);
                             }
+                            self.mark_project_modified();
                         }
                     });
 
@@ -1960,6 +2395,7 @@ impl eframe::App for DawApp {
                             if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
                                 eprintln!("Failed to execute ADSR command: {}", e);
                             }
+                            self.mark_project_modified();
                         }
                     });
 
@@ -1979,6 +2415,7 @@ impl eframe::App for DawApp {
                             if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
                                 eprintln!("Failed to execute ADSR command: {}", e);
                             }
+                            self.mark_project_modified();
                         }
                     });
 
@@ -2002,6 +2439,7 @@ impl eframe::App for DawApp {
                             if let Err(e) = self.command_manager.execute(cmd, &mut self.daw_state) {
                                 eprintln!("Failed to execute ADSR command: {}", e);
                             }
+                            self.mark_project_modified();
                         }
                     });
 
@@ -2215,6 +2653,58 @@ impl eframe::App for DawApp {
 
 
 }
+
+            // Show confirmation dialog if there's one
+            let mut close_confirmation = false;
+            let mut confirm_action = None;
+
+            if let Some(dialog) = &self.confirmation_dialog {
+                let response = egui::Window::new(&dialog.title)
+                    .collapsible(false)
+                    .resizable(false)
+                    .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                    .show(ctx, |ui| {
+                        ui.label(&dialog.message);
+                        ui.add_space(10.0);
+                        ui.horizontal(|ui| {
+                            if ui.button("Cancel").clicked() {
+                                close_confirmation = true;
+                            }
+                            if ui.button("Confirm").clicked() {
+                                close_confirmation = true;
+                                confirm_action = Some(dialog.on_confirm.clone());
+                            }
+                        });
+                    });
+
+                if response.is_some() && close_confirmation {
+                    self.confirmation_dialog = None;
+                    if let Some(action) = confirm_action {
+                        self.execute_confirmation_action(action);
+                    }
+                }
+            }
+
+            // Show error dialog if there's an error
+            let mut close_error = false;
+
+            if let Some(error_message) = &self.error_dialog {
+                let response = egui::Window::new("Error")
+                    .collapsible(false)
+                    .resizable(false)
+                    .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                    .show(ctx, |ui| {
+                        ui.label(error_message);
+                        ui.add_space(10.0);
+                        if ui.button("OK").clicked() {
+                            close_error = true;
+                        }
+                    });
+
+                if response.is_some() && close_error {
+                    self.error_dialog = None;
+                }
+            }
 
             // Status bar at the bottom
             ui.add_space(10.0);

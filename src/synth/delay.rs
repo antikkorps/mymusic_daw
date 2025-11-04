@@ -14,7 +14,7 @@
 use crate::audio::dsp_utils::OnePoleSmoother;
 
 /// Delay parameters
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DelayParams {
     /// Delay time in milliseconds (0.0 - max_time_ms)
     pub time_ms: f32,

@@ -6,7 +6,7 @@
 use crate::audio::dsp_utils::OnePoleSmoother;
 
 /// Portamento parameters
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PortamentoParams {
     /// Glide time in seconds (0.0 = instant, 0.001-2.0 = smooth glide)
     pub time: f32,

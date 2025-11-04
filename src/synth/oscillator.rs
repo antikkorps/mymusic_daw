@@ -14,7 +14,7 @@ pub trait Oscillator {
     fn reset(&mut self);
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum WaveformType {
     Sine,
     Square,

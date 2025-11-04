@@ -240,7 +240,7 @@ impl Transport {
         self.midi_recorder = Some(MidiRecorder::new(
             recording_start_sample,
             self.sample_rate,
-            self.tempo, // Copy trait, no clone needed
+            self.tempo,          // Copy trait, no clone needed
             self.time_signature, // Copy trait, no clone needed
         ));
     }
@@ -333,7 +333,7 @@ impl Transport {
     ) {
         // Check recording state first to avoid borrow conflicts
         let is_recording = self.state().is_recording();
-        
+
         #[allow(clippy::collapsible_if)]
         if is_recording {
             if let Some(recorder) = &mut self.midi_recorder {
@@ -349,7 +349,9 @@ impl Transport {
             self.shared_state.recording.store(false, Ordering::Relaxed);
 
             // Get recorded notes from recorder
-            self.midi_recorder.take().map(|mut recorder| recorder.finalize_recording())
+            self.midi_recorder
+                .take()
+                .map(|mut recorder| recorder.finalize_recording())
         } else {
             None
         }

@@ -5,7 +5,7 @@ use std::fmt;
 
 /// Time signature (numerator/denominator)
 /// Example: 4/4 time = TimeSignature { numerator: 4, denominator: 4 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TimeSignature {
     pub numerator: u8,   // Beats per bar (typically 3, 4, 5, 6, 7)
     pub denominator: u8, // Note value (4 = quarter note, 8 = eighth note)

@@ -5,7 +5,7 @@
 // - Legato: Monophonic with legato (no envelope retrigger when sliding between notes)
 
 /// Polyphony mode for the synthesizer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PolyMode {
     /// Polyphonic mode - multiple notes can play simultaneously
     Poly,
