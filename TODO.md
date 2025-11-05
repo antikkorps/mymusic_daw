@@ -810,21 +810,30 @@
   - [x] Bypass system (sans clics)
   - [x] Host info pour identification
 
-- [ ] **Support CLAP réel** ⚠️ (Placeholder seulement)
-  - [ ] Intégration crate `clack` (à venir)
-  - [ ] CLAP host implementation réelle
-  - [ ] Plugin discovery fonctionnel
-  - [ ] Parameter automation CLAP
-  - [ ] Audio process callback réel
-  - [ ] GUI CLAP fonctionnel
-  - [ ] Embedding fenêtre native CLAP
-  - [ ] Gestion événements clavier/souris
-  - [ ] Resize handling
-  - [ ] Preset system CLAP
-  - [ ] Tests avec vrais plugins CLAP
-    - [ ] Surge XT (synth)
-    - [ ] Airwindows (effets)
-    - [ ] Vital (synth)
+- [x] **Infrastructure CLAP** ⚠️ (Fondations partielles - placeholder actuel)
+  - [x] Test program `src/bin/test_clap.rs` démonstration complète
+  - [x] Scanner : fonction `get_library_path()` pour bundles macOS ✅
+  - [x] Scanner trouve Surge XT.clap correctement ✅
+  - [ ] **clap_integration.rs en mode placeholder** (207 lignes basiques)
+    - [ ] Structures CLAP C API (ClapPlugin, ClapProcess, ClapAudioBuffer, etc.)
+    - [ ] ClapPluginFactory avec libloading pour chargement dynamique
+    - [ ] SafeClapPlugin wrapper pour sécurité pointeurs
+    - [ ] ClapPluginInstance avec vraie implémentation audio
+  - [ ] **Support CLAP réel** 🔄 (À implémenter)
+    - [ ] Chargement dynamique réel de plugins CLAP avec libloading
+    - [ ] Utiliser get_library_path() dans ClapPluginFactory::from_path()
+    - [ ] Plugin discovery fonctionnel avec vrais .clap bundles
+    - [ ] Parser descriptor depuis plugin réel (nom, vendor, version)
+    - [ ] Parameter automation CLAP via params extension
+    - [ ] Audio process callback réel avec buffer handling
+    - [ ] GUI CLAP fonctionnel avec embedding
+    - [ ] Gestion événements clavier/souris dans GUI
+    - [ ] Resize handling pour fenêtres plugin
+    - [ ] Preset system CLAP
+    - [ ] Tests avec vrais plugins CLAP
+      - [ ] Surge XT (synth) - détecté mais pas chargé
+      - [ ] Airwindows (effets)
+      - [ ] Vital (synth)
 
 - [ ] **Intégration DAW**
   - [ ] UI pour charger/gérer les plugins
@@ -1151,7 +1160,7 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
    - ⚠️ CLAP réel à implémenter (placeholder actuel)
    - 🔄 Routing audio + Mixeur à venir
 
-**État actuel (Fin Phase 4)** : Phase 4 COMPLÈTE ✅ | Phase 5 Infrastructure prête (CLAP placeholder)
+**État actuel (Fin Phase 4)** : Phase 4 COMPLÈTE ✅ | Phase 5 Infrastructure CLAP prête + compilation corrigée ✅ (en attente tests réels)
 
 ---
 
