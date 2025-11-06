@@ -1572,7 +1572,7 @@ impl eframe::App for DawApp {
                             ui.add_enabled(false, egui::Button::new("🎵 Exporting..."));
                             ui.add(egui::ProgressBar::new(self.export_progress).show_percentage());
                         } else {
-                            if ui.button("🎵 Export to WAV").clicked() {
+                            if ui.button("🎵 Export Audio").clicked() {
                                 self.export_audio();
                             }
                         }
