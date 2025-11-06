@@ -144,6 +144,15 @@ pub struct DawApp {
     project_manager: ProjectManager,
     current_project_path: Option<PathBuf>,
     project_has_unsaved_changes: bool,
+
+    // Audio export state
+    export_format: crate::audio::export::ExportFormat,
+    export_sample_rate: u32,
+    export_bit_depth: u16,
+    export_duration_seconds: Option<f64>,
+    export_include_metronome: bool,
+    export_in_progress: bool,
+    export_progress: f32,
 }
 
 impl DawApp {
@@ -275,6 +284,15 @@ impl DawApp {
             project_manager: ProjectManager::new(48000.0),
             current_project_path: None,
             project_has_unsaved_changes: false,
+
+            // Initialize audio export state
+            export_format: crate::audio::export::ExportFormat::Wav,
+            export_sample_rate: 44100,
+            export_bit_depth: 16,
+            export_duration_seconds: None, // Auto-detect from pattern
+            export_include_metronome: false,
+            export_in_progress: false,
+            export_progress: 0.0,
         }
     }
 
@@ -975,6 +993,87 @@ impl DawApp {
         }
     }
 
+    /// Export audio to WAV file
+    fn export_audio(&mut self) {
+        // Open file dialog for export
+        let default_filename = if let Some(path) = &self.current_project_path {
+            format!("{}.wav", path.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("export"))
+        } else {
+            "export.wav".to_string()
+        };
+
+        if let Some(path) = FileDialog::new()
+            .add_filter("WAV Audio", &["wav"])
+            .add_filter("FLAC Audio", &["flac"])
+            .set_file_name(&default_filename)
+            .save_file()
+        {
+            // Determine format from extension
+            let format = if path.extension().and_then(|s| s.to_str()) == Some("flac") {
+                crate::audio::export::ExportFormat::Flac
+            } else {
+                crate::audio::export::ExportFormat::Wav
+            };
+
+            // Create export settings
+            let settings = crate::audio::export::ExportSettings {
+                output_path: path.to_str().unwrap_or("export.wav").to_string(),
+                format,
+                sample_rate: self.export_sample_rate,
+                bit_depth: self.export_bit_depth,
+                channels: 2, // Stereo
+                include_metronome: self.export_include_metronome,
+            };
+
+            // Create exporter
+            let exporter = crate::audio::export::AudioExporter::new(settings);
+
+            // Get current tempo and time signature
+            let tempo = Tempo::new(self.sequencer_tempo);
+            let time_signature = TimeSignature::new(
+                self.time_signature_numerator,
+                self.time_signature_denominator,
+            );
+
+            // Export (blocking for now - TODO: move to thread)
+            self.export_in_progress = true;
+            self.export_progress = 0.0;
+
+            // Clone pattern for export
+            let pattern = self.active_pattern.clone();
+
+            // Progress callback
+            let mut progress = 0.0f32;
+            let progress_callback = Box::new(move |p: f32| {
+                progress = p;
+                println!("Export progress: {:.1}%", p * 100.0);
+            });
+
+            match exporter.export(
+                &pattern,
+                &tempo,
+                &time_signature,
+                self.export_duration_seconds,
+                Some(progress_callback),
+            ) {
+                Ok(message) => {
+                    println!("✅ {}", message);
+                    self.export_in_progress = false;
+                    self.export_progress = 1.0;
+                    // TODO: Show success notification
+                }
+                Err(e) => {
+                    eprintln!("❌ Export failed: {}", e);
+                    self.export_in_progress = false;
+                    self.export_progress = 0.0;
+                    self.show_error(format!("Export failed: {}", e));
+                }
+            }
+        }
+    }
+
     /// Load project from specific path
     fn load_project_from_path(&mut self, path: &PathBuf) -> Result<(), ProjectError> {
         let options = ProjectLoadOptions {
@@ -1354,6 +1453,76 @@ impl eframe::App for DawApp {
                         ui.label("Active Notes:");
                         ui.label(format!("{}", self.active_notes.len()));
                     });
+
+                    ui.add_space(20.0);
+                    ui.separator();
+                    ui.add_space(10.0);
+
+                    // Audio Export section
+                    ui.heading("Audio Export");
+
+                    ui.horizontal(|ui| {
+                        ui.label("Format:");
+                        egui::ComboBox::from_id_salt("export_format")
+                            .selected_text(match self.export_format {
+                                crate::audio::export::ExportFormat::Wav => "WAV",
+                                crate::audio::export::ExportFormat::Flac => "FLAC",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.export_format,
+                                    crate::audio::export::ExportFormat::Wav,
+                                    "WAV (Uncompressed)"
+                                );
+                                ui.selectable_value(
+                                    &mut self.export_format,
+                                    crate::audio::export::ExportFormat::Flac,
+                                    "FLAC (Lossless)"
+                                );
+                            });
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Sample Rate:");
+                        egui::ComboBox::from_id_salt("export_sample_rate")
+                            .selected_text(format!("{} Hz", self.export_sample_rate))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.export_sample_rate, 44100, "44100 Hz (CD Quality)");
+                                ui.selectable_value(&mut self.export_sample_rate, 48000, "48000 Hz (Professional)");
+                                ui.selectable_value(&mut self.export_sample_rate, 96000, "96000 Hz (High Res)");
+                            });
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Bit Depth:");
+                        egui::ComboBox::from_id_salt("export_bit_depth")
+                            .selected_text(format!("{} bit", self.export_bit_depth))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.export_bit_depth, 16, "16 bit (CD Quality)");
+                                ui.selectable_value(&mut self.export_bit_depth, 24, "24 bit (Professional)");
+                            });
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut self.export_include_metronome, "Include Metronome");
+                    });
+
+                    ui.add_space(10.0);
+
+                    // Export button
+                    ui.horizontal(|ui| {
+                        if self.export_in_progress {
+                            ui.add_enabled(false, egui::Button::new("🎵 Exporting..."));
+                            ui.add(egui::ProgressBar::new(self.export_progress).show_percentage());
+                        } else {
+                            if ui.button("🎵 Export to WAV").clicked() {
+                                self.export_audio();
+                            }
+                        }
+                    });
+
+                    ui.add_space(5.0);
+                    ui.label("💡 Tip: Export renders the current pattern to an audio file.");
                 }
                 UiTab::Devices => {
                     // Devices tab
