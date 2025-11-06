@@ -3,6 +3,7 @@ pub mod scanner;
 // pub mod instance;
 pub mod parameters;
 // pub mod gui;
+pub mod clap_ffi;
 pub mod clap_integration;
 pub mod trait_def;
 
@@ -11,6 +12,7 @@ pub use scanner::*;
 // pub use instance::*;
 pub use parameters::*;
 // pub use gui::*;
+pub use clap_ffi::*;
 pub use clap_integration::*;
 pub use trait_def::*;
 
