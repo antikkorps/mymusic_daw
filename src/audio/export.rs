@@ -64,7 +64,8 @@ impl Default for ExportSettings {
     }
 }
 
-/// Progress callback for export (reports 0.0 to 1.0)
+/// Progress callback for export (reports 0.0 to 1.0).
+/// The callback should update a shared state (e.g., Arc<Mutex<f32>>) or send progress via a channel to the UI.
 pub type ProgressCallback = Box<dyn FnMut(f32) + Send>;
 
 /// Audio exporter - renders project to audio file
