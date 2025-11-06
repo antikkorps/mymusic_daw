@@ -452,22 +452,113 @@ impl Plugin for ClapPluginInstance {
             ));
         }
 
-        // For now, just silence the outputs (real CLAP processing requires proper buffer setup)
-        // TODO Phase 5 Part 3: Implement full CLAP audio buffer conversion and processing
-        for (_, output) in outputs.iter_mut() {
-            for sample in output.data_mut() {
-                *sample = 0.0;
+        unsafe {
+            let plugin = &*self.plugin_ptr;
+
+            // Prepare input buffers (convert AudioBuffer to CLAP format)
+            let mut input_channel_ptrs: Vec<*mut f32> = Vec::new();
+            let mut input_data_storage: Vec<Vec<f32>> = Vec::new();
+
+            // Get first input (assume mono/stereo for now)
+            if let Some((_, input_buffer)) = inputs.iter().next() {
+                let mut channel_data = vec![0.0f32; sample_frames];
+                let input_data = input_buffer.data();
+
+                // Copy input data
+                for (i, sample) in input_data.iter().take(sample_frames).enumerate() {
+                    channel_data[i] = *sample;
+                }
+
+                input_channel_ptrs.push(channel_data.as_mut_ptr());
+                input_data_storage.push(channel_data);
+            }
+
+            let mut clap_input_buffer = clap_audio_buffer {
+                channel_count: input_channel_ptrs.len() as u32,
+                latency: 0,
+                data32: if input_channel_ptrs.is_empty() {
+                    ptr::null_mut()
+                } else {
+                    input_channel_ptrs.as_mut_ptr()
+                },
+                data64: ptr::null_mut(),
+            };
+
+            // Prepare output buffers
+            let mut output_channel_ptrs: Vec<*mut f32> = Vec::new();
+            let mut output_data_storage: Vec<Vec<f32>> = Vec::new();
+
+            // Create stereo output (2 channels)
+            for _ in 0..2 {
+                let mut channel_data = vec![0.0f32; sample_frames];
+                output_channel_ptrs.push(channel_data.as_mut_ptr());
+                output_data_storage.push(channel_data);
+            }
+
+            let mut clap_output_buffer = clap_audio_buffer {
+                channel_count: 2,
+                latency: 0,
+                data32: output_channel_ptrs.as_mut_ptr(),
+                data64: ptr::null_mut(),
+            };
+
+            // Create empty event lists (no MIDI events for now)
+            let empty_input_events = clap_input_events {
+                ctx: ptr::null_mut(),
+                size: clap_input_events_size,
+                get: clap_input_events_get,
+            };
+
+            let empty_output_events = clap_output_events {
+                ctx: ptr::null_mut(),
+                try_push: clap_output_events_try_push,
+            };
+
+            // Create process structure
+            let clap_process_data = clap_process {
+                steady_time: 0,
+                frames_count: sample_frames as u32,
+                transport: ptr::null(),
+                audio_inputs: &clap_input_buffer,
+                audio_inputs_count: if input_channel_ptrs.is_empty() { 0 } else { 1 },
+                audio_outputs: &mut clap_output_buffer,
+                audio_outputs_count: 1,
+                in_events: &empty_input_events,
+                out_events: &empty_output_events,
+            };
+
+            // Call the plugin's process function
+            let status = (plugin.process)(self.plugin_ptr, &clap_process_data);
+
+            // Check process status
+            match status {
+                clap_process_status::CLAP_PROCESS_ERROR => {
+                    return Err(PluginError::ProcessingFailed(
+                        "Plugin process returned ERROR".to_string(),
+                    ));
+                }
+                _ => {
+                    // Success (CONTINUE, TAIL, SLEEP are all valid)
+                }
+            }
+
+            // Copy output data back to our buffers
+            if let Some((_, output_buffer)) = outputs.iter_mut().next() {
+                let output_data = output_buffer.data_mut();
+
+                // Mix stereo to mono (average L+R)
+                for i in 0..sample_frames.min(output_data.len()) {
+                    let left = output_data_storage[0][i];
+                    let right = if output_data_storage.len() > 1 {
+                        output_data_storage[1][i]
+                    } else {
+                        left
+                    };
+
+                    output_data[i] = (left + right) * 0.5;
+                }
             }
         }
-
-        // Note: Real CLAP processing would involve:
-        // 1. Converting our AudioBuffer to clap_audio_buffer
-        // 2. Creating clap_process struct with input/output buffers
-        // 3. Calling plugin.process() with the clap_process struct
-        // 4. Converting clap_audio_buffer back to our AudioBuffer
-        //
-        // This requires more complex buffer management and will be implemented
-        // in Phase 5 Part 3.
 
         Ok(())
     }
@@ -555,6 +646,25 @@ impl Plugin for ClapPluginInstance {
     fn is_processing(&self) -> bool {
         self.is_active
     }
+}
+
+/// Empty event list callbacks (no events)
+extern "C" fn clap_input_events_size(_list: *const clap_input_events) -> u32 {
+    0
+}
+
+extern "C" fn clap_input_events_get(
+    _list: *const clap_input_events,
+    _index: u32,
+) -> *const clap_event_header {
+    ptr::null()
+}
+
+extern "C" fn clap_output_events_try_push(
+    _list: *const clap_output_events,
+    _event: *const clap_event_header,
+) -> bool {
+    false // Don't accept events for now
 }
 
 /// Simple host implementation for CLAP plugins (placeholder)
