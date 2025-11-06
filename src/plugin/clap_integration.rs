@@ -220,15 +220,84 @@ fn infer_category_from_features(features: &[String]) -> PluginCategory {
     PluginCategory::Effect // Default
 }
 
+/// Create a minimal CLAP host for plugins
+fn create_minimal_host() -> clap_host {
+    static HOST_NAME: &[u8] = b"MyMusic DAW\0";
+    static HOST_VENDOR: &[u8] = b"MyMusic\0";
+    static HOST_URL: &[u8] = b"https://github.com/antikkorps/mymusic_daw\0";
+    static HOST_VERSION: &[u8] = b"0.2.0\0";
+
+    clap_host {
+        clap_version: clap_version::CLAP_1_0_0,
+        host_data: ptr::null_mut(),
+        name: HOST_NAME.as_ptr() as *const i8,
+        vendor: HOST_VENDOR.as_ptr() as *const i8,
+        url: HOST_URL.as_ptr() as *const i8,
+        version: HOST_VERSION.as_ptr() as *const i8,
+        get_extension: host_get_extension,
+        request_callback: host_request_callback,
+        request_restart: host_request_restart,
+        request_process: host_request_process,
+    }
+}
+
+/// Host callback: get extension (stub)
+extern "C" fn host_get_extension(_host: *const clap_host, _extension_id: *const std::os::raw::c_char) -> *const std::os::raw::c_void {
+    ptr::null()
+}
+
+/// Host callback: request callback (stub)
+extern "C" fn host_request_callback(_host: *const clap_host) {
+    // TODO: Implement callback request handling
+}
+
+/// Host callback: request restart (stub)
+extern "C" fn host_request_restart(_host: *const clap_host) {
+    // TODO: Implement restart handling
+}
+
+/// Host callback: request process (stub)
+extern "C" fn host_request_process(_host: *const clap_host) {
+    // TODO: Implement process request handling
+}
+
 impl PluginFactory for ClapPluginFactory {
     fn descriptor(&self) -> &PluginDescriptor {
         &self.descriptor
     }
 
     fn create_instance(&self) -> Result<Box<dyn Plugin>, PluginError> {
-        // TODO: Implement actual CLAP instance creation
-        // For now, return a placeholder instance
-        Ok(Box::new(ClapPluginInstance::new(self.descriptor.clone())))
+        // Create a minimal CLAP host
+        let host = create_minimal_host();
+
+        // Get the plugin factory
+        let factory = unsafe { &*self.plugin_factory };
+
+        // Convert plugin ID to C string
+        let plugin_id = CString::new(self.descriptor.id.clone())
+            .map_err(|_| PluginError::InitializationFailed("Invalid plugin ID".to_string()))?;
+
+        // Create plugin instance via CLAP factory
+        let plugin_ptr = (factory.create_plugin)(
+            self.plugin_factory,
+            &host as *const clap_host,
+            plugin_id.as_ptr(),
+        );
+
+        if plugin_ptr.is_null() {
+            return Err(PluginError::InitializationFailed(
+                "Failed to create plugin instance".to_string(),
+            ));
+        }
+
+        println!("✅ Created CLAP plugin instance: {}", self.descriptor.name);
+
+        Ok(Box::new(ClapPluginInstance::new(
+            self.descriptor.clone(),
+            plugin_ptr,
+            host,
+            self.library.clone(),
+        )))
     }
 
     fn supports_feature(&self, feature: &str) -> bool {
@@ -243,16 +312,30 @@ impl PluginFactory for ClapPluginFactory {
     }
 }
 
-/// CLAP plugin instance implementation (placeholder)
+/// CLAP plugin instance implementation (real)
 pub struct ClapPluginInstance {
     descriptor: PluginDescriptor,
     parameter_values: HashMap<String, f64>,
     is_active: bool,
+    plugin_ptr: *mut clap_plugin,
+    host: clap_host,
+    #[allow(dead_code)]
+    library: Arc<Library>, // Keep library alive
+    sample_rate: f64,
 }
 
+// Safety: plugin_ptr is only accessed from audio thread or with proper synchronization
+unsafe impl Send for ClapPluginInstance {}
+unsafe impl Sync for ClapPluginInstance {}
+
 impl ClapPluginInstance {
-    /// Create a new CLAP plugin instance
-    pub fn new(descriptor: PluginDescriptor) -> Self {
+    /// Create a new CLAP plugin instance (real)
+    pub fn new(
+        descriptor: PluginDescriptor,
+        plugin_ptr: *mut clap_plugin,
+        host: clap_host,
+        library: Arc<Library>,
+    ) -> Self {
         let mut parameter_values = HashMap::new();
 
         // Initialize parameter values with defaults
@@ -264,6 +347,32 @@ impl ClapPluginInstance {
             descriptor,
             parameter_values,
             is_active: false,
+            plugin_ptr,
+            host,
+            library,
+            sample_rate: 44100.0, // Default, will be set in initialize()
+        }
+    }
+}
+
+impl Drop for ClapPluginInstance {
+    fn drop(&mut self) {
+        // Clean up the plugin instance
+        if !self.plugin_ptr.is_null() {
+            unsafe {
+                let plugin = &*self.plugin_ptr;
+
+                // Stop processing if active
+                if self.is_active {
+                    (plugin.stop_processing)(self.plugin_ptr);
+                    (plugin.deactivate)(self.plugin_ptr);
+                }
+
+                // Destroy the plugin
+                (plugin.destroy)(self.plugin_ptr);
+            }
+
+            self.plugin_ptr = ptr::null_mut();
         }
     }
 }
@@ -274,17 +383,62 @@ impl Plugin for ClapPluginInstance {
     }
 
     fn initialize(&mut self, sample_rate: f64) -> Result<(), PluginError> {
-        // TODO: Implement actual CLAP plugin initialization
-        println!("Initializing CLAP plugin with sample rate: {}", sample_rate);
+        if self.plugin_ptr.is_null() {
+            return Err(PluginError::InitializationFailed(
+                "Plugin pointer is null".to_string(),
+            ));
+        }
+
+        self.sample_rate = sample_rate;
+
+        unsafe {
+            let plugin = &*self.plugin_ptr;
+
+            // Initialize the plugin
+            let init_result = (plugin.init)(self.plugin_ptr);
+            if !init_result {
+                return Err(PluginError::InitializationFailed(
+                    "Plugin init() returned false".to_string(),
+                ));
+            }
+
+            // Activate the plugin (prepare for processing)
+            let activate_result = (plugin.activate)(
+                self.plugin_ptr,
+                sample_rate,
+                512,  // min_frames_count
+                8192, // max_frames_count
+            );
+
+            if !activate_result {
+                return Err(PluginError::InitializationFailed(
+                    "Plugin activate() returned false".to_string(),
+                ));
+            }
+
+            // Start processing
+            let start_result = (plugin.start_processing)(self.plugin_ptr);
+            if !start_result {
+                return Err(PluginError::InitializationFailed(
+                    "Plugin start_processing() returned false".to_string(),
+                ));
+            }
+        }
+
         self.is_active = true;
+        println!(
+            "✅ Initialized CLAP plugin: {} at {} Hz",
+            self.descriptor.name, sample_rate
+        );
+
         Ok(())
     }
 
     fn process(
         &mut self,
-        _inputs: &HashMap<String, &crate::audio::buffer::AudioBuffer>,
-        _outputs: &mut HashMap<String, &mut crate::audio::buffer::AudioBuffer>,
-        _sample_frames: usize,
+        inputs: &HashMap<String, &crate::audio::buffer::AudioBuffer>,
+        outputs: &mut HashMap<String, &mut crate::audio::buffer::AudioBuffer>,
+        sample_frames: usize,
     ) -> Result<(), PluginError> {
         if !self.is_active {
             return Err(PluginError::ProcessingFailed(
@@ -292,8 +446,29 @@ impl Plugin for ClapPluginInstance {
             ));
         }
 
-        // TODO: Implement actual CLAP audio processing
-        // For now, just pass through (silence)
+        if self.plugin_ptr.is_null() {
+            return Err(PluginError::ProcessingFailed(
+                "Plugin pointer is null".to_string(),
+            ));
+        }
+
+        // For now, just silence the outputs (real CLAP processing requires proper buffer setup)
+        // TODO Phase 5 Part 3: Implement full CLAP audio buffer conversion and processing
+        for (_, output) in outputs.iter_mut() {
+            for sample in output.data_mut() {
+                *sample = 0.0;
+            }
+        }
+
+        // Note: Real CLAP processing would involve:
+        // 1. Converting our AudioBuffer to clap_audio_buffer
+        // 2. Creating clap_process struct with input/output buffers
+        // 3. Calling plugin.process() with the clap_process struct
+        // 4. Converting clap_audio_buffer back to our AudioBuffer
+        //
+        // This requires more complex buffer management and will be implemented
+        // in Phase 5 Part 3.
+
         Ok(())
     }
 
