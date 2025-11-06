@@ -55,8 +55,10 @@ pub struct clap_plugin_factory {
     pub get_plugin_count: extern "C" fn(factory: *const clap_plugin_factory) -> u32,
 
     /// Get plugin descriptor by index
-    pub get_plugin_descriptor:
-        extern "C" fn(factory: *const clap_plugin_factory, index: u32) -> *const clap_plugin_descriptor,
+    pub get_plugin_descriptor: extern "C" fn(
+        factory: *const clap_plugin_factory,
+        index: u32,
+    ) -> *const clap_plugin_descriptor,
 
     /// Create a plugin instance
     pub create_plugin: extern "C" fn(
@@ -77,7 +79,8 @@ pub struct clap_host {
     pub version: *const c_char,
 
     /// Get extension from host
-    pub get_extension: extern "C" fn(host: *const clap_host, extension_id: *const c_char) -> *const c_void,
+    pub get_extension:
+        extern "C" fn(host: *const clap_host, extension_id: *const c_char) -> *const c_void,
 
     /// Request callback
     pub request_callback: extern "C" fn(host: *const clap_host),
@@ -122,10 +125,14 @@ pub struct clap_plugin {
     pub reset: extern "C" fn(plugin: *const clap_plugin),
 
     /// Process audio
-    pub process: extern "C" fn(plugin: *const clap_plugin, process: *const clap_process) -> clap_process_status,
+    pub process: extern "C" fn(
+        plugin: *const clap_plugin,
+        process: *const clap_process,
+    ) -> clap_process_status,
 
     /// Get extension from plugin
-    pub get_extension: extern "C" fn(plugin: *const clap_plugin, extension_id: *const c_char) -> *const c_void,
+    pub get_extension:
+        extern "C" fn(plugin: *const clap_plugin, extension_id: *const c_char) -> *const c_void,
 
     /// Called by host on main thread
     pub on_main_thread: extern "C" fn(plugin: *const clap_plugin),
@@ -235,7 +242,8 @@ pub struct clap_input_events {
 #[repr(C)]
 pub struct clap_output_events {
     pub ctx: *mut c_void,
-    pub try_push: extern "C" fn(list: *const clap_output_events, event: *const clap_event_header) -> bool,
+    pub try_push:
+        extern "C" fn(list: *const clap_output_events, event: *const clap_event_header) -> bool,
 }
 
 /// CLAP process structure
@@ -306,18 +314,12 @@ pub struct clap_plugin_params {
     pub count: extern "C" fn(plugin: *const clap_plugin) -> u32,
 
     /// Get parameter info by index
-    pub get_info: extern "C" fn(
-        plugin: *const clap_plugin,
-        index: u32,
-        info: *mut clap_param_info,
-    ) -> bool,
+    pub get_info:
+        extern "C" fn(plugin: *const clap_plugin, index: u32, info: *mut clap_param_info) -> bool,
 
     /// Get parameter value by ID
-    pub get_value: extern "C" fn(
-        plugin: *const clap_plugin,
-        param_id: u32,
-        value: *mut f64,
-    ) -> bool,
+    pub get_value:
+        extern "C" fn(plugin: *const clap_plugin, param_id: u32, value: *mut f64) -> bool,
 
     /// Convert value to text
     pub value_to_text: extern "C" fn(

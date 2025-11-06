@@ -7,13 +7,13 @@
 
 use crate::audio::dsp_utils::{OnePoleSmoother, flush_denormals_to_zero, soft_clip};
 use crate::midi::event::{MidiEvent, MidiEventTimed};
-use crate::sequencer::{Pattern, SequencerPlayer, Tempo, TimeSignature};
 use crate::sequencer::metronome::{Metronome, MetronomeScheduler};
+use crate::sequencer::{Pattern, SequencerPlayer, Tempo, TimeSignature};
 use crate::synth::voice_manager::VoiceManager;
 use hound::{WavSpec, WavWriter};
-use std::path::Path;
-use std::io::BufWriter;
 use std::fs::File;
+use std::io::BufWriter;
+use std::path::Path;
 
 /// Audio export format
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -168,7 +168,10 @@ impl AudioExporter {
             progress_callback.as_deref_mut(),
         )?;
 
-        Ok(format!("Successfully exported to {}", self.settings.output_path))
+        Ok(format!(
+            "Successfully exported to {}",
+            self.settings.output_path
+        ))
     }
 
     /// Export to FLAC format
@@ -218,11 +221,7 @@ impl AudioExporter {
         let mut sequencer_player = SequencerPlayer::new(self.settings.sample_rate as f64);
 
         // Create volume smoother (using default 50% volume)
-        let mut volume_smoother = OnePoleSmoother::new(
-            0.5,
-            10.0,
-            self.settings.sample_rate as f32,
-        );
+        let mut volume_smoother = OnePoleSmoother::new(0.5, 10.0, self.settings.sample_rate as f32);
 
         // Create metronome (if enabled)
         let mut metronome = if self.settings.include_metronome {
@@ -304,13 +303,16 @@ impl AudioExporter {
 
                 if self.settings.channels == 2 {
                     // Stereo: write same sample to both channels
-                    writer.write_sample(sample_i16)
+                    writer
+                        .write_sample(sample_i16)
                         .map_err(|e| format!("Failed to write sample: {}", e))?;
-                    writer.write_sample(sample_i16)
+                    writer
+                        .write_sample(sample_i16)
                         .map_err(|e| format!("Failed to write sample: {}", e))?;
                 } else {
                     // Mono
-                    writer.write_sample(sample_i16)
+                    writer
+                        .write_sample(sample_i16)
                         .map_err(|e| format!("Failed to write sample: {}", e))?;
                 }
 
@@ -328,7 +330,8 @@ impl AudioExporter {
         }
 
         // Finalize WAV file
-        writer.finalize()
+        writer
+            .finalize()
             .map_err(|e| format!("Failed to finalize WAV file: {}", e))?;
 
         println!("Audio rendering complete!");
@@ -400,13 +403,7 @@ mod tests {
         let time_signature = TimeSignature::four_four();
 
         // Export 1 second of silence
-        let result = exporter.export(
-            &pattern,
-            &tempo,
-            &time_signature,
-            Some(1.0),
-            None,
-        );
+        let result = exporter.export(&pattern, &tempo, &time_signature, Some(1.0), None);
 
         assert!(result.is_ok(), "Export should succeed: {:?}", result);
         assert!(output_path.exists(), "Output file should exist");
@@ -443,13 +440,7 @@ mod tests {
         let time_signature = TimeSignature::four_four();
 
         // Export 1 second (note will play for first 0.5s)
-        let result = exporter.export(
-            &pattern,
-            &tempo,
-            &time_signature,
-            Some(1.0),
-            None,
-        );
+        let result = exporter.export(&pattern, &tempo, &time_signature, Some(1.0), None);
 
         assert!(result.is_ok(), "Export should succeed: {:?}", result);
         assert!(output_path.exists(), "Output file should exist");

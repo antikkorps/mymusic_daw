@@ -3,11 +3,11 @@
 // This module provides real integration with CLAP (CLever Audio Plug-in API) plugins.
 // Uses libloading for dynamic loading and FFI for C API interop.
 
+use crate::midi::event::MidiEvent;
 use crate::plugin::clap_ffi::*;
 use crate::plugin::parameters::*;
 use crate::plugin::trait_def::*;
 use crate::plugin::{PluginError, PluginResult};
-use crate::midi::event::MidiEvent;
 use libloading::{Library, Symbol};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
@@ -113,9 +113,7 @@ extern "C" fn event_list_get(
         let event_list = &*((*list).ctx as *const ClapEventList);
         if (index as usize) < event_list.events.len() {
             match &event_list.events[index as usize] {
-                ClapEvent::Note(note_event) => {
-                    &note_event.header as *const clap_event_header
-                }
+                ClapEvent::Note(note_event) => &note_event.header as *const clap_event_header,
                 ClapEvent::ParamValue(param_event) => {
                     &param_event.header as *const clap_event_header
                 }
@@ -154,16 +152,14 @@ impl ClapPluginFactory {
 
         // Load the dynamic library
         let library = unsafe {
-            Library::new(&library_path).map_err(|e| {
-                PluginError::LoadFailed(format!("Failed to load library: {}", e))
-            })?
+            Library::new(&library_path)
+                .map_err(|e| PluginError::LoadFailed(format!("Failed to load library: {}", e)))?
         };
 
         // Get the clap_entry symbol
         let entry_ptr: *const clap_plugin_entry = unsafe {
-            let symbol: Symbol<*const clap_plugin_entry> = library
-                .get(b"clap_entry\0")
-                .map_err(|e| {
+            let symbol: Symbol<*const clap_plugin_entry> =
+                library.get(b"clap_entry\0").map_err(|e| {
                     PluginError::LoadFailed(format!("Failed to get clap_entry symbol: {}", e))
                 })?;
 
@@ -187,9 +183,8 @@ impl ClapPluginFactory {
         }
 
         // Initialize the plugin entry
-        let path_cstr = CString::new(path).map_err(|_| {
-            PluginError::LoadFailed("Invalid path string".to_string())
-        })?;
+        let path_cstr = CString::new(path)
+            .map_err(|_| PluginError::LoadFailed("Invalid path string".to_string()))?;
 
         let init_result = (entry.init)(path_cstr.as_ptr());
         if !init_result {
@@ -230,7 +225,10 @@ impl ClapPluginFactory {
         // Convert CLAP descriptor to our PluginDescriptor
         let descriptor = unsafe { convert_clap_descriptor(clap_descriptor_ptr)? };
 
-        println!("✅ Loaded CLAP plugin: {} ({})", descriptor.name, descriptor.id);
+        println!(
+            "✅ Loaded CLAP plugin: {} ({})",
+            descriptor.name, descriptor.id
+        );
 
         Ok(Self {
             descriptor,
@@ -257,9 +255,7 @@ fn get_library_path(bundle_path: &Path) -> PluginResult<std::path::PathBuf> {
             let stem = bundle_path
                 .file_stem()
                 .and_then(|s| s.to_str())
-                .ok_or_else(|| {
-                    PluginError::LoadFailed("Invalid bundle name".to_string())
-                })?;
+                .ok_or_else(|| PluginError::LoadFailed("Invalid bundle name".to_string()))?;
 
             let dylib_path = bundle_path.join("Contents/MacOS").join(stem);
 
@@ -354,7 +350,10 @@ fn create_minimal_host() -> clap_host {
 }
 
 /// Host callback: get extension (stub)
-extern "C" fn host_get_extension(_host: *const clap_host, _extension_id: *const std::os::raw::c_char) -> *const std::os::raw::c_void {
+extern "C" fn host_get_extension(
+    _host: *const clap_host,
+    _extension_id: *const std::os::raw::c_char,
+) -> *const std::os::raw::c_void {
     ptr::null()
 }
 
@@ -436,7 +435,7 @@ pub struct ClapPluginInstance {
     library: Arc<Library>, // Keep library alive
     sample_rate: f64,
     pending_midi_events: Vec<(MidiEvent, u32)>, // (event, sample_offset)
-    pending_param_changes: Vec<(u32, f64)>, // (param_id, value)
+    pending_param_changes: Vec<(u32, f64)>,     // (param_id, value)
 }
 
 // Safety: plugin_ptr is only accessed from audio thread or with proper synchronization
@@ -726,7 +725,8 @@ impl Plugin for ClapPluginInstance {
 
             // Queue parameter change for next process() call
             if let Some(&clap_param_id) = self.parameter_id_map.get(parameter_id) {
-                self.pending_param_changes.push((clap_param_id, clamped_value));
+                self.pending_param_changes
+                    .push((clap_param_id, clamped_value));
             }
 
             Ok(())

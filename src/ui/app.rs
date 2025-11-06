@@ -997,9 +997,12 @@ impl DawApp {
     fn export_audio(&mut self) {
         // Open file dialog for export
         let default_filename = if let Some(path) = &self.current_project_path {
-            format!("{}.wav", path.file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("export"))
+            format!(
+                "{}.wav",
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("export")
+            )
         } else {
             "export.wav".to_string()
         };
