@@ -678,7 +678,7 @@ impl Plugin for ClapPluginInstance {
                 frames_count: sample_frames as u32,
                 transport: ptr::null(),
                 audio_inputs: &clap_input_buffer,
-                audio_inputs_count: if input_channel_ptrs.is_empty() { 0 } else { 1 },
+                audio_inputs_count: if input_ptrs.is_empty() { 0 } else { 1 },
                 audio_outputs: &mut clap_output_buffer,
                 audio_outputs_count: 1,
                 in_events: &input_events,
