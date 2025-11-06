@@ -291,6 +291,12 @@ pub const CLAP_EXT_GUI: &[u8] = b"clap.gui\0";
 /// CLAP extension: state
 pub const CLAP_EXT_STATE: &[u8] = b"clap.state\0";
 
+/// CLAP window API identifiers
+pub const CLAP_WINDOW_API_WIN32: &[u8] = b"win32\0";
+pub const CLAP_WINDOW_API_COCOA: &[u8] = b"cocoa\0";
+pub const CLAP_WINDOW_API_X11: &[u8] = b"x11\0";
+pub const CLAP_WINDOW_API_WAYLAND: &[u8] = b"wayland\0";
+
 /// CLAP factory ID
 pub const CLAP_PLUGIN_FACTORY_ID: &[u8] = b"clap.plugin-factory\0";
 
@@ -305,6 +311,102 @@ pub struct clap_param_info {
     pub min_value: f64,
     pub max_value: f64,
     pub default_value: f64,
+}
+
+/// CLAP window handle (platform-specific)
+#[repr(C)]
+pub union clap_window_handle {
+    pub cocoa: *mut c_void,      // NSView* on macOS
+    pub x11: u64,                  // Window on X11
+    pub win32: *mut c_void,        // HWND on Windows
+    pub wayland: *mut c_void,      // wl_surface* on Wayland
+}
+
+/// CLAP window descriptor
+#[repr(C)]
+pub struct clap_window {
+    pub api: *const c_char,
+    pub handle: clap_window_handle,
+}
+
+/// CLAP plugin GUI extension
+#[repr(C)]
+pub struct clap_plugin_gui {
+    /// Check if plugin supports a window API
+    pub is_api_supported: extern "C" fn(
+        plugin: *const clap_plugin,
+        api: *const c_char,
+        is_floating: bool,
+    ) -> bool,
+
+    /// Get preferred API (optional, can be NULL)
+    pub get_preferred_api: Option<
+        extern "C" fn(
+            plugin: *const clap_plugin,
+            api: *mut *const c_char,
+            is_floating: *mut bool,
+        ) -> bool,
+    >,
+
+    /// Create the GUI (must be called before set_parent)
+    pub create: extern "C" fn(plugin: *const clap_plugin, api: *const c_char, is_floating: bool) -> bool,
+
+    /// Destroy the GUI
+    pub destroy: extern "C" fn(plugin: *const clap_plugin),
+
+    /// Set scale factor (for HiDPI)
+    pub set_scale: extern "C" fn(plugin: *const clap_plugin, scale: f64) -> bool,
+
+    /// Get size of the GUI
+    pub get_size: extern "C" fn(plugin: *const clap_plugin, width: *mut u32, height: *mut u32) -> bool,
+
+    /// Check if GUI can be resized
+    pub can_resize: extern "C" fn(plugin: *const clap_plugin) -> bool,
+
+    /// Get resize hints (optional)
+    pub get_resize_hints: Option<
+        extern "C" fn(
+            plugin: *const clap_plugin,
+            hints: *mut clap_gui_resize_hints,
+        ) -> bool,
+    >,
+
+    /// Adjust size to constraints
+    pub adjust_size: Option<
+        extern "C" fn(
+            plugin: *const clap_plugin,
+            width: *mut u32,
+            height: *mut u32,
+        ) -> bool,
+    >,
+
+    /// Set size
+    pub set_size: extern "C" fn(plugin: *const clap_plugin, width: u32, height: u32) -> bool,
+
+    /// Set parent window
+    pub set_parent: extern "C" fn(plugin: *const clap_plugin, window: *const clap_window) -> bool,
+
+    /// Set transient window (optional)
+    pub set_transient: Option<extern "C" fn(plugin: *const clap_plugin, window: *const clap_window) -> bool>,
+
+    /// Suggest a window title
+    pub suggest_title: Option<extern "C" fn(plugin: *const clap_plugin, title: *const c_char)>,
+
+    /// Show the window
+    pub show: extern "C" fn(plugin: *const clap_plugin) -> bool,
+
+    /// Hide the window
+    pub hide: extern "C" fn(plugin: *const clap_plugin) -> bool,
+}
+
+/// CLAP GUI resize hints
+#[repr(C)]
+pub struct clap_gui_resize_hints {
+    pub can_resize_horizontally: bool,
+    pub can_resize_vertically: bool,
+    pub preserve_aspect_ratio: bool,
+    pub aspect_ratio_width: u32,
+    pub aspect_ratio_height: u32,
 }
 
 /// CLAP plugin params extension

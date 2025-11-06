@@ -5,6 +5,7 @@
 
 use crate::midi::event::MidiEvent;
 use crate::plugin::clap_ffi::*;
+use crate::plugin::clap_gui::ClapPluginGui;
 use crate::plugin::parameters::*;
 use crate::plugin::trait_def::*;
 use crate::plugin::{PluginError, PluginResult};
@@ -436,6 +437,7 @@ pub struct ClapPluginInstance {
     sample_rate: f64,
     pending_midi_events: Vec<(MidiEvent, u32)>, // (event, sample_offset)
     pending_param_changes: Vec<(u32, f64)>,     // (param_id, value)
+    gui: Option<ClapPluginGui>,                 // Optional GUI support
 }
 
 // Safety: plugin_ptr is only accessed from audio thread or with proper synchronization
@@ -460,6 +462,9 @@ impl ClapPluginInstance {
             parameter_id_map.insert(param.id.clone(), idx as u32);
         }
 
+        // Try to create GUI (optional, may fail if plugin doesn't support it)
+        let gui = ClapPluginGui::new(plugin_ptr);
+
         Self {
             descriptor,
             parameter_values,
@@ -471,6 +476,7 @@ impl ClapPluginInstance {
             sample_rate: 44100.0, // Default, will be set in initialize()
             pending_midi_events: Vec::new(),
             pending_param_changes: Vec::new(),
+            gui,
         }
     }
 
@@ -482,6 +488,21 @@ impl ClapPluginInstance {
     /// Clear all pending MIDI events
     pub fn clear_midi_events(&mut self) {
         self.pending_midi_events.clear();
+    }
+
+    /// Check if plugin has GUI support
+    pub fn has_gui(&self) -> bool {
+        self.gui.is_some()
+    }
+
+    /// Get mutable reference to GUI (if available)
+    pub fn gui_mut(&mut self) -> Option<&mut ClapPluginGui> {
+        self.gui.as_mut()
+    }
+
+    /// Get reference to GUI (if available)
+    pub fn gui(&self) -> Option<&ClapPluginGui> {
+        self.gui.as_ref()
     }
 }
 
