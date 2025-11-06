@@ -1,3 +1,4 @@
+pub mod buffer_pool;
 pub mod scanner;
 // pub mod host;
 // pub mod instance;
@@ -7,6 +8,7 @@ pub mod clap_ffi;
 pub mod clap_integration;
 pub mod trait_def;
 
+pub use buffer_pool::*;
 pub use scanner::*;
 // pub use host::*;
 // pub use instance::*;

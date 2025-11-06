@@ -4,6 +4,7 @@
 // Uses libloading for dynamic loading and FFI for C API interop.
 
 use crate::midi::event::MidiEvent;
+use crate::plugin::buffer_pool::AudioBufferPool;
 use crate::plugin::clap_ffi::*;
 use crate::plugin::clap_gui::ClapPluginGui;
 use crate::plugin::parameters::*;
@@ -438,6 +439,7 @@ pub struct ClapPluginInstance {
     pending_midi_events: Vec<(MidiEvent, u32)>, // (event, sample_offset)
     pending_param_changes: Vec<(u32, f64)>,     // (param_id, value)
     gui: Option<ClapPluginGui>,                 // Optional GUI support
+    buffer_pool: AudioBufferPool,               // Pre-allocated buffers for RT-safe processing
 }
 
 // Safety: plugin_ptr is only accessed from audio thread or with proper synchronization
@@ -465,6 +467,9 @@ impl ClapPluginInstance {
         // Try to create GUI (optional, may fail if plugin doesn't support it)
         let gui = ClapPluginGui::new(plugin_ptr);
 
+        // Create buffer pool (1 input, 2 output stereo, max 8192 samples)
+        let buffer_pool = AudioBufferPool::new(1, 2, 8192);
+
         Self {
             descriptor,
             parameter_values,
@@ -477,6 +482,7 @@ impl ClapPluginInstance {
             pending_midi_events: Vec::new(),
             pending_param_changes: Vec::new(),
             gui,
+            buffer_pool,
         }
     }
 
@@ -606,50 +612,33 @@ impl Plugin for ClapPluginInstance {
         unsafe {
             let plugin = &*self.plugin_ptr;
 
-            // Prepare input buffers (convert AudioBuffer to CLAP format)
-            let mut input_channel_ptrs: Vec<*mut f32> = Vec::new();
-            let mut input_data_storage: Vec<Vec<f32>> = Vec::new();
+            // Prepare buffer pool (zero allocations - reuses pre-allocated buffers)
+            let (input_ptrs, output_ptrs) = self.buffer_pool.prepare(sample_frames);
 
-            // Get first input (assume mono/stereo for now)
+            // Copy input data into pool (if available)
             if let Some((_, input_buffer)) = inputs.iter().next() {
-                let mut channel_data = vec![0.0f32; sample_frames];
                 let input_data = input_buffer.data();
-
-                // Copy input data
+                let pool_input = self.buffer_pool.input_buffer_mut(0, sample_frames);
                 for (i, sample) in input_data.iter().take(sample_frames).enumerate() {
-                    channel_data[i] = *sample;
+                    pool_input[i] = *sample;
                 }
-
-                input_channel_ptrs.push(channel_data.as_mut_ptr());
-                input_data_storage.push(channel_data);
             }
 
             let mut clap_input_buffer = clap_audio_buffer {
-                channel_count: input_channel_ptrs.len() as u32,
+                channel_count: if input_ptrs.is_empty() { 0 } else { 1 },
                 latency: 0,
-                data32: if input_channel_ptrs.is_empty() {
+                data32: if input_ptrs.is_empty() {
                     ptr::null_mut()
                 } else {
-                    input_channel_ptrs.as_mut_ptr()
+                    input_ptrs.as_ptr() as *mut *mut f32
                 },
                 data64: ptr::null_mut(),
             };
 
-            // Prepare output buffers
-            let mut output_channel_ptrs: Vec<*mut f32> = Vec::new();
-            let mut output_data_storage: Vec<Vec<f32>> = Vec::new();
-
-            // Create stereo output (2 channels)
-            for _ in 0..2 {
-                let mut channel_data = vec![0.0f32; sample_frames];
-                output_channel_ptrs.push(channel_data.as_mut_ptr());
-                output_data_storage.push(channel_data);
-            }
-
             let mut clap_output_buffer = clap_audio_buffer {
                 channel_count: 2,
                 latency: 0,
-                data32: output_channel_ptrs.as_mut_ptr(),
+                data32: output_ptrs.as_mut_ptr(),
                 data64: ptr::null_mut(),
             };
 
@@ -711,19 +700,17 @@ impl Plugin for ClapPluginInstance {
                 }
             }
 
-            // Copy output data back to our buffers
+            // Copy output data back to our buffers (from buffer pool)
             if let Some((_, output_buffer)) = outputs.iter_mut().next() {
                 let output_data = output_buffer.data_mut();
 
-                // Mix stereo to mono (average L+R)
-                for i in 0..sample_frames.min(output_data.len()) {
-                    let left = output_data_storage[0][i];
-                    let right = if output_data_storage.len() > 1 {
-                        output_data_storage[1][i]
-                    } else {
-                        left
-                    };
+                // Mix stereo to mono (average L+R from buffer pool)
+                let left_buffer = self.buffer_pool.output_buffer(0, sample_frames);
+                let right_buffer = self.buffer_pool.output_buffer(1, sample_frames);
 
+                for i in 0..sample_frames.min(output_data.len()) {
+                    let left = left_buffer[i];
+                    let right = right_buffer[i];
                     output_data[i] = (left + right) * 0.5;
                 }
             }
