@@ -287,20 +287,23 @@ fn get_library_path(bundle_path: &Path) -> PluginResult<std::path::PathBuf> {
 unsafe fn convert_clap_descriptor(
     clap_desc: *const clap_plugin_descriptor,
 ) -> PluginResult<PluginDescriptor> {
-    let desc = &*clap_desc;
+    // SAFETY: All unsafe operations are wrapped in unsafe blocks as required by Rust 2024
+    let desc = unsafe { &*clap_desc };
 
-    let id = c_str_to_string(desc.id)
+    let id = unsafe { c_str_to_string(desc.id) }
         .ok_or_else(|| PluginError::LoadFailed("Invalid plugin ID".to_string()))?;
 
-    let name = c_str_to_string(desc.name)
+    let name = unsafe { c_str_to_string(desc.name) }
         .ok_or_else(|| PluginError::LoadFailed("Invalid plugin name".to_string()))?;
 
-    let vendor = c_str_to_string(desc.vendor).unwrap_or_else(|| "Unknown".to_string());
-    let version = c_str_to_string(desc.version).unwrap_or_else(|| "1.0.0".to_string());
-    let description = c_str_to_string(desc.description).unwrap_or_else(|| "".to_string());
+    let vendor = unsafe { c_str_to_string(desc.vendor) }.unwrap_or_else(|| "Unknown".to_string());
+    let version =
+        unsafe { c_str_to_string(desc.version) }.unwrap_or_else(|| "1.0.0".to_string());
+    let description =
+        unsafe { c_str_to_string(desc.description) }.unwrap_or_else(|| "".to_string());
 
     // Parse features to determine category
-    let features = read_string_array(desc.features);
+    let features = unsafe { read_string_array(desc.features) };
     let category = infer_category_from_features(&features);
 
     let mut descriptor = PluginDescriptor::new(&id, &name)
@@ -405,12 +408,15 @@ impl PluginFactory for ClapPluginFactory {
 
         println!("✅ Created CLAP plugin instance: {}", self.descriptor.name);
 
-        Ok(Box::new(ClapPluginInstance::new(
-            self.descriptor.clone(),
-            plugin_ptr,
-            host,
-            self.library.clone(),
-        )))
+        // SAFETY: plugin_ptr is a valid pointer obtained from the CLAP plugin factory
+        Ok(Box::new(unsafe {
+            ClapPluginInstance::new(
+                self.descriptor.clone(),
+                plugin_ptr,
+                host,
+                self.library.clone(),
+            )
+        }))
     }
 
     fn supports_feature(&self, feature: &str) -> bool {
@@ -448,7 +454,10 @@ unsafe impl Sync for ClapPluginInstance {}
 
 impl ClapPluginInstance {
     /// Create a new CLAP plugin instance (real)
-    pub fn new(
+    ///
+    /// # Safety
+    /// plugin_ptr must be a valid CLAP plugin pointer obtained from the plugin factory
+    pub unsafe fn new(
         descriptor: PluginDescriptor,
         plugin_ptr: *mut clap_plugin,
         host: clap_host,
@@ -465,7 +474,8 @@ impl ClapPluginInstance {
         }
 
         // Try to create GUI (optional, may fail if plugin doesn't support it)
-        let gui = ClapPluginGui::new(plugin_ptr);
+        // SAFETY: plugin_ptr is a valid CLAP plugin pointer from the plugin factory (see function safety doc)
+        let gui = unsafe { ClapPluginGui::new(plugin_ptr) };
 
         // Create buffer pool (1 input, 2 output stereo, max 8192 samples)
         let buffer_pool = AudioBufferPool::new(1, 2, 8192);
@@ -612,10 +622,7 @@ impl Plugin for ClapPluginInstance {
         unsafe {
             let plugin = &*self.plugin_ptr;
 
-            // Prepare buffer pool (zero allocations - reuses pre-allocated buffers)
-            let (input_ptrs, output_ptrs) = self.buffer_pool.prepare(sample_frames);
-
-            // Copy input data into pool (if available)
+            // Copy input data into pool first (if available)
             if let Some((_, input_buffer)) = inputs.iter().next() {
                 let input_data = input_buffer.data();
                 let pool_input = self.buffer_pool.input_buffer_mut(0, sample_frames);
@@ -624,13 +631,20 @@ impl Plugin for ClapPluginInstance {
                 }
             }
 
-            let mut clap_input_buffer = clap_audio_buffer {
-                channel_count: if input_ptrs.is_empty() { 0 } else { 1 },
+            // Prepare buffer pool (zero allocations - reuses pre-allocated buffers)
+            let (input_ptrs, output_ptrs) = self.buffer_pool.prepare(sample_frames);
+
+            // Copy pointer slices to local vectors to allow further borrowing
+            let input_ptrs_vec: Vec<*mut f32> = input_ptrs.to_vec();
+            let output_ptrs_vec: Vec<*mut f32> = output_ptrs.to_vec();
+
+            let clap_input_buffer = clap_audio_buffer {
+                channel_count: if input_ptrs_vec.is_empty() { 0 } else { 1 },
                 latency: 0,
-                data32: if input_ptrs.is_empty() {
+                data32: if input_ptrs_vec.is_empty() {
                     ptr::null_mut()
                 } else {
-                    input_ptrs.as_ptr() as *mut *mut f32
+                    input_ptrs_vec.as_ptr() as *mut *mut f32
                 },
                 data64: ptr::null_mut(),
             };
@@ -638,7 +652,7 @@ impl Plugin for ClapPluginInstance {
             let mut clap_output_buffer = clap_audio_buffer {
                 channel_count: 2,
                 latency: 0,
-                data32: output_ptrs.as_mut_ptr(),
+                data32: output_ptrs_vec.as_ptr() as *mut *mut f32,
                 data64: ptr::null_mut(),
             };
 

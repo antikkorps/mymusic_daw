@@ -316,10 +316,10 @@ pub struct clap_param_info {
 /// CLAP window handle (platform-specific)
 #[repr(C)]
 pub union clap_window_handle {
-    pub cocoa: *mut c_void,      // NSView* on macOS
-    pub x11: u64,                  // Window on X11
-    pub win32: *mut c_void,        // HWND on Windows
-    pub wayland: *mut c_void,      // wl_surface* on Wayland
+    pub cocoa: *mut c_void,   // NSView* on macOS
+    pub x11: u64,             // Window on X11
+    pub win32: *mut c_void,   // HWND on Windows
+    pub wayland: *mut c_void, // wl_surface* on Wayland
 }
 
 /// CLAP window descriptor
@@ -333,11 +333,8 @@ pub struct clap_window {
 #[repr(C)]
 pub struct clap_plugin_gui {
     /// Check if plugin supports a window API
-    pub is_api_supported: extern "C" fn(
-        plugin: *const clap_plugin,
-        api: *const c_char,
-        is_floating: bool,
-    ) -> bool,
+    pub is_api_supported:
+        extern "C" fn(plugin: *const clap_plugin, api: *const c_char, is_floating: bool) -> bool,
 
     /// Get preferred API (optional, can be NULL)
     pub get_preferred_api: Option<
@@ -349,7 +346,8 @@ pub struct clap_plugin_gui {
     >,
 
     /// Create the GUI (must be called before set_parent)
-    pub create: extern "C" fn(plugin: *const clap_plugin, api: *const c_char, is_floating: bool) -> bool,
+    pub create:
+        extern "C" fn(plugin: *const clap_plugin, api: *const c_char, is_floating: bool) -> bool,
 
     /// Destroy the GUI
     pub destroy: extern "C" fn(plugin: *const clap_plugin),
@@ -358,26 +356,20 @@ pub struct clap_plugin_gui {
     pub set_scale: extern "C" fn(plugin: *const clap_plugin, scale: f64) -> bool,
 
     /// Get size of the GUI
-    pub get_size: extern "C" fn(plugin: *const clap_plugin, width: *mut u32, height: *mut u32) -> bool,
+    pub get_size:
+        extern "C" fn(plugin: *const clap_plugin, width: *mut u32, height: *mut u32) -> bool,
 
     /// Check if GUI can be resized
     pub can_resize: extern "C" fn(plugin: *const clap_plugin) -> bool,
 
     /// Get resize hints (optional)
     pub get_resize_hints: Option<
-        extern "C" fn(
-            plugin: *const clap_plugin,
-            hints: *mut clap_gui_resize_hints,
-        ) -> bool,
+        extern "C" fn(plugin: *const clap_plugin, hints: *mut clap_gui_resize_hints) -> bool,
     >,
 
     /// Adjust size to constraints
     pub adjust_size: Option<
-        extern "C" fn(
-            plugin: *const clap_plugin,
-            width: *mut u32,
-            height: *mut u32,
-        ) -> bool,
+        extern "C" fn(plugin: *const clap_plugin, width: *mut u32, height: *mut u32) -> bool,
     >,
 
     /// Set size
@@ -387,7 +379,8 @@ pub struct clap_plugin_gui {
     pub set_parent: extern "C" fn(plugin: *const clap_plugin, window: *const clap_window) -> bool,
 
     /// Set transient window (optional)
-    pub set_transient: Option<extern "C" fn(plugin: *const clap_plugin, window: *const clap_window) -> bool>,
+    pub set_transient:
+        Option<extern "C" fn(plugin: *const clap_plugin, window: *const clap_window) -> bool>,
 
     /// Suggest a window title
     pub suggest_title: Option<extern "C" fn(plugin: *const clap_plugin, title: *const c_char)>,
@@ -454,7 +447,8 @@ pub unsafe fn c_str_to_string(ptr: *const c_char) -> Option<String> {
         return None;
     }
 
-    let c_str = std::ffi::CStr::from_ptr(ptr);
+    // SAFETY: Caller must ensure ptr is a valid C string
+    let c_str = unsafe { std::ffi::CStr::from_ptr(ptr) };
     c_str.to_str().ok().map(|s| s.to_string())
 }
 
@@ -466,11 +460,14 @@ pub unsafe fn read_string_array(mut ptr: *const *const c_char) -> Vec<String> {
         return result;
     }
 
-    while !(*ptr).is_null() {
-        if let Some(s) = c_str_to_string(*ptr) {
-            result.push(s);
+    // SAFETY: Caller must ensure ptr is a valid NULL-terminated array of C strings
+    unsafe {
+        while !(*ptr).is_null() {
+            if let Some(s) = c_str_to_string(*ptr) {
+                result.push(s);
+            }
+            ptr = ptr.add(1);
         }
-        ptr = ptr.add(1);
     }
 
     result

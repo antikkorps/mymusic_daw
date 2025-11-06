@@ -166,7 +166,7 @@ impl AudioExporter {
             tempo,
             time_signature,
             total_samples,
-            progress_callback.as_deref_mut(),
+            progress_callback,
         )?;
 
         Ok(format!(
@@ -200,7 +200,7 @@ impl AudioExporter {
             tempo,
             time_signature,
             total_samples,
-            progress_callback.as_deref_mut(),
+            progress_callback,
         )
     }
 
@@ -266,54 +266,63 @@ impl AudioExporter {
                 self.process_midi_event(timed_event, &mut voice_manager);
             }
 
-            // Update metronome scheduler (if enabled)
-            if let (Some(ref mut scheduler), Some(ref mut metro)) =
-                (metronome_scheduler.as_mut(), metronome.as_mut())
-            {
-                scheduler.update_state(
-                    current_position,
-                    tempo.bpm(),
-                    time_signature.numerator() as f64,
-                    self.settings.sample_rate as f64,
-                );
-            }
-
             // Generate and write audio samples
             for i in 0..samples_to_render {
-                // Generate synth sample
-                let mut sample = voice_manager.next_sample();
+                // Generate synth sample (stereo)
+                let (mut left, mut right) = voice_manager.next_sample();
 
                 // Add metronome if enabled
                 if let (Some(ref mut scheduler), Some(ref mut metro)) =
                     (metronome_scheduler.as_mut(), metronome.as_mut())
                 {
-                    if scheduler.should_play_click() {
-                        let click_sample = metro.next_sample();
-                        sample += click_sample;
+                    // Check if a click should occur in this buffer
+                    let sample_position = current_position + i as u64;
+                    if let Some((offset, click_type)) = scheduler.check_for_click(
+                        sample_position,
+                        1,
+                        self.settings.sample_rate as f64,
+                        tempo,
+                        time_signature,
+                    ) {
+                        if offset == 0 {
+                            metro.trigger_click(click_type);
+                        }
                     }
+
+                    // Process metronome sample
+                    let click_sample = metro.process_sample();
+                    left += click_sample;
+                    right += click_sample;
                 }
 
-                // Apply DSP
-                sample = flush_denormals_to_zero(sample);
+                // Apply DSP to both channels
+                left = flush_denormals_to_zero(left);
+                right = flush_denormals_to_zero(right);
+
                 let volume = volume_smoother.process(0.5); // Fixed 50% volume for export
-                sample *= volume;
-                sample = soft_clip(sample);
+                left *= volume;
+                right *= volume;
 
-                // Convert to i16 and write (stereo)
-                let sample_i16 = (sample * i16::MAX as f32) as i16;
+                left = soft_clip(left);
+                right = soft_clip(right);
 
+                // Convert to i16 and write
                 if self.settings.channels == 2 {
-                    // Stereo: write same sample to both channels
+                    // Stereo: write both channels
+                    let left_i16 = (left * i16::MAX as f32) as i16;
+                    let right_i16 = (right * i16::MAX as f32) as i16;
                     writer
-                        .write_sample(sample_i16)
+                        .write_sample(left_i16)
                         .map_err(|e| format!("Failed to write sample: {}", e))?;
                     writer
-                        .write_sample(sample_i16)
+                        .write_sample(right_i16)
                         .map_err(|e| format!("Failed to write sample: {}", e))?;
                 } else {
-                    // Mono
+                    // Mono: mix down to mono
+                    let mono = (left + right) * 0.5;
+                    let mono_i16 = (mono * i16::MAX as f32) as i16;
                     writer
-                        .write_sample(sample_i16)
+                        .write_sample(mono_i16)
                         .map_err(|e| format!("Failed to write sample: {}", e))?;
                 }
 
@@ -321,7 +330,7 @@ impl AudioExporter {
                 samples_processed += 1;
 
                 // Update progress callback
-                if samples_processed % progress_update_interval == 0 {
+                if samples_processed.is_multiple_of(progress_update_interval) {
                     if let Some(ref mut callback) = progress_callback {
                         let progress = current_position as f32 / total_samples as f32;
                         callback(progress);
