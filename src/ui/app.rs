@@ -1064,9 +1064,7 @@ impl DawApp {
             let pattern = self.active_pattern.clone();
 
             // Progress callback
-            let mut progress = 0.0f32;
             let progress_callback = Box::new(move |p: f32| {
-                progress = p;
                 println!("Export progress: {:.1}%", p * 100.0);
             });
 
@@ -1571,10 +1569,8 @@ impl eframe::App for DawApp {
                         if self.export_in_progress {
                             ui.add_enabled(false, egui::Button::new("🎵 Exporting..."));
                             ui.add(egui::ProgressBar::new(self.export_progress).show_percentage());
-                        } else {
-                            if ui.button("🎵 Export Audio").clicked() {
-                                self.export_audio();
-                            }
+                        } else if ui.button("🎵 Export Audio").clicked() {
+                            self.export_audio();
                         }
                     });
 
