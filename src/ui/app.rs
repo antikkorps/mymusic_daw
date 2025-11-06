@@ -57,6 +57,7 @@ enum UiTab {
     Modulation,
     Sampler,
     Sequencer,
+    Plugins,
     Play,
     Performance,
 }
@@ -144,6 +145,20 @@ pub struct DawApp {
     project_manager: ProjectManager,
     current_project_path: Option<PathBuf>,
     project_has_unsaved_changes: bool,
+
+    // Audio export state
+    export_format: crate::audio::export::ExportFormat,
+    export_sample_rate: u32,
+    export_bit_depth: u16,
+    export_duration_seconds: Option<f64>,
+    export_include_metronome: bool,
+    export_in_progress: bool,
+    export_progress: f32,
+
+    // Plugin management
+    plugin_scanner: crate::plugin::PluginScanner,
+    scanned_plugins: Vec<crate::plugin::PluginDescriptor>,
+    scan_in_progress: bool,
 }
 
 impl DawApp {
@@ -275,6 +290,25 @@ impl DawApp {
             project_manager: ProjectManager::new(48000.0),
             current_project_path: None,
             project_has_unsaved_changes: false,
+
+            // Initialize audio export state
+            export_format: crate::audio::export::ExportFormat::Wav,
+            export_sample_rate: 44100,
+            export_bit_depth: 16,
+            export_duration_seconds: None, // Auto-detect from pattern
+            export_include_metronome: false,
+            export_in_progress: false,
+            export_progress: 0.0,
+
+            // Initialize plugin management
+            plugin_scanner: crate::plugin::PluginScanner::new(
+                dirs::cache_dir()
+                    .unwrap_or_default()
+                    .join("mymusic_daw")
+                    .join("plugin_cache.json"),
+            ),
+            scanned_plugins: Vec::new(),
+            scan_in_progress: false,
         }
     }
 
@@ -975,6 +1009,127 @@ impl DawApp {
         }
     }
 
+    /// Export audio to WAV or FLAC file
+    fn export_audio(&mut self) {
+        // Open file dialog for export
+        let default_filename = if let Some(path) = &self.current_project_path {
+            format!(
+                "{}.wav",
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("export")
+            )
+        } else {
+            "export.wav".to_string()
+        };
+
+        if let Some(path) = FileDialog::new()
+            .add_filter("WAV Audio", &["wav"])
+            .add_filter("FLAC Audio", &["flac"])
+            .set_file_name(&default_filename)
+            .save_file()
+        {
+            // Determine format from extension
+            let format = if path.extension().and_then(|s| s.to_str()) == Some("flac") {
+                crate::audio::export::ExportFormat::Flac
+            } else {
+                crate::audio::export::ExportFormat::Wav
+            };
+
+            // Create export settings
+            let settings = crate::audio::export::ExportSettings {
+                output_path: path.to_str().unwrap_or("export.wav").to_string(),
+                format,
+                sample_rate: self.export_sample_rate,
+                bit_depth: self.export_bit_depth,
+                channels: 2, // Stereo
+                include_metronome: self.export_include_metronome,
+            };
+
+            // Create exporter
+            let exporter = crate::audio::export::AudioExporter::new(settings);
+
+            // Get current tempo and time signature
+            let tempo = Tempo::new(self.sequencer_tempo);
+            let time_signature = TimeSignature::new(
+                self.time_signature_numerator,
+                self.time_signature_denominator,
+            );
+
+            // Export (blocking for now - TODO: move to thread)
+            self.export_in_progress = true;
+            self.export_progress = 0.0;
+
+            // Clone pattern for export
+            let pattern = self.active_pattern.clone();
+
+            // Progress callback
+            let mut progress = 0.0f32;
+            let progress_callback = Box::new(move |p: f32| {
+                progress = p;
+                println!("Export progress: {:.1}%", p * 100.0);
+            });
+
+            match exporter.export(
+                &pattern,
+                &tempo,
+                &time_signature,
+                self.export_duration_seconds,
+                Some(progress_callback),
+            ) {
+                Ok(message) => {
+                    println!("✅ {}", message);
+                    self.export_in_progress = false;
+                    self.export_progress = 1.0;
+                    // TODO: Show success notification
+                }
+                Err(e) => {
+                    eprintln!("❌ Export failed: {}", e);
+                    self.export_in_progress = false;
+                    self.export_progress = 0.0;
+                    self.show_error(format!("Export failed: {}", e));
+                }
+            }
+        }
+    }
+
+    /// Scan for CLAP plugins in default system locations
+    fn scan_plugins(&mut self) {
+        if self.scan_in_progress {
+            return; // Already scanning
+        }
+
+        self.scan_in_progress = true;
+        self.scanned_plugins.clear();
+
+        // Get default search paths for CLAP plugins
+        let search_paths = crate::plugin::scanner::get_default_search_paths();
+
+        println!("🔍 Scanning for CLAP plugins...");
+        for path in &search_paths {
+            if path.exists() {
+                println!("  Scanning: {}", path.display());
+                match self.plugin_scanner.scan_directory(path) {
+                    Ok(descriptors) => {
+                        println!("  ✅ Found {} plugin(s)", descriptors.len());
+                        self.scanned_plugins.extend(descriptors);
+                    }
+                    Err(e) => {
+                        eprintln!("  ❌ Error scanning {}: {}", path.display(), e);
+                    }
+                }
+            } else {
+                println!("  ⏭️  Skipping (not found): {}", path.display());
+            }
+        }
+
+        println!(
+            "✅ Scan complete: {} total plugin(s) found",
+            self.scanned_plugins.len()
+        );
+        self.scan_in_progress = false;
+    }
+
     /// Load project from specific path
     fn load_project_from_path(&mut self, path: &PathBuf) -> Result<(), ProjectError> {
         let options = ProjectLoadOptions {
@@ -1250,6 +1405,7 @@ impl eframe::App for DawApp {
                 button(ui, "Modulation", UiTab::Modulation, &mut self.active_tab);
                 button(ui, "Sampler", UiTab::Sampler, &mut self.active_tab);
                 button(ui, "Sequencer", UiTab::Sequencer, &mut self.active_tab);
+                button(ui, "Plugins", UiTab::Plugins, &mut self.active_tab);
                 button(ui, "Play", UiTab::Play, &mut self.active_tab);
                 button(ui, "Performance", UiTab::Performance, &mut self.active_tab);
             });
@@ -1354,6 +1510,76 @@ impl eframe::App for DawApp {
                         ui.label("Active Notes:");
                         ui.label(format!("{}", self.active_notes.len()));
                     });
+
+                    ui.add_space(20.0);
+                    ui.separator();
+                    ui.add_space(10.0);
+
+                    // Audio Export section
+                    ui.heading("Audio Export");
+
+                    ui.horizontal(|ui| {
+                        ui.label("Format:");
+                        egui::ComboBox::from_id_salt("export_format")
+                            .selected_text(match self.export_format {
+                                crate::audio::export::ExportFormat::Wav => "WAV",
+                                crate::audio::export::ExportFormat::Flac => "FLAC",
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.export_format,
+                                    crate::audio::export::ExportFormat::Wav,
+                                    "WAV (Uncompressed)"
+                                );
+                                ui.selectable_value(
+                                    &mut self.export_format,
+                                    crate::audio::export::ExportFormat::Flac,
+                                    "FLAC (Lossless)"
+                                );
+                            });
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Sample Rate:");
+                        egui::ComboBox::from_id_salt("export_sample_rate")
+                            .selected_text(format!("{} Hz", self.export_sample_rate))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.export_sample_rate, 44100, "44100 Hz (CD Quality)");
+                                ui.selectable_value(&mut self.export_sample_rate, 48000, "48000 Hz (Professional)");
+                                ui.selectable_value(&mut self.export_sample_rate, 96000, "96000 Hz (High Res)");
+                            });
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Bit Depth:");
+                        egui::ComboBox::from_id_salt("export_bit_depth")
+                            .selected_text(format!("{} bit", self.export_bit_depth))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut self.export_bit_depth, 16, "16 bit (CD Quality)");
+                                ui.selectable_value(&mut self.export_bit_depth, 24, "24 bit (Professional)");
+                            });
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut self.export_include_metronome, "Include Metronome");
+                    });
+
+                    ui.add_space(10.0);
+
+                    // Export button
+                    ui.horizontal(|ui| {
+                        if self.export_in_progress {
+                            ui.add_enabled(false, egui::Button::new("🎵 Exporting..."));
+                            ui.add(egui::ProgressBar::new(self.export_progress).show_percentage());
+                        } else {
+                            if ui.button("🎵 Export Audio").clicked() {
+                                self.export_audio();
+                            }
+                        }
+                    });
+
+                    ui.add_space(5.0);
+                    ui.label("💡 Tip: Export renders the current pattern to an audio file.");
                 }
                 UiTab::Devices => {
                     // Devices tab
@@ -2622,6 +2848,115 @@ impl eframe::App for DawApp {
                     });
 
                     ui.label("Cutoff can be modulated via the Modulation Matrix (Envelope → FilterCutoff).");
+                }
+                UiTab::Plugins => {
+                    // Plugins tab - CLAP plugin management
+                    ui.heading("CLAP Plugins");
+
+                    ui.horizontal(|ui| {
+                        ui.label("Plugin Manager:");
+
+                        if self.scan_in_progress {
+                            ui.spinner();
+                            ui.label("Scanning...");
+                        } else {
+                            if ui.button("🔍 Scan for Plugins").clicked() {
+                                self.scan_plugins();
+                            }
+
+                            if ui.button("🔄 Rescan").clicked() {
+                                self.scanned_plugins.clear();
+                                self.scan_plugins();
+                            }
+                        }
+                    });
+
+                    ui.add_space(10.0);
+                    ui.separator();
+
+                    // Display scanned plugins
+                    ui.heading(format!("Found {} Plugin(s)", self.scanned_plugins.len()));
+
+                    ui.add_space(5.0);
+
+                    if self.scanned_plugins.is_empty() {
+                        ui.label("No plugins found. Click 'Scan for Plugins' to search for CLAP plugins.");
+                        ui.add_space(10.0);
+                        ui.label("💡 Default search paths:");
+
+                        #[cfg(target_os = "macos")]
+                        {
+                            ui.label("  • /Library/Audio/Plug-Ins/CLAP");
+                            ui.label("  • ~/Library/Audio/Plug-Ins/CLAP");
+                        }
+
+                        #[cfg(target_os = "linux")]
+                        {
+                            ui.label("  • ~/.clap");
+                            ui.label("  • /usr/lib/clap");
+                        }
+
+                        #[cfg(target_os = "windows")]
+                        {
+                            ui.label("  • C:\\Program Files\\Common Files\\CLAP");
+                        }
+                    } else {
+                        egui::ScrollArea::vertical()
+                            .max_height(400.0)
+                            .show(ui, |ui| {
+                                for (idx, plugin) in self.scanned_plugins.iter().enumerate() {
+                                    ui.group(|ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.heading(&plugin.name);
+                                            ui.label(format!("v{}", plugin.version));
+                                        });
+
+                                        ui.label(format!("Vendor: {}", plugin.vendor));
+                                        ui.label(format!("ID: {}", plugin.id));
+
+                                        if !plugin.description.is_empty() {
+                                            ui.label(format!("Description: {}", plugin.description));
+                                        }
+
+                                        ui.horizontal(|ui| {
+                                            ui.label("Category:");
+                                            ui.label(format!("{:?}", plugin.category));
+                                        });
+
+                                        ui.horizontal(|ui| {
+                                            ui.label("Features:");
+                                            if plugin.supports_gui {
+                                                ui.colored_label(egui::Color32::GREEN, "GUI");
+                                            }
+                                            if plugin.supports_state {
+                                                ui.colored_label(egui::Color32::BLUE, "State");
+                                            }
+                                            if !plugin.parameters.is_empty() {
+                                                ui.colored_label(
+                                                    egui::Color32::YELLOW,
+                                                    format!("{} Params", plugin.parameters.len())
+                                                );
+                                            }
+                                        });
+
+                                        ui.horizontal(|ui| {
+                                            if ui.button("Load Plugin").clicked() {
+                                                // TODO: Implement plugin loading
+                                                ui.label("Loading not yet implemented");
+                                            }
+                                        });
+                                    });
+
+                                    if idx < self.scanned_plugins.len() - 1 {
+                                        ui.add_space(5.0);
+                                    }
+                                }
+                            });
+                    }
+
+                    ui.add_space(10.0);
+                    ui.separator();
+                    ui.label("ℹ️ CLAP plugin support: Load, process audio, MIDI, parameters, GUI embedding");
                 }
                 UiTab::Play => {
                     // Play tab: virtual keyboard
