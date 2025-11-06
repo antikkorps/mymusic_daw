@@ -7,12 +7,91 @@ use crate::plugin::clap_ffi::*;
 use crate::plugin::parameters::*;
 use crate::plugin::trait_def::*;
 use crate::plugin::{PluginError, PluginResult};
+use crate::midi::event::MidiEvent;
 use libloading::{Library, Symbol};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::path::Path;
 use std::ptr;
 use std::sync::Arc;
+
+/// Event list for CLAP input events
+struct ClapEventList {
+    events: Vec<clap_event_note>,
+}
+
+impl ClapEventList {
+    fn new() -> Self {
+        Self { events: Vec::new() }
+    }
+
+    fn add_note_on(&mut self, note: u8, velocity: u8, sample_offset: u32) {
+        let event = clap_event_note {
+            header: clap_event_header {
+                size: std::mem::size_of::<clap_event_note>() as u32,
+                time: sample_offset,
+                space_id: CLAP_CORE_EVENT_SPACE_ID,
+                type_: CLAP_EVENT_NOTE_ON,
+                flags: 0,
+            },
+            note_id: -1, // -1 means no specific note ID
+            port_index: 0,
+            channel: 0,
+            key: note as i16,
+            velocity: velocity as f64 / 127.0, // Normalize to 0.0-1.0
+        };
+        self.events.push(event);
+    }
+
+    fn add_note_off(&mut self, note: u8, sample_offset: u32) {
+        let event = clap_event_note {
+            header: clap_event_header {
+                size: std::mem::size_of::<clap_event_note>() as u32,
+                time: sample_offset,
+                space_id: CLAP_CORE_EVENT_SPACE_ID,
+                type_: CLAP_EVENT_NOTE_OFF,
+                flags: 0,
+            },
+            note_id: -1,
+            port_index: 0,
+            channel: 0,
+            key: note as i16,
+            velocity: 0.0,
+        };
+        self.events.push(event);
+    }
+
+    fn as_clap_input_events(&self) -> clap_input_events {
+        clap_input_events {
+            ctx: self as *const Self as *mut std::ffi::c_void,
+            size: event_list_size,
+            get: event_list_get,
+        }
+    }
+}
+
+/// Callback: Get event list size
+extern "C" fn event_list_size(list: *const clap_input_events) -> u32 {
+    unsafe {
+        let event_list = &*((*list).ctx as *const ClapEventList);
+        event_list.events.len() as u32
+    }
+}
+
+/// Callback: Get event from list
+extern "C" fn event_list_get(
+    list: *const clap_input_events,
+    index: u32,
+) -> *const clap_event_header {
+    unsafe {
+        let event_list = &*((*list).ctx as *const ClapEventList);
+        if (index as usize) < event_list.events.len() {
+            &event_list.events[index as usize].header as *const clap_event_header
+        } else {
+            ptr::null()
+        }
+    }
+}
 
 // Include simplified tests from separate file
 include!("simple_tests.rs");
@@ -322,6 +401,7 @@ pub struct ClapPluginInstance {
     #[allow(dead_code)]
     library: Arc<Library>, // Keep library alive
     sample_rate: f64,
+    pending_midi_events: Vec<(MidiEvent, u32)>, // (event, sample_offset)
 }
 
 // Safety: plugin_ptr is only accessed from audio thread or with proper synchronization
@@ -351,7 +431,18 @@ impl ClapPluginInstance {
             host,
             library,
             sample_rate: 44100.0, // Default, will be set in initialize()
+            pending_midi_events: Vec::new(),
         }
+    }
+
+    /// Send MIDI event to plugin (will be processed in next process() call)
+    pub fn send_midi_event(&mut self, event: MidiEvent, sample_offset: u32) {
+        self.pending_midi_events.push((event, sample_offset));
+    }
+
+    /// Clear all pending MIDI events
+    pub fn clear_midi_events(&mut self) {
+        self.pending_midi_events.clear();
     }
 }
 
@@ -502,12 +593,24 @@ impl Plugin for ClapPluginInstance {
                 data64: ptr::null_mut(),
             };
 
-            // Create empty event lists (no MIDI events for now)
-            let empty_input_events = clap_input_events {
-                ctx: ptr::null_mut(),
-                size: clap_input_events_size,
-                get: clap_input_events_get,
-            };
+            // Convert pending MIDI events to CLAP events
+            let mut event_list = ClapEventList::new();
+
+            for (midi_event, sample_offset) in &self.pending_midi_events {
+                match midi_event {
+                    MidiEvent::NoteOn { note, velocity } => {
+                        event_list.add_note_on(*note, *velocity, *sample_offset);
+                    }
+                    MidiEvent::NoteOff { note } => {
+                        event_list.add_note_off(*note, *sample_offset);
+                    }
+                    _ => {
+                        // Ignore other MIDI events for now
+                    }
+                }
+            }
+
+            let input_events = event_list.as_clap_input_events();
 
             let empty_output_events = clap_output_events {
                 ctx: ptr::null_mut(),
@@ -523,7 +626,7 @@ impl Plugin for ClapPluginInstance {
                 audio_inputs_count: if input_channel_ptrs.is_empty() { 0 } else { 1 },
                 audio_outputs: &mut clap_output_buffer,
                 audio_outputs_count: 1,
-                in_events: &empty_input_events,
+                in_events: &input_events,
                 out_events: &empty_output_events,
             };
 
@@ -559,6 +662,9 @@ impl Plugin for ClapPluginInstance {
                 }
             }
         }
+
+        // Clear processed MIDI events
+        self.pending_midi_events.clear();
 
         Ok(())
     }
@@ -648,18 +754,7 @@ impl Plugin for ClapPluginInstance {
     }
 }
 
-/// Empty event list callbacks (no events)
-extern "C" fn clap_input_events_size(_list: *const clap_input_events) -> u32 {
-    0
-}
-
-extern "C" fn clap_input_events_get(
-    _list: *const clap_input_events,
-    _index: u32,
-) -> *const clap_event_header {
-    ptr::null()
-}
-
+/// Empty output event list callback (we don't accept output events for now)
 extern "C" fn clap_output_events_try_push(
     _list: *const clap_output_events,
     _event: *const clap_event_header,

@@ -161,12 +161,52 @@ pub struct clap_audio_buffer {
 
 /// CLAP event header
 #[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct clap_event_header {
     pub size: u32,
     pub time: u32,
     pub space_id: u16,
     pub type_: u16,
     pub flags: u32,
+}
+
+/// CLAP event types
+pub const CLAP_EVENT_NOTE_ON: u16 = 0;
+pub const CLAP_EVENT_NOTE_OFF: u16 = 1;
+pub const CLAP_EVENT_NOTE_CHOKE: u16 = 2;
+pub const CLAP_EVENT_NOTE_END: u16 = 3;
+pub const CLAP_EVENT_NOTE_EXPRESSION: u16 = 4;
+pub const CLAP_EVENT_PARAM_VALUE: u16 = 5;
+pub const CLAP_EVENT_PARAM_MOD: u16 = 6;
+pub const CLAP_EVENT_PARAM_GESTURE_BEGIN: u16 = 7;
+pub const CLAP_EVENT_PARAM_GESTURE_END: u16 = 8;
+pub const CLAP_EVENT_TRANSPORT: u16 = 9;
+pub const CLAP_EVENT_MIDI: u16 = 10;
+pub const CLAP_EVENT_MIDI_SYSEX: u16 = 11;
+pub const CLAP_EVENT_MIDI2: u16 = 12;
+
+/// CLAP core event space
+pub const CLAP_CORE_EVENT_SPACE_ID: u16 = 0;
+
+/// CLAP note event
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct clap_event_note {
+    pub header: clap_event_header,
+    pub note_id: i32,
+    pub port_index: i16,
+    pub channel: i16,
+    pub key: i16,
+    pub velocity: f64,
+}
+
+/// CLAP MIDI event (raw MIDI bytes)
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct clap_event_midi {
+    pub header: clap_event_header,
+    pub port_index: u16,
+    pub data: [u8; 3],
 }
 
 /// CLAP input events
