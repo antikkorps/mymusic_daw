@@ -15,9 +15,15 @@ use std::path::Path;
 use std::ptr;
 use std::sync::Arc;
 
+/// CLAP event wrapper (union-like)
+enum ClapEvent {
+    Note(clap_event_note),
+    ParamValue(clap_event_param_value),
+}
+
 /// Event list for CLAP input events
 struct ClapEventList {
-    events: Vec<clap_event_note>,
+    events: Vec<ClapEvent>,
 }
 
 impl ClapEventList {
@@ -40,7 +46,7 @@ impl ClapEventList {
             key: note as i16,
             velocity: velocity as f64 / 127.0, // Normalize to 0.0-1.0
         };
-        self.events.push(event);
+        self.events.push(ClapEvent::Note(event));
     }
 
     fn add_note_off(&mut self, note: u8, sample_offset: u32) {
@@ -58,7 +64,27 @@ impl ClapEventList {
             key: note as i16,
             velocity: 0.0,
         };
-        self.events.push(event);
+        self.events.push(ClapEvent::Note(event));
+    }
+
+    fn add_param_value(&mut self, param_id: u32, value: f64, sample_offset: u32) {
+        let event = clap_event_param_value {
+            header: clap_event_header {
+                size: std::mem::size_of::<clap_event_param_value>() as u32,
+                time: sample_offset,
+                space_id: CLAP_CORE_EVENT_SPACE_ID,
+                type_: CLAP_EVENT_PARAM_VALUE,
+                flags: 0,
+            },
+            param_id,
+            cookie: ptr::null_mut(),
+            note_id: -1,
+            port_index: -1,
+            channel: -1,
+            key: -1,
+            value,
+        };
+        self.events.push(ClapEvent::ParamValue(event));
     }
 
     fn as_clap_input_events(&self) -> clap_input_events {
@@ -86,7 +112,14 @@ extern "C" fn event_list_get(
     unsafe {
         let event_list = &*((*list).ctx as *const ClapEventList);
         if (index as usize) < event_list.events.len() {
-            &event_list.events[index as usize].header as *const clap_event_header
+            match &event_list.events[index as usize] {
+                ClapEvent::Note(note_event) => {
+                    &note_event.header as *const clap_event_header
+                }
+                ClapEvent::ParamValue(param_event) => {
+                    &param_event.header as *const clap_event_header
+                }
+            }
         } else {
             ptr::null()
         }
@@ -395,6 +428,7 @@ impl PluginFactory for ClapPluginFactory {
 pub struct ClapPluginInstance {
     descriptor: PluginDescriptor,
     parameter_values: HashMap<String, f64>,
+    parameter_id_map: HashMap<String, u32>, // String ID -> CLAP param ID
     is_active: bool,
     plugin_ptr: *mut clap_plugin,
     host: clap_host,
@@ -402,6 +436,7 @@ pub struct ClapPluginInstance {
     library: Arc<Library>, // Keep library alive
     sample_rate: f64,
     pending_midi_events: Vec<(MidiEvent, u32)>, // (event, sample_offset)
+    pending_param_changes: Vec<(u32, f64)>, // (param_id, value)
 }
 
 // Safety: plugin_ptr is only accessed from audio thread or with proper synchronization
@@ -417,21 +452,26 @@ impl ClapPluginInstance {
         library: Arc<Library>,
     ) -> Self {
         let mut parameter_values = HashMap::new();
+        let mut parameter_id_map = HashMap::new();
 
         // Initialize parameter values with defaults
-        for param in &descriptor.parameters {
+        // Note: For CLAP plugins, we'll populate this from the plugin's params extension
+        for (idx, param) in descriptor.parameters.iter().enumerate() {
             parameter_values.insert(param.id.clone(), param.default_value);
+            parameter_id_map.insert(param.id.clone(), idx as u32);
         }
 
         Self {
             descriptor,
             parameter_values,
+            parameter_id_map,
             is_active: false,
             plugin_ptr,
             host,
             library,
             sample_rate: 44100.0, // Default, will be set in initialize()
             pending_midi_events: Vec::new(),
+            pending_param_changes: Vec::new(),
         }
     }
 
@@ -596,6 +636,7 @@ impl Plugin for ClapPluginInstance {
             // Convert pending MIDI events to CLAP events
             let mut event_list = ClapEventList::new();
 
+            // Add MIDI events
             for (midi_event, sample_offset) in &self.pending_midi_events {
                 match midi_event {
                     MidiEvent::NoteOn { note, velocity } => {
@@ -608,6 +649,11 @@ impl Plugin for ClapPluginInstance {
                         // Ignore other MIDI events for now
                     }
                 }
+            }
+
+            // Add parameter changes
+            for (param_id, value) in &self.pending_param_changes {
+                event_list.add_param_value(*param_id, *value, 0); // Sample offset 0 for immediate
             }
 
             let input_events = event_list.as_clap_input_events();
@@ -663,8 +709,9 @@ impl Plugin for ClapPluginInstance {
             }
         }
 
-        // Clear processed MIDI events
+        // Clear processed events
         self.pending_midi_events.clear();
+        self.pending_param_changes.clear();
 
         Ok(())
     }
@@ -677,7 +724,10 @@ impl Plugin for ClapPluginInstance {
             self.parameter_values
                 .insert(parameter_id.to_string(), clamped_value);
 
-            // TODO: Set parameter in actual CLAP plugin
+            // Queue parameter change for next process() call
+            if let Some(&clap_param_id) = self.parameter_id_map.get(parameter_id) {
+                self.pending_param_changes.push((clap_param_id, clamped_value));
+            }
 
             Ok(())
         } else {

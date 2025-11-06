@@ -209,6 +209,20 @@ pub struct clap_event_midi {
     pub data: [u8; 3],
 }
 
+/// CLAP parameter value event
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct clap_event_param_value {
+    pub header: clap_event_header,
+    pub param_id: u32,
+    pub cookie: *mut std::ffi::c_void,
+    pub note_id: i32,
+    pub port_index: i16,
+    pub channel: i16,
+    pub key: i16,
+    pub value: f64,
+}
+
 /// CLAP input events
 #[repr(C)]
 pub struct clap_input_events {
@@ -271,6 +285,64 @@ pub const CLAP_EXT_STATE: &[u8] = b"clap.state\0";
 
 /// CLAP factory ID
 pub const CLAP_PLUGIN_FACTORY_ID: &[u8] = b"clap.plugin-factory\0";
+
+/// CLAP parameter info
+#[repr(C)]
+pub struct clap_param_info {
+    pub id: u32,
+    pub flags: u32,
+    pub cookie: *mut std::ffi::c_void,
+    pub name: [u8; 256],
+    pub module: [u8; 1024],
+    pub min_value: f64,
+    pub max_value: f64,
+    pub default_value: f64,
+}
+
+/// CLAP plugin params extension
+#[repr(C)]
+pub struct clap_plugin_params {
+    /// Get parameter count
+    pub count: extern "C" fn(plugin: *const clap_plugin) -> u32,
+
+    /// Get parameter info by index
+    pub get_info: extern "C" fn(
+        plugin: *const clap_plugin,
+        index: u32,
+        info: *mut clap_param_info,
+    ) -> bool,
+
+    /// Get parameter value by ID
+    pub get_value: extern "C" fn(
+        plugin: *const clap_plugin,
+        param_id: u32,
+        value: *mut f64,
+    ) -> bool,
+
+    /// Convert value to text
+    pub value_to_text: extern "C" fn(
+        plugin: *const clap_plugin,
+        param_id: u32,
+        value: f64,
+        display: *mut u8,
+        size: u32,
+    ) -> bool,
+
+    /// Convert text to value
+    pub text_to_value: extern "C" fn(
+        plugin: *const clap_plugin,
+        param_id: u32,
+        display: *const u8,
+        value: *mut f64,
+    ) -> bool,
+
+    /// Flush parameter changes (main thread)
+    pub flush: extern "C" fn(
+        plugin: *const clap_plugin,
+        in_events: *const clap_input_events,
+        out_events: *const clap_output_events,
+    ),
+}
 
 /// Helper function to convert C string to Rust String
 pub unsafe fn c_str_to_string(ptr: *const c_char) -> Option<String> {
