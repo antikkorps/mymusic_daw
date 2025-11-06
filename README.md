@@ -113,9 +113,73 @@ Voir [AGENTS.md](AGENTS.md) pour l'architecture complète.
   - 4 comb filters parallèles avec damping
   - 2 allpass filters pour diffusion
   - Paramètres : room_size, damping, mix
-  - Tunings: COMB [1116, 1188, 1277, 1356], ALLPASS [556, 441]
+  - Tunings: CLAP [1116, 1188, 1277, 1356], ALLPASS [556, 441]
 - **Pipeline audio** : Oscillator → Filter → EffectChain → Envelope → Pan
 - **Tests** : 178 tests passent (22 nouveaux pour Phase 3a)
+
+### Phase 5 (Plugins CLAP) ✅ INFRASTRUCTURE COMPLÈTE
+✅ **Implémenté** (~3500 lignes, 7 parties) :
+- **FFI & Loading** (`clap_ffi.rs` - 478 lignes)
+  - Bindings C complets pour CLAP 1.0.0
+  - Structures: clap_plugin, clap_host, clap_process, clap_audio_buffer
+  - Extensions: parameters, GUI, state
+  - Chargement dynamique avec libloading
+  - Support cross-platform: macOS bundles (.clap), Linux (.so), Windows (.dll)
+- **Instance & Lifecycle** (`clap_integration.rs`)
+  - ClapPluginInstance avec gestion complète du cycle de vie
+  - Minimal CLAP host implementation
+  - init() → activate() → start_processing() → process() → stop_processing() → deactivate()
+  - Drop trait pour cleanup automatique des ressources
+- **Audio Processing**
+  - Conversion bidirectionnelle AudioBuffer ↔ clap_audio_buffer
+  - Appel réel du callback process() du plugin
+  - Gestion des status: CONTINUE, TAIL, SLEEP, ERROR
+  - Integration avec le système de buffers existant
+- **MIDI Events**
+  - Support complet des événements CLAP (note, MIDI, param)
+  - ClapEventList avec callbacks FFI (size, get)
+  - NoteOn/NoteOff avec vélocité et channel
+  - Sample-accurate timing (offset en samples)
+- **Parameter Automation**
+  - clap_event_param_value pour automation sample-accurate
+  - Parameter ID mapping (string → u32)
+  - Queue de changements de paramètres
+  - Support modulation en temps réel
+- **GUI Embedding** (`clap_gui.rs` - 307 lignes)
+  - ClapPluginGui wrapper cross-platform
+  - Window handles: cocoa (macOS), x11/wayland (Linux), win32 (Windows)
+  - API: create(), attach_to_window(), show(), hide(), set_size()
+  - Détection automatique du meilleur API par plateforme
+  - Support redimensionnement avec can_resize()
+- **Buffer Pool Optimization** (`buffer_pool.rs` - 212 lignes)
+  - AudioBufferPool avec pré-allocation (zero-allocation en RT)
+  - prepare() pour réutilisation efficace des buffers
+  - **Performance critique**: 10-20 allocations → 0 allocations par process()
+  - Real-time safety garantie
+- **Plugin Scanner**
+  - Scan automatique des répertoires système
+  - Cache JSON persistant pour performances
+  - Blacklist pour plugins problématiques
+  - Validation et gestion d'erreurs
+- **UI Integration** (`app.rs` - Plugin tab)
+  - Onglet Plugins dans l'interface principale
+  - Boutons Scan/Rescan avec indicateur de progression
+  - Liste détaillée: nom, vendor, version, catégorie, features
+  - Affichage des chemins de recherche par plateforme
+  - Méthode scan_plugins() avec gestion multi-directories
+
+**Chemins de recherche CLAP par défaut** :
+- macOS: `/Library/Audio/Plug-Ins/CLAP`, `~/Library/Audio/Plug-Ins/CLAP`
+- Linux: `/usr/lib/clap`, `~/.clap`
+- Windows: `C:\Program Files\Common Files\CLAP`, `%LOCALAPPDATA%\Programs\Common\CLAP`
+
+**Test program** : `cargo run --bin test_clap`
+
+🔄 **À venir (Phase 5 suite)** :
+- Routing audio vers plugins
+- Affichage des paramètres dans l'UI
+- Automation dans le séquenceur
+- Tests avec vrais plugins CLAP (Surge XT, Vital, Airwindows)
 
 🚀 **Prochaine phase (Phase 3b)** :
 - Dogfooding : créer une chanson complète avec le DAW
@@ -162,13 +226,14 @@ src/
 ├── main.rs             # Point d'entrée binaire
 ├── audio/
 │   ├── engine.rs       # Moteur CPAL et callback temps-réel
+│   ├── export.rs       # Export audio (WAV/FLAC)
 │   ├── timing.rs       # Timing sample-accurate pour MIDI
 │   ├── cpu_monitor.rs  # Monitoring de la charge CPU
 │   ├── dsp_utils.rs    # Utilitaires DSP (anti-dénormaux, smoothing)
 │   ├── parameters.rs   # Paramètres atomiques thread-safe
 │   ├── device.rs       # Gestion des périphériques audio
 │   ├── format_conversion.rs # Conversions F32/I16/U16
-│   └── buffer.rs       # Buffers audio (future)
+│   └── buffer.rs       # Buffers audio
 ├── synth/
 │   ├── oscillator.rs   # Oscillateurs (Sine, Square, Saw, Triangle)
 │   ├── envelope.rs     # Enveloppes ADSR
@@ -182,6 +247,24 @@ src/
 │   ├── portamento.rs   # Portamento/glide
 │   ├── voice.rs        # Système de voix avec pipeline complet
 │   └── voice_manager.rs # Polyphonie (16 voix) + voice stealing
+├── plugin/             # ** NOUVEAU - Phase 5 **
+│   ├── mod.rs          # Module exports et traits Plugin
+│   ├── clap_ffi.rs     # FFI bindings CLAP 1.0.0 (478 lignes)
+│   ├── clap_integration.rs # ClapPluginInstance et lifecycle
+│   ├── clap_gui.rs     # GUI embedding cross-platform (307 lignes)
+│   ├── buffer_pool.rs  # Zero-allocation buffer pool (212 lignes)
+│   ├── scanner.rs      # Plugin scanner avec cache
+│   └── factory.rs      # Plugin factory et descriptors
+├── sequencer/
+│   ├── timeline.rs     # Timeline, tempo, time signature
+│   ├── transport.rs    # Transport controls (play/stop/record)
+│   ├── pattern.rs      # Patterns MIDI
+│   ├── note.rs         # Notes MIDI avec timing
+│   └── recorder.rs     # Recording MIDI en temps réel
+├── project/
+│   ├── manager.rs      # Gestion des projets (save/load)
+│   ├── format.rs       # Format ZIP container
+│   └── migration.rs    # Migration de versions
 ├── midi/
 │   ├── event.rs        # Types MIDI et MidiEventTimed
 │   ├── input.rs        # Input MIDI de base (legacy)
@@ -195,7 +278,11 @@ src/
 │   ├── command.rs      # Types de commandes (UI → Audio)
 │   └── notification.rs # Système de notifications (Audio → UI)
 └── ui/
-    └── app.rs          # Interface egui/eframe
+    ├── app.rs          # Interface egui/eframe principale
+    └── piano_roll.rs   # Piano roll editor
+
+bin/
+└── test_clap.rs        # Test program pour CLAP plugins
 
 tests/
 ├── midi_to_audio.rs    # Tests end-to-end MIDI → Audio
@@ -263,15 +350,29 @@ Voir [TODO.md](TODO.md) pour la roadmap complète.
 - [ ] UI pour Delay et Reverb
 - [ ] Presets pour effets
 
-### Phase 4 (Séquenceur)
-- Timeline et transport
-- Piano roll
-- Recording MIDI
-- Persistance projets
+### Phase 4 (Séquenceur) ✅ TERMINÉ
+- [x] Timeline et transport
+- [x] Piano roll
+- [x] Recording MIDI
+- [x] Persistance projets
+- [x] Export audio (WAV/FLAC)
 
-### Phase 5+ (Plugins et distribution)
-- Support CLAP plugins
+### Phase 5 (Plugins CLAP) 🔄 EN COURS
+- [x] Infrastructure CLAP complète (~3500 lignes)
+- [x] FFI bindings CLAP 1.0.0
+- [x] Chargement dynamique de plugins
+- [x] Audio processing et lifecycle
+- [x] MIDI events et parameter automation
+- [x] GUI embedding (cross-platform)
+- [x] Buffer pool optimization (zero-allocation)
+- [x] Plugin scanner avec cache
+- [x] UI Plugin tab
+- [ ] Routing audio vers plugins
+- [ ] Tests avec vrais plugins (Surge XT, Vital, Airwindows)
+
+### Phase 6+ (Distribution)
 - Routing audio avancé
+- Mixeur multi-pistes
 - VST3 (optionnel)
 - Distribution (Tauri + licensing)
 

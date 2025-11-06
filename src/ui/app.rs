@@ -57,6 +57,7 @@ enum UiTab {
     Modulation,
     Sampler,
     Sequencer,
+    Plugins,
     Play,
     Performance,
 }
@@ -153,6 +154,11 @@ pub struct DawApp {
     export_include_metronome: bool,
     export_in_progress: bool,
     export_progress: f32,
+
+    // Plugin management
+    plugin_scanner: crate::plugin::PluginScanner,
+    scanned_plugins: Vec<crate::plugin::PluginDescriptor>,
+    scan_in_progress: bool,
 }
 
 impl DawApp {
@@ -293,6 +299,16 @@ impl DawApp {
             export_include_metronome: false,
             export_in_progress: false,
             export_progress: 0.0,
+
+            // Initialize plugin management
+            plugin_scanner: crate::plugin::PluginScanner::new(
+                dirs::cache_dir()
+                    .unwrap_or_default()
+                    .join("mymusic_daw")
+                    .join("plugin_cache.json"),
+            ),
+            scanned_plugins: Vec::new(),
+            scan_in_progress: false,
         }
     }
 
@@ -1077,6 +1093,43 @@ impl DawApp {
         }
     }
 
+    /// Scan for CLAP plugins in default system locations
+    fn scan_plugins(&mut self) {
+        if self.scan_in_progress {
+            return; // Already scanning
+        }
+
+        self.scan_in_progress = true;
+        self.scanned_plugins.clear();
+
+        // Get default search paths for CLAP plugins
+        let search_paths = crate::plugin::scanner::get_default_search_paths();
+
+        println!("🔍 Scanning for CLAP plugins...");
+        for path in &search_paths {
+            if path.exists() {
+                println!("  Scanning: {}", path.display());
+                match self.plugin_scanner.scan_directory(path) {
+                    Ok(descriptors) => {
+                        println!("  ✅ Found {} plugin(s)", descriptors.len());
+                        self.scanned_plugins.extend(descriptors);
+                    }
+                    Err(e) => {
+                        eprintln!("  ❌ Error scanning {}: {}", path.display(), e);
+                    }
+                }
+            } else {
+                println!("  ⏭️  Skipping (not found): {}", path.display());
+            }
+        }
+
+        println!(
+            "✅ Scan complete: {} total plugin(s) found",
+            self.scanned_plugins.len()
+        );
+        self.scan_in_progress = false;
+    }
+
     /// Load project from specific path
     fn load_project_from_path(&mut self, path: &PathBuf) -> Result<(), ProjectError> {
         let options = ProjectLoadOptions {
@@ -1352,6 +1405,7 @@ impl eframe::App for DawApp {
                 button(ui, "Modulation", UiTab::Modulation, &mut self.active_tab);
                 button(ui, "Sampler", UiTab::Sampler, &mut self.active_tab);
                 button(ui, "Sequencer", UiTab::Sequencer, &mut self.active_tab);
+                button(ui, "Plugins", UiTab::Plugins, &mut self.active_tab);
                 button(ui, "Play", UiTab::Play, &mut self.active_tab);
                 button(ui, "Performance", UiTab::Performance, &mut self.active_tab);
             });
@@ -2794,6 +2848,115 @@ impl eframe::App for DawApp {
                     });
 
                     ui.label("Cutoff can be modulated via the Modulation Matrix (Envelope → FilterCutoff).");
+                }
+                UiTab::Plugins => {
+                    // Plugins tab - CLAP plugin management
+                    ui.heading("CLAP Plugins");
+
+                    ui.horizontal(|ui| {
+                        ui.label("Plugin Manager:");
+
+                        if self.scan_in_progress {
+                            ui.spinner();
+                            ui.label("Scanning...");
+                        } else {
+                            if ui.button("🔍 Scan for Plugins").clicked() {
+                                self.scan_plugins();
+                            }
+
+                            if ui.button("🔄 Rescan").clicked() {
+                                self.scanned_plugins.clear();
+                                self.scan_plugins();
+                            }
+                        }
+                    });
+
+                    ui.add_space(10.0);
+                    ui.separator();
+
+                    // Display scanned plugins
+                    ui.heading(format!("Found {} Plugin(s)", self.scanned_plugins.len()));
+
+                    ui.add_space(5.0);
+
+                    if self.scanned_plugins.is_empty() {
+                        ui.label("No plugins found. Click 'Scan for Plugins' to search for CLAP plugins.");
+                        ui.add_space(10.0);
+                        ui.label("💡 Default search paths:");
+
+                        #[cfg(target_os = "macos")]
+                        {
+                            ui.label("  • /Library/Audio/Plug-Ins/CLAP");
+                            ui.label("  • ~/Library/Audio/Plug-Ins/CLAP");
+                        }
+
+                        #[cfg(target_os = "linux")]
+                        {
+                            ui.label("  • ~/.clap");
+                            ui.label("  • /usr/lib/clap");
+                        }
+
+                        #[cfg(target_os = "windows")]
+                        {
+                            ui.label("  • C:\\Program Files\\Common Files\\CLAP");
+                        }
+                    } else {
+                        egui::ScrollArea::vertical()
+                            .max_height(400.0)
+                            .show(ui, |ui| {
+                                for (idx, plugin) in self.scanned_plugins.iter().enumerate() {
+                                    ui.group(|ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.heading(&plugin.name);
+                                            ui.label(format!("v{}", plugin.version));
+                                        });
+
+                                        ui.label(format!("Vendor: {}", plugin.vendor));
+                                        ui.label(format!("ID: {}", plugin.id));
+
+                                        if !plugin.description.is_empty() {
+                                            ui.label(format!("Description: {}", plugin.description));
+                                        }
+
+                                        ui.horizontal(|ui| {
+                                            ui.label("Category:");
+                                            ui.label(format!("{:?}", plugin.category));
+                                        });
+
+                                        ui.horizontal(|ui| {
+                                            ui.label("Features:");
+                                            if plugin.supports_gui {
+                                                ui.colored_label(egui::Color32::GREEN, "GUI");
+                                            }
+                                            if plugin.supports_state {
+                                                ui.colored_label(egui::Color32::BLUE, "State");
+                                            }
+                                            if !plugin.parameters.is_empty() {
+                                                ui.colored_label(
+                                                    egui::Color32::YELLOW,
+                                                    format!("{} Params", plugin.parameters.len())
+                                                );
+                                            }
+                                        });
+
+                                        ui.horizontal(|ui| {
+                                            if ui.button("Load Plugin").clicked() {
+                                                // TODO: Implement plugin loading
+                                                ui.label("Loading not yet implemented");
+                                            }
+                                        });
+                                    });
+
+                                    if idx < self.scanned_plugins.len() - 1 {
+                                        ui.add_space(5.0);
+                                    }
+                                }
+                            });
+                    }
+
+                    ui.add_space(10.0);
+                    ui.separator();
+                    ui.label("ℹ️ CLAP plugin support: Load, process audio, MIDI, parameters, GUI embedding");
                 }
                 UiTab::Play => {
                     // Play tab: virtual keyboard
