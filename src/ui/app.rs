@@ -1009,7 +1009,7 @@ impl DawApp {
         }
     }
 
-    /// Export audio to WAV file
+    /// Export audio to WAV or FLAC file
     fn export_audio(&mut self) {
         // Open file dialog for export
         let default_filename = if let Some(path) = &self.current_project_path {
