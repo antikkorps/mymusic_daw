@@ -17,23 +17,22 @@
 // - Lock-free processing via owned data
 // - Deterministic execution order
 
-use crate::synth::effect::EffectChain;
 use super::parameters::AtomicF32;
+use crate::synth::effect::EffectChain;
 use crate::synth::voice_manager::VoiceManager;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::Arc;
 
 /// Audio node trait - Common interface for all audio processing nodes
 pub trait AudioNode: Send {
     /// Get unique node ID
     fn id(&self) -> NodeId;
-    
+
     /// Get node name for UI display
     fn name(&self) -> &str;
-    
+
     /// Get node type
     fn node_type(&self) -> NodeType;
-    
+
     /// Process audio through this node
     ///
     /// # Arguments
@@ -42,10 +41,10 @@ pub trait AudioNode: Send {
     /// # Returns
     /// Map of output buffer name to stereo output samples
     fn process(&mut self, inputs: &HashMap<String, (f32, f32)>) -> HashMap<String, (f32, f32)>;
-    
+
     /// Reset node internal state
     fn reset(&mut self);
-    
+
     /// Get node latency in samples
     fn latency_samples(&self) -> usize;
 }
@@ -138,8 +137,8 @@ pub struct NodeId(pub usize);
 /// Audio buffer names (stereo output from each node)
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BufferName {
-    Main,    // Primary output
-    Aux(usize), // Auxiliary sends (Aux0, Aux1, etc.)
+    Main,           // Primary output
+    Aux(usize),     // Auxiliary sends (Aux0, Aux1, etc.)
     Custom(String), // Custom buffer name
 }
 
@@ -165,11 +164,11 @@ pub struct Connection {
 
 impl PartialEq for Connection {
     fn eq(&self, other: &Self) -> bool {
-        self.from_node == other.from_node &&
-        self.from_buffer == other.from_buffer &&
-        self.to_node == other.to_node &&
-        self.to_input == other.to_input &&
-        (self.gain - other.gain).abs() < 0.001 // Approximate comparison for f32
+        self.from_node == other.from_node
+            && self.from_buffer == other.from_buffer
+            && self.to_node == other.to_node
+            && self.to_input == other.to_input
+            && (self.gain - other.gain).abs() < 0.001 // Approximate comparison for f32
     }
 }
 
@@ -180,9 +179,9 @@ impl Eq for Connection {}
 pub struct AuxBus {
     pub id: usize,
     pub name: String,
-    pub send_gain: AtomicF32,    // Send amount to this bus
-    pub return_gain: AtomicF32,  // Return amount from this bus
-    pub nodes: Vec<Connection>,  // All nodes connected to this bus
+    pub send_gain: AtomicF32,   // Send amount to this bus
+    pub return_gain: AtomicF32, // Return amount from this bus
+    pub nodes: Vec<Connection>, // All nodes connected to this bus
 }
 
 impl std::fmt::Debug for AuxBus {
@@ -281,7 +280,7 @@ impl AudioRoutingGraph {
         if let Some(order) = &self.processed_order {
             // Create input maps for each node
             let mut node_inputs: HashMap<NodeId, HashMap<String, (f32, f32)>> = HashMap::new();
-            
+
             // Initialize with silence for all inputs
             for node_id in self.nodes.keys() {
                 let mut inputs = HashMap::new();
@@ -291,37 +290,39 @@ impl AudioRoutingGraph {
 
             // Propagate signals through the graph
             let mut node_outputs: HashMap<NodeId, HashMap<String, (f32, f32)>> = HashMap::new();
-            
+
             for node_id in order {
                 if let Some(node) = self.nodes.get_mut(node_id) {
                     // Get inputs for this node
                     let inputs = node_inputs.get(node_id).unwrap_or(&HashMap::new()).clone();
-                    
+
                     // Process the node
                     let outputs = node.process(&inputs);
-                    
+
                     // Store outputs for connecting nodes
                     node_outputs.insert(*node_id, outputs);
-                    
+
                     // Propagate outputs to connected nodes
                     let connections = self.get_connections_from(*node_id);
                     for conn in connections {
                         // Add this node's output to the target's inputs
                         let target_inputs = node_inputs.get_mut(&conn.to_node).unwrap();
-                        let output_samples = node_outputs.get(node_id).unwrap()
+                        let output_samples = node_outputs
+                            .get(node_id)
+                            .unwrap()
                             .get(&conn.from_buffer.to_string())
                             .unwrap_or(&(0.0, 0.0));
-                        
+
                         // Apply gain and mix into target input
                         let (gain_left, gain_right) = {
                             let g = conn.gain.clamp(0.0, 1.0);
                             (g, g) // For now, same gain for L/R
                         };
-                        
+
                         let (current_left, current_right) = target_inputs
                             .entry(conn.to_input.clone())
                             .or_insert((0.0, 0.0));
-                        
+
                         *current_left += output_samples.0 * gain_left;
                         *current_right += output_samples.1 * gain_right;
                     }
@@ -348,13 +349,13 @@ impl AudioRoutingGraph {
     fn would_create_cycle(&self, new_connection: &Connection) -> bool {
         let mut visited = HashSet::new();
         let mut stack = HashSet::new();
-        
+
         // DFS from the target node to see if we can reach the source
         self.has_path_dfs(
             new_connection.to_node,
             new_connection.from_node,
             &mut visited,
-            &mut stack
+            &mut stack,
         )
     }
 
@@ -397,7 +398,7 @@ impl AudioRoutingGraph {
     /// Compute topological order using Kahn's algorithm
     fn compute_topological_order(&mut self) -> Result<(), String> {
         let mut in_degree: HashMap<NodeId, usize> = HashMap::new();
-        
+
         // Calculate in-degree for each node
         for node_id in self.nodes.keys() {
             in_degree.insert(*node_id, 0);
@@ -426,7 +427,7 @@ impl AudioRoutingGraph {
                 if connection.from_node == node_id {
                     let target_degree = in_degree.get_mut(&connection.to_node).unwrap();
                     *target_degree -= 1;
-                    
+
                     if *target_degree == 0 {
                         queue.push_back(connection.to_node);
                     }
@@ -445,10 +446,8 @@ impl AudioRoutingGraph {
     /// Get the output node ID (node with no outgoing connections)
     fn get_output_node_id(&self) -> Option<NodeId> {
         for node_id in self.nodes.keys() {
-            let has_outgoing = self.connections
-                .iter()
-                .any(|c| c.from_node == *node_id);
-            
+            let has_outgoing = self.connections.iter().any(|c| c.from_node == *node_id);
+
             if !has_outgoing {
                 return Some(*node_id);
             }
@@ -597,10 +596,10 @@ impl AudioNode for EffectNode {
     fn process(&mut self, inputs: &HashMap<String, (f32, f32)>) -> HashMap<String, (f32, f32)> {
         // Process main input through effect chain
         let (left_input, right_input) = inputs.get("main").unwrap_or(&(0.0, 0.0));
-        
+
         let left_output = self.effect_chain.process(*left_input);
         let right_output = self.effect_chain.process(*right_input);
-        
+
         let mut outputs = HashMap::new();
         outputs.insert("main".to_string(), (left_output, right_output));
         outputs
@@ -632,7 +631,8 @@ impl MixerNode {
     }
 
     pub fn add_input(&mut self, name: &str, left_gain: f32, right_gain: f32) {
-        self.inputs.insert(name.to_string(), (left_gain, right_gain));
+        self.inputs
+            .insert(name.to_string(), (left_gain, right_gain));
     }
 
     pub fn set_input_gain(&mut self, name: &str, left_gain: f32, right_gain: f32) {
@@ -658,14 +658,14 @@ impl AudioNode for MixerNode {
     fn process(&mut self, inputs: &HashMap<String, (f32, f32)>) -> HashMap<String, (f32, f32)> {
         // Mix all inputs
         let (mut left_mix, mut right_mix) = (0.0, 0.0);
-        
+
         for (input_name, (left_in, right_in)) in inputs {
             if let Some((left_gain, right_gain)) = self.inputs.get(input_name) {
                 left_mix += left_in * left_gain;
                 right_mix += right_in * right_gain;
             }
         }
-        
+
         let mut outputs = HashMap::new();
         outputs.insert("main".to_string(), (left_mix, right_mix));
         outputs
@@ -718,10 +718,10 @@ impl AudioNode for OutputNode {
         // Apply volume and pass through
         let (left_input, right_input) = inputs.get("main").unwrap_or(&(0.0, 0.0));
         let volume = self.volume.get();
-        
+
         let left_output = left_input * volume;
         let right_output = right_input * volume;
-        
+
         let mut outputs = HashMap::new();
         outputs.insert("main".to_string(), (left_output, right_output));
         outputs
@@ -739,8 +739,8 @@ impl AudioNode for OutputNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::synth::voice_manager::VoiceManager;
     use crate::synth::effect::EffectChain;
+    use crate::synth::voice_manager::VoiceManager;
 
     const SAMPLE_RATE: f32 = 44100.0;
 
@@ -756,8 +756,8 @@ mod tests {
         let mut graph = AudioRoutingGraph::new();
         let voice_manager = VoiceManager::new(SAMPLE_RATE);
         let node = InstrumentNode::new(NodeId(0), voice_manager);
-        let node_id = graph.add_node(Box::new(node));
-        
+        let node_id = graph.add_node(AudioNodeType::Instrument(node));
+
         assert_eq!(node_id, NodeId(1));
         assert_eq!(graph.nodes.len(), 1);
     }
@@ -765,14 +765,16 @@ mod tests {
     #[test]
     fn test_add_connection_creates_cycle() {
         let mut graph = AudioRoutingGraph::new();
-        let voice_manager = VoiceManager::new(SAMPLE_RATE);
-        let node1 = InstrumentNode::new(NodeId(0), voice_manager);
-        let node2 = InstrumentNode::new(NodeId(1), voice_manager);
-        let node3 = InstrumentNode::new(NodeId(2), voice_manager);
-        
-        graph.add_node(Box::new(node1));
-        graph.add_node(Box::new(node2));
-        graph.add_node(Box::new(node3));
+        let voice_manager1 = VoiceManager::new(SAMPLE_RATE);
+        let voice_manager2 = VoiceManager::new(SAMPLE_RATE);
+        let voice_manager3 = VoiceManager::new(SAMPLE_RATE);
+        let node1 = InstrumentNode::new(NodeId(0), voice_manager1);
+        let node2 = InstrumentNode::new(NodeId(1), voice_manager2);
+        let node3 = InstrumentNode::new(NodeId(2), voice_manager3);
+
+        graph.add_node(AudioNodeType::Instrument(node1));
+        graph.add_node(AudioNodeType::Instrument(node2));
+        graph.add_node(AudioNodeType::Instrument(node3));
 
         // Add connections: 0 -> 1, 1 -> 2
         let conn1 = Connection {
@@ -808,14 +810,14 @@ mod tests {
     #[test]
     fn test_audio_processing() {
         let mut graph = AudioRoutingGraph::new();
-        
+
         // Create nodes
         let voice_manager = VoiceManager::new(SAMPLE_RATE);
         let instrument = InstrumentNode::new(NodeId(1), voice_manager);
         let output = OutputNode::new(NodeId(2));
-        
-        graph.add_node(Box::new(instrument));
-        graph.add_node(Box::new(output));
+
+        graph.add_node(AudioNodeType::Instrument(instrument));
+        graph.add_node(AudioNodeType::Output(output));
 
         // Connect instrument -> output
         let conn = Connection {
@@ -829,7 +831,7 @@ mod tests {
 
         // Process the graph
         let (left, right) = graph.process();
-        
+
         // Should produce some output (may be silence if no MIDI events)
         assert!(left.is_finite());
         assert!(right.is_finite());
@@ -840,14 +842,14 @@ mod tests {
         let mut graph = AudioRoutingGraph::new();
         let voice_manager = VoiceManager::new(SAMPLE_RATE);
         let node = InstrumentNode::new(NodeId(0), voice_manager);
-        graph.add_node(Box::new(node));
-        
+        graph.add_node(AudioNodeType::Instrument(node));
+
         // Process some audio
         graph.process();
-        
+
         // Reset should work
         graph.reset();
-        
+
         // Should still be able to process after reset
         let (left, right) = graph.process();
         assert!(left.is_finite());
@@ -866,7 +868,7 @@ mod tests {
 
         let outputs = mixer.process(&inputs);
         let (left, right) = outputs.get("main").unwrap();
-        
+
         // 1.0 * 1.0 + 2.0 * 0.5 = 1.0 + 1.0 = 2.0
         assert_eq!(*left, 2.0);
         assert_eq!(*right, 2.0);
@@ -882,7 +884,7 @@ mod tests {
 
         let outputs = output.process(&inputs);
         let (left, right) = outputs.get("main").unwrap();
-        
+
         // 1.0 * 0.5 = 0.5
         assert_eq!(*left, 0.5);
         assert_eq!(*right, 0.5);

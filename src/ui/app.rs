@@ -15,6 +15,7 @@ use crate::messaging::notification::{Notification, NotificationCategory};
 use crate::midi::device::{MidiDeviceInfo, MidiDeviceManager};
 use crate::midi::event::{MidiEvent, MidiEventTimed};
 use crate::midi::manager::MidiConnectionManager;
+use crate::plugin::{InstanceInfo, PluginDescriptor, PluginHost, PluginScanner};
 use crate::project::{ProjectError, ProjectLoadOptions, ProjectManager};
 use crate::sampler::SampleBank;
 use crate::sampler::loader::{Sample, load_sample};
@@ -156,8 +157,10 @@ pub struct DawApp {
     export_progress: f32,
 
     // Plugin management
-    plugin_scanner: crate::plugin::PluginScanner,
-    scanned_plugins: Vec<crate::plugin::PluginDescriptor>,
+    plugin_host: PluginHost,
+    plugin_scanner: PluginScanner,
+    scanned_plugins: Vec<PluginDescriptor>,
+    loaded_plugins: Vec<InstanceInfo>,
     scan_in_progress: bool,
 }
 
@@ -301,14 +304,28 @@ impl DawApp {
             export_progress: 0.0,
 
             // Initialize plugin management
-            plugin_scanner: crate::plugin::PluginScanner::new(
+            plugin_host: PluginHost::new(),
+            plugin_scanner: PluginScanner::new(
                 dirs::cache_dir()
                     .unwrap_or_default()
                     .join("mymusic_daw")
                     .join("plugin_cache.json"),
             ),
             scanned_plugins: Vec::new(),
+            loaded_plugins: Vec::new(),
             scan_in_progress: false,
+        }
+    }
+
+    /// Load cached plugins on startup
+    pub fn load_cached_plugins(&mut self) {
+        // Get all cached plugins without scanning
+        let cached_plugins = self.plugin_scanner.get_all_plugins();
+
+        if !cached_plugins.is_empty() {
+            println!("📂 Loaded {} plugin(s) from cache", cached_plugins.len());
+            self.scanned_plugins
+                .extend(cached_plugins.iter().map(|&desc| desc.clone()));
         }
     }
 
@@ -361,6 +378,39 @@ impl DawApp {
         }
 
         self.last_cpu_load = current_load;
+    }
+
+    /// Load a plugin using the plugin host
+    fn load_plugin(&mut self, plugin_path: &std::path::Path) -> Result<(), String> {
+        println!("🔌 Loading plugin from: {}", plugin_path.display());
+
+        // Load the plugin library
+        let plugin_id = self
+            .plugin_host
+            .load_plugin(plugin_path)
+            .map_err(|e| format!("Failed to load plugin: {}", e))?;
+
+        // Create an instance
+        let instance_id = self
+            .plugin_host
+            .create_instance(&plugin_id, Some(format!("Plugin {}", plugin_id)))
+            .map_err(|e| format!("Failed to create instance: {}", e))?;
+
+        // Initialize the instance
+        let sample_rate = 44100.0; // TODO: Get from audio engine
+        let buffer_size = 512; // TODO: Get from audio engine
+        self.plugin_host
+            .initialize_instance(instance_id, sample_rate, buffer_size)
+            .map_err(|e| format!("Failed to initialize instance: {}", e))?;
+
+        // Get instance info
+        if let Some(instance_info) = self.plugin_host.get_instance_info(instance_id) {
+            self.loaded_plugins.push(instance_info);
+            println!("✅ Plugin loaded successfully");
+            Ok(())
+        } else {
+            Err("Failed to get instance info".to_string())
+        }
     }
 
     fn send_note_on(&mut self, note: u8) {
@@ -2897,54 +2947,71 @@ impl eframe::App for DawApp {
                             ui.label("  • C:\\Program Files\\Common Files\\CLAP");
                         }
                     } else {
+                        // Create a copy of plugin info for display to avoid borrowing issues
+                        let plugins: Vec<_> = self.scanned_plugins.iter().cloned().collect();
+
                         egui::ScrollArea::vertical()
                             .max_height(400.0)
                             .show(ui, |ui| {
-                                for (idx, plugin) in self.scanned_plugins.iter().enumerate() {
-                                    ui.group(|ui| {
-                                        ui.horizontal(|ui| {
-                                            ui.heading(&plugin.name);
-                                            ui.label(format!("v{}", plugin.version));
-                                        });
+                                // Collect plugins to load outside the iteration to avoid borrow issues
+                                let mut plugin_to_load: Option<std::path::PathBuf> = None;
 
-                                        ui.label(format!("Vendor: {}", plugin.vendor));
-                                        ui.label(format!("ID: {}", plugin.id));
+                                for (_idx, plugin) in plugins.iter().enumerate() {
+                                    // Use file_path as unique identifier (more unique than plugin.id)
+                                    let unique_id = format!("{:?}", plugin.file_path);
 
-                                        if !plugin.description.is_empty() {
-                                            ui.label(format!("Description: {}", plugin.description));
-                                        }
+                                    ui.push_id(&unique_id, |ui| {
+                                        ui.group(|ui| {
+                                            ui.horizontal(|ui| {
+                                                ui.heading(&plugin.name);
+                                                ui.label(format!("v{}", plugin.version));
+                                            });
 
-                                        ui.horizontal(|ui| {
-                                            ui.label("Category:");
-                                            ui.label(format!("{:?}", plugin.category));
-                                        });
+                                            ui.label(format!("Vendor: {}", plugin.vendor));
+                                            ui.label(format!("ID: {}", plugin.id));
 
-                                        ui.horizontal(|ui| {
-                                            ui.label("Features:");
-                                            if plugin.supports_gui {
-                                                ui.colored_label(egui::Color32::GREEN, "GUI");
+                                            if !plugin.description.is_empty() {
+                                                ui.label(format!("Description: {}", plugin.description));
                                             }
-                                            if plugin.supports_state {
-                                                ui.colored_label(egui::Color32::BLUE, "State");
-                                            }
-                                            if !plugin.parameters.is_empty() {
-                                                ui.colored_label(
-                                                    egui::Color32::YELLOW,
-                                                    format!("{} Params", plugin.parameters.len())
-                                                );
-                                            }
-                                        });
 
-                                        ui.horizontal(|ui| {
+                                            ui.horizontal(|ui| {
+                                                ui.label("Category:");
+                                                ui.label(format!("{:?}", plugin.category));
+                                            });
+
+                                            ui.horizontal(|ui| {
+                                                ui.label("Features:");
+                                                if plugin.supports_gui {
+                                                    ui.colored_label(egui::Color32::GREEN, "GUI");
+                                                }
+                                                if plugin.supports_state {
+                                                    ui.colored_label(egui::Color32::BLUE, "State");
+                                                }
+                                                if !plugin.parameters.is_empty() {
+                                                    ui.colored_label(
+                                                        egui::Color32::YELLOW,
+                                                        format!("{} Params", plugin.parameters.len())
+                                                    );
+                                                }
+                                            });
+
                                             if ui.button("Load Plugin").clicked() {
-                                                // TODO: Implement plugin loading
-                                                ui.label("Loading not yet implemented");
+                                                plugin_to_load = Some(plugin.file_path.clone());
                                             }
                                         });
                                     });
 
-                                    if idx < self.scanned_plugins.len() - 1 {
-                                        ui.add_space(5.0);
+                                }
+
+                                // Load the plugin after iteration to avoid borrow issues
+                                if let Some(path) = plugin_to_load {
+                                    match self.load_plugin(&path) {
+                                        Ok(_) => {
+                                            println!("✅ Plugin loaded successfully!");
+                                        }
+                                        Err(e) => {
+                                            println!("❌ Failed to load: {}", e);
+                                        }
                                     }
                                 }
                             });
@@ -2952,6 +3019,65 @@ impl eframe::App for DawApp {
 
                     ui.add_space(10.0);
                     ui.separator();
+
+                    // Display loaded plugins
+                    ui.heading("Loaded Plugins");
+                    if self.loaded_plugins.is_empty() {
+                        ui.label("No plugins loaded. Select a plugin above and click 'Load Plugin'.");
+                    } else {
+                        egui::ScrollArea::vertical()
+                            .max_height(200.0)
+                            .show(ui, |ui| {
+                                // Clone the list to avoid borrow issues
+                                let loaded_plugins_copy = self.loaded_plugins.clone();
+                                let mut plugins_to_remove = Vec::new();
+
+                                for (_idx, instance_info) in loaded_plugins_copy.iter().enumerate() {
+                                    // Use instance ID as unique identifier
+                                    let unique_id = format!("instance_{:?}", instance_info.id);
+
+                                    ui.push_id(&unique_id, |ui| {
+                                        ui.group(|ui| {
+                                            ui.horizontal(|ui| {
+                                                ui.heading(&instance_info.name);
+                                                if instance_info.is_active {
+                                                    ui.colored_label(egui::Color32::GREEN, "Active");
+                                                } else {
+                                                    ui.colored_label(egui::Color32::GRAY, "Inactive");
+                                                }
+                                            });
+
+                                            ui.label(format!("Plugin: {}", instance_info.plugin_name));
+                                            ui.label(format!("Sample Rate: {} Hz", instance_info.sample_rate));
+                                            ui.label(format!("Buffer Size: {}", instance_info.buffer_size));
+                                            ui.label(format!("Latency: {} samples", instance_info.latency));
+
+                                            ui.horizontal(|ui| {
+                                                // Start/Stop buttons disabled for now as plugin is auto-initialized on load
+                                                ui.add_enabled(false, egui::Button::new("Start"));
+                                                ui.add_enabled(false, egui::Button::new("Stop"));
+
+                                                if ui.button("Remove").clicked() {
+                                                    plugins_to_remove.push(instance_info.id);
+                                                }
+                                            });
+                                        });
+                                    });
+                                }
+
+                                // Remove plugins that were marked for removal
+                                for instance_id in plugins_to_remove {
+                                    if let Err(e) = self.plugin_host.destroy_instance(instance_id) {
+                                        println!("❌ Failed to remove plugin: {}", e);
+                                    } else {
+                                        println!("✅ Plugin removed");
+                                        self.loaded_plugins.retain(|p| p.id != instance_id);
+                                    }
+                                }
+                            });
+                    }
+
+                    ui.add_space(10.0);
                     ui.label("ℹ️ CLAP plugin support: Load, process audio, MIDI, parameters, GUI embedding");
                 }
                 UiTab::Play => {

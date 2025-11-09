@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use uuid::Uuid;
 
 /// Plugin category for classification
@@ -9,94 +10,45 @@ pub enum PluginCategory {
     Effect,
     Analyzer,
     Generator,
+    Drum,
+    Modulator,
+    Spatial,
+    Spacializer,
     Utility,
     Other,
 }
 
-/// Plugin parameter information
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PluginParameter {
-    pub id: String,
-    pub name: String,
-    pub module: String,
-    pub min_value: f64,
-    pub max_value: f64,
-    pub default_value: f64,
-    pub current_value: f64,
-    pub is_automatable: bool,
-    pub is_periodic: bool,
-    pub cookie: u32,
-}
-
-impl PluginParameter {
-    pub fn new(
-        id: impl Into<String>,
-        name: impl Into<String>,
-        module: impl Into<String>,
-        min_value: f64,
-        max_value: f64,
-        default_value: f64,
-    ) -> Self {
-        Self {
-            id: id.into(),
-            name: name.into(),
-            module: module.into(),
-            min_value,
-            max_value,
-            default_value,
-            current_value: default_value,
-            is_automatable: true,
-            is_periodic: false,
-            cookie: 0,
-        }
-    }
-
-    pub fn with_automatable(mut self, automatable: bool) -> Self {
-        self.is_automatable = automatable;
-        self
-    }
-
-    pub fn with_periodic(mut self, periodic: bool) -> Self {
-        self.is_periodic = periodic;
-        self
-    }
-
-    pub fn with_cookie(mut self, cookie: u32) -> Self {
-        self.cookie = cookie;
-        self
-    }
-
-    /// Normalize value to [0.0, 1.0] range
-    pub fn normalize(&self, value: f64) -> f64 {
-        if self.max_value <= self.min_value {
-            return 0.0;
-        }
-        ((value - self.min_value) / (self.max_value - self.min_value)).clamp(0.0, 1.0)
-    }
-
-    /// Denormalize value from [0.0, 1.0] range to parameter range
-    pub fn denormalize(&self, normalized: f64) -> f64 {
-        self.min_value + normalized * (self.max_value - self.min_value)
-    }
-}
-
-/// Audio port configuration
+/// Audio port information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AudioPortInfo {
     pub id: String,
     pub name: String,
     pub channel_count: u32,
-    pub port_type: PortType,
     pub is_main: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PortType {
-    Input,
-    Output,
+/// Plugin parameter
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginParameter {
+    pub id: String,
+    pub name: String,
+    pub value: f64,
+    pub default_value: f64,
+    pub min_value: f64,
+    pub max_value: f64,
+    pub is_automatable: bool,
+    pub parameter_type: ParameterType,
 }
 
-/// Plugin metadata and descriptor
+/// Parameter type
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ParameterType {
+    Linear,
+    Logarithmic,
+    Enum,
+}
+
+/// Plugin descriptor
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginDescriptor {
     pub id: String,
@@ -112,10 +64,11 @@ pub struct PluginDescriptor {
     pub supports_dsp: bool,
     pub supports_gui: bool,
     pub supports_state: bool,
+    pub file_path: PathBuf, // Added for loading plugins
 }
 
 impl PluginDescriptor {
-    pub fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
+    pub fn new(id: impl Into<String>, name: impl Into<String>, file_path: PathBuf) -> Self {
         Self {
             id: id.into(),
             name: name.into(),
@@ -129,7 +82,8 @@ impl PluginDescriptor {
             parameters: Vec::new(),
             supports_dsp: true,
             supports_gui: false,
-            supports_state: true,
+            supports_state: false,
+            file_path,
         }
     }
 
@@ -158,6 +112,11 @@ impl PluginDescriptor {
         self
     }
 
+    pub fn with_file_path(mut self, file_path: PathBuf) -> Self {
+        self.file_path = file_path;
+        self
+    }
+
     pub fn with_audio_input(mut self, port: AudioPortInfo) -> Self {
         self.audio_inputs.push(port);
         self
@@ -168,8 +127,8 @@ impl PluginDescriptor {
         self
     }
 
-    pub fn with_parameter(mut self, param: PluginParameter) -> Self {
-        self.parameters.push(param);
+    pub fn with_parameter(mut self, parameter: PluginParameter) -> Self {
+        self.parameters.push(parameter);
         self
     }
 
@@ -238,10 +197,6 @@ pub struct PluginInstanceId(Uuid);
 impl PluginInstanceId {
     pub fn new() -> Self {
         Self(Uuid::new_v4())
-    }
-
-    pub fn as_uuid(&self) -> &Uuid {
-        &self.0
     }
 }
 

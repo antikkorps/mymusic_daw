@@ -870,12 +870,22 @@
   - [x] Affichage des chemins de recherche par plateforme
   - [x] Méthode scan_plugins() avec gestion multi-directories
   - [x] **Foundations pour routing audio** - PluginNode préparé pour intégration
+  - [x] **Plugin Loading & UI** ✅ (TERMINÉ)
+    - [x] Chargement réussi de plugins CLAP réels (Surge XT Effects)
+    - [x] Support des bundles macOS (.clap directories)
+    - [x] Résolution automatique des chemins binaires
+    - [x] Intégration UI complète (scan, load, affichage)
+    - [x] Cache automatique au démarrage
+    - [x] UI plugins chargés avec boutons Start/Stop/Remove
+    - [x] Gestion des instances de plugins (create, initialize, destroy)
+    - [x] Architecture PluginHost complète
   - [ ] Routing audio vers plugins (à venir)
   - [ ] Affichage paramètres dans UI (à venir)
   - [ ] Automation dans séquenceur (à venir)
 
-**Tests avec vrais plugins CLAP** (à venir Phase 5+):
-- [ ] Surge XT (synth) - infrastructure prête
+**Tests avec vrais plugins CLAP** ✅ (SUCCÈS):
+- [x] Surge XT Effects - **CHARGÉ AVEC SUCCÈS** ✅
+- [x] Surge XT Synth - **DÉTECTÉ ET PRÊT** ✅
 - [ ] Airwindows (effets) - infrastructure prête
 - [ ] Vital (synth) - infrastructure prête
 
@@ -1235,9 +1245,9 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
    - ✅ **Routing audio node-based COMPLÉTÉ** (architecture, topological sort, cycle detection)
    - 🔄 Mixeur avancé + Sends/Returns à venir
    - 🔄 Intégration plugins dans le routing à venir
-   - 🔄 Tests avec vrais plugins CLAP à venir
+   - ✅ **Tests avec vrais plugins CLAP RÉUSSIS** (Surge XT Effects chargé!)
 
-**État actuel (Phase 5 en cours)** : Phase 4 COMPLÈTE ✅ | **Phase 5 - CLAP Infrastructure COMPLÈTE** ✅ (~3500 lignes, 7 parties) | **Phase 5 - Routing Audio COMPLÈTE** ✅ (architecture node-based complète) | Export Audio ✅ | Plugin UI ✅ | Mixeur/Sends/Returns/Plugins Integration à venir
+**État actuel (Phase 5 PRESQUE TERMINÉ)** : Phase 4 COMPLÈTE ✅ | **Phase 5 - CLAP Infrastructure COMPLÈTE** ✅ (~3500 lignes, 7 parties) | **Phase 5 - Routing Audio COMPLÈTE** ✅ (architecture node-based complète) | **Phase 5 - Plugin Loading COMPLÈTE** ✅ (Surge XT chargé avec succès!) | Export Audio ✅ | Plugin UI ✅ | Mixeur/Sends/Returns/Plugins Integration à venir
 
 ---
 

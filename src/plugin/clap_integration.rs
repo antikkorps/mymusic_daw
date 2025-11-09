@@ -225,7 +225,7 @@ impl ClapPluginFactory {
         }
 
         // Convert CLAP descriptor to our PluginDescriptor
-        let descriptor = unsafe { convert_clap_descriptor(clap_descriptor_ptr)? };
+        let descriptor = unsafe { convert_clap_descriptor(clap_descriptor_ptr, bundle_path)? };
 
         println!(
             "✅ Loaded CLAP plugin: {} ({})",
@@ -286,6 +286,7 @@ fn get_library_path(bundle_path: &Path) -> PluginResult<std::path::PathBuf> {
 /// Convert CLAP descriptor to our PluginDescriptor
 unsafe fn convert_clap_descriptor(
     clap_desc: *const clap_plugin_descriptor,
+    file_path: &Path,
 ) -> PluginResult<PluginDescriptor> {
     // SAFETY: All unsafe operations are wrapped in unsafe blocks as required by Rust 2024
     let desc = unsafe { &*clap_desc };
@@ -297,8 +298,7 @@ unsafe fn convert_clap_descriptor(
         .ok_or_else(|| PluginError::LoadFailed("Invalid plugin name".to_string()))?;
 
     let vendor = unsafe { c_str_to_string(desc.vendor) }.unwrap_or_else(|| "Unknown".to_string());
-    let version =
-        unsafe { c_str_to_string(desc.version) }.unwrap_or_else(|| "1.0.0".to_string());
+    let version = unsafe { c_str_to_string(desc.version) }.unwrap_or_else(|| "1.0.0".to_string());
     let description =
         unsafe { c_str_to_string(desc.description) }.unwrap_or_else(|| "".to_string());
 
@@ -306,7 +306,7 @@ unsafe fn convert_clap_descriptor(
     let features = unsafe { read_string_array(desc.features) };
     let category = infer_category_from_features(&features);
 
-    let mut descriptor = PluginDescriptor::new(&id, &name)
+    let mut descriptor = PluginDescriptor::new(&id, &name, file_path.to_path_buf())
         .with_version(&version)
         .with_vendor(&vendor)
         .with_description(&description)
