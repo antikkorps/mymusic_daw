@@ -395,11 +395,15 @@ impl DawApp {
             .load_plugin(plugin_path)
             .map_err(|e| format!("Failed to load plugin: {}", e))?;
 
+        println!("  ✓ Plugin library loaded, ID: {}", plugin_id);
+
         // Create an instance
         let instance_id = self
             .plugin_host
             .create_instance(&plugin_id, Some(format!("Plugin {}", plugin_id)))
             .map_err(|e| format!("Failed to create instance: {}", e))?;
+
+        println!("  ✓ Plugin instance created, ID: {:?}", instance_id);
 
         // Initialize the instance
         let sample_rate = 44100.0; // TODO: Get from audio engine
@@ -408,10 +412,18 @@ impl DawApp {
             .initialize_instance(instance_id, sample_rate, buffer_size)
             .map_err(|e| format!("Failed to initialize instance: {}", e))?;
 
+        println!("  ✓ Plugin instance initialized");
+
         // Get instance info
         if let Some(instance_info) = self.plugin_host.get_instance_info(instance_id) {
-            self.loaded_plugins.push(instance_info);
-            println!("✅ Plugin loaded successfully");
+            println!("  ✓ Got instance info: {}", instance_info.name);
+            self.loaded_plugins.push(instance_info.clone());
+            println!(
+                "✅ Plugin loaded successfully! Total loaded: {}",
+                self.loaded_plugins.len()
+            );
+            println!("   → Instance: {}", instance_info.plugin_name);
+            println!("   → Active: {}", instance_info.is_active);
             Ok(())
         } else {
             Err("Failed to get instance info".to_string())
@@ -3037,9 +3049,9 @@ impl eframe::App for DawApp {
 
                     // Display loaded plugins in its own ID context
                     ui.push_id("loaded_plugins_section", |ui| {
-                        ui.heading("Loaded Plugins");
+                        ui.heading(format!("Loaded Plugins ({})", self.loaded_plugins.len()));
                     if self.loaded_plugins.is_empty() {
-                        ui.label("No plugins loaded. Select a plugin above and click 'Load Plugin'.");
+                        ui.colored_label(egui::Color32::GRAY, "No plugins loaded. Select a plugin above and click 'Load Plugin'.");
                     } else {
                         // Clone the list to avoid borrow issues
                         let loaded_plugins_copy = self.loaded_plugins.clone();
@@ -3063,17 +3075,32 @@ impl eframe::App for DawApp {
                                                 }
                                             });
 
-                                            ui.label(format!("Plugin: {}", instance_info.plugin_name));
-                                            ui.label(format!("Sample Rate: {} Hz", instance_info.sample_rate));
-                                            ui.label(format!("Buffer Size: {}", instance_info.buffer_size));
-                                            ui.label(format!("Latency: {} samples", instance_info.latency));
+                                            ui.separator();
+
+                                            ui.label(format!("🔌 Plugin: {}", instance_info.plugin_name));
+                                            ui.label(format!("📊 Sample Rate: {} Hz", instance_info.sample_rate));
+                                            ui.label(format!("🎚️ Buffer Size: {}", instance_info.buffer_size));
+                                            ui.label(format!("⏱️ Latency: {} samples", instance_info.latency));
+                                            ui.label(format!("🔧 Tail: {} samples", instance_info.tail));
+
+                                            ui.separator();
 
                                             ui.horizontal(|ui| {
-                                                // Start/Stop buttons disabled for now as plugin is auto-initialized on load
-                                                ui.add_enabled(false, egui::Button::new("Start"));
-                                                ui.add_enabled(false, egui::Button::new("Stop"));
+                                                // Show GUI button (to be implemented)
+                                                if ui.button("🖼️ Show GUI").clicked() {
+                                                    println!("⚠️ GUI window not yet implemented");
+                                                    println!("💡 Plugin GUI requires native window integration");
+                                                }
 
-                                                if ui.button("Remove").clicked() {
+                                                ui.separator();
+
+                                                // Start/Stop buttons disabled for now as plugin is auto-initialized on load
+                                                ui.add_enabled(false, egui::Button::new("▶️ Start"));
+                                                ui.add_enabled(false, egui::Button::new("⏸️ Stop"));
+
+                                                ui.separator();
+
+                                                if ui.button("🗑️ Remove").clicked() {
                                                     // Defer removal to next frame to avoid ID clashes
                                                     self.plugin_to_remove_next_frame.push(instance_info.id);
                                                 }
