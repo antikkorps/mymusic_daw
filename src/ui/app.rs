@@ -2947,12 +2947,13 @@ impl eframe::App for DawApp {
                     ui.add_space(10.0);
                     ui.separator();
 
-                    // Display scanned plugins
-                    ui.heading(format!("Found {} Plugin(s)", self.scanned_plugins.len()));
+                    // Display scanned plugins in its own ID context
+                    ui.push_id("scanned_plugins_section", |ui| {
+                        ui.heading(format!("Found {} Plugin(s)", self.scanned_plugins.len()));
 
-                    ui.add_space(5.0);
+                        ui.add_space(5.0);
 
-                    if self.scanned_plugins.is_empty() {
+                        if self.scanned_plugins.is_empty() {
                         ui.label("No plugins found. Click 'Scan for Plugins' to search for CLAP plugins.");
                         ui.add_space(10.0);
                         ui.label("💡 Default search paths:");
@@ -2979,12 +2980,13 @@ impl eframe::App for DawApp {
 
                         egui::ScrollArea::vertical()
                             .max_height(400.0)
+                            .id_salt("scanned_plugins_scroll")
                             .show(ui, |ui| {
-                                for (_idx, plugin) in plugins.iter().enumerate() {
-                                    // Use file_path as unique identifier (more unique than plugin.id)
-                                    let unique_id = format!("scanned_{:?}", plugin.file_path);
+                                for (idx, plugin) in plugins.iter().enumerate() {
+                                    // Use stable hash-based ID
+                                    let id_source = format!("scan_{}_{}", idx, plugin.id);
 
-                                    ui.push_id(&unique_id, |ui| {
+                                    ui.push_id(egui::Id::new(id_source), |ui| {
                                         ui.group(|ui| {
                                             ui.horizontal(|ui| {
                                                 ui.heading(&plugin.name);
@@ -3027,13 +3029,15 @@ impl eframe::App for DawApp {
                                     });
                                 }
                             });
-                    }
+                        }
+                    }); // End scanned plugins section
 
                     ui.add_space(10.0);
                     ui.separator();
 
-                    // Display loaded plugins
-                    ui.heading("Loaded Plugins");
+                    // Display loaded plugins in its own ID context
+                    ui.push_id("loaded_plugins_section", |ui| {
+                        ui.heading("Loaded Plugins");
                     if self.loaded_plugins.is_empty() {
                         ui.label("No plugins loaded. Select a plugin above and click 'Load Plugin'.");
                     } else {
@@ -3042,12 +3046,13 @@ impl eframe::App for DawApp {
 
                         egui::ScrollArea::vertical()
                             .max_height(200.0)
+                            .id_salt("loaded_plugins_scroll")
                             .show(ui, |ui| {
-                                for (_idx, instance_info) in loaded_plugins_copy.iter().enumerate() {
-                                    // Use instance ID as unique identifier with "loaded" prefix
-                                    let unique_id = format!("loaded_{:?}", instance_info.id);
+                                for (idx, instance_info) in loaded_plugins_copy.iter().enumerate() {
+                                    // Use stable hash-based ID
+                                    let id_source = format!("load_{}_{:?}", idx, instance_info.id);
 
-                                    ui.push_id(&unique_id, |ui| {
+                                    ui.push_id(egui::Id::new(id_source), |ui| {
                                         ui.group(|ui| {
                                             ui.horizontal(|ui| {
                                                 ui.heading(&instance_info.name);
@@ -3077,7 +3082,8 @@ impl eframe::App for DawApp {
                                     });
                                 }
                             });
-                    }
+                        }
+                    }); // End loaded plugins section
 
                     ui.add_space(10.0);
                     ui.label("ℹ️ CLAP plugin support: Load, process audio, MIDI, parameters, GUI embedding");
