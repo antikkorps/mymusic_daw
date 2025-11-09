@@ -251,31 +251,26 @@ impl AudioRoutingGraph {
     /// Get all connections for a node
     pub fn get_connections_from(&self, node_id: NodeId) -> Vec<Connection> {
         self.connections
-            .iter()
-            .cloned()
-            .filter(|c| c.from_node == node_id)
+            .iter().filter(|&c| c.from_node == node_id).cloned()
             .collect()
     }
 
     /// Get all connections to a node
     pub fn get_connections_to(&self, node_id: NodeId) -> Vec<Connection> {
         self.connections
-            .iter()
-            .cloned()
-            .filter(|c| c.to_node == node_id)
+            .iter().filter(|&c| c.to_node == node_id).cloned()
             .collect()
     }
 
     /// Process the entire graph (topological order)
     pub fn process(&mut self) -> (f32, f32) {
         // Recompute processing order if needed
-        if self.processed_order.is_none() {
-            if let Err(e) = self.compute_topological_order() {
+        if self.processed_order.is_none()
+            && let Err(e) = self.compute_topological_order() {
                 eprintln!("Warning: Failed to compute topological order: {}", e);
                 // Fallback: process in node ID order
                 self.processed_order = Some(self.nodes.keys().cloned().collect());
             }
-        }
 
         if let Some(order) = &self.processed_order {
             // Create input maps for each node
@@ -330,13 +325,11 @@ impl AudioRoutingGraph {
             }
 
             // Get main output from output node
-            if let Some(output_id) = self.get_output_node_id() {
-                if let Some(outputs) = node_outputs.get(&output_id) {
-                    if let Some((left, right)) = outputs.get("main") {
+            if let Some(output_id) = self.get_output_node_id()
+                && let Some(outputs) = node_outputs.get(&output_id)
+                    && let Some((left, right)) = outputs.get("main") {
                         return (*left, *right);
                     }
-                }
-            }
 
             // Fallback: return silence
             (0.0, 0.0)
@@ -384,11 +377,10 @@ impl AudioRoutingGraph {
 
         // Check all connections from current node
         for connection in &self.connections {
-            if connection.from_node == current {
-                if self.has_path_dfs(connection.to_node, target, visited, stack) {
+            if connection.from_node == current
+                && self.has_path_dfs(connection.to_node, target, visited, stack) {
                     return true;
                 }
-            }
         }
 
         stack.remove(&current);
