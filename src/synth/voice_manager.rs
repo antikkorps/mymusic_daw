@@ -367,6 +367,15 @@ impl VoiceManager {
     pub fn active_voice_count(&self) -> usize {
         self.voices.iter().filter(|v| v.is_active()).count()
     }
+
+    pub fn reset(&mut self) {
+        // Reset all voices
+        for voice in &mut self.voices {
+            if voice.is_active() {
+                voice.force_stop();
+            }
+        }
+    }
 }
 
 #[cfg(test)]

@@ -151,12 +151,23 @@ impl PluginScanner {
         // TODO: Implement actual CLAP plugin loading
         // For now, create a placeholder descriptor based on filename
 
+        // Create a unique ID using the parent directory name + file stem
+        let parent_name = file_path
+            .parent()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
+
         let file_stem = file_path
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown");
 
-        let descriptor = PluginDescriptor::new(file_stem, format!("{} Plugin", file_stem))
+        // Create unique ID by combining parent and file stem
+        let unique_id = format!("{}.{}", parent_name, file_stem);
+        let display_name = format!("{} - {}", parent_name, file_stem);
+
+        let descriptor = PluginDescriptor::new(unique_id, display_name, file_path.to_path_buf())
             .with_version("1.0.0")
             .with_vendor("Unknown Vendor")
             .with_description("A CLAP plugin")
