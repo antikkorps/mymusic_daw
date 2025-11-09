@@ -283,10 +283,10 @@ impl AudioExporter {
                         self.settings.sample_rate as f64,
                         tempo,
                         time_signature,
-                    )
-                        && offset == 0 {
-                            metro.trigger_click(click_type);
-                        }
+                    ) && offset == 0
+                    {
+                        metro.trigger_click(click_type);
+                    }
 
                     // Process metronome sample
                     let click_sample = metro.process_sample();
@@ -330,10 +330,11 @@ impl AudioExporter {
 
                 // Update progress callback
                 if samples_processed.is_multiple_of(progress_update_interval)
-                    && let Some(ref mut callback) = progress_callback {
-                        let progress = current_position as f32 / total_samples as f32;
-                        callback(progress);
-                    }
+                    && let Some(ref mut callback) = progress_callback
+                {
+                    let progress = current_position as f32 / total_samples as f32;
+                    callback(progress);
+                }
             }
         }
 

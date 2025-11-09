@@ -879,6 +879,9 @@
     - [x] UI plugins chargés avec boutons Start/Stop/Remove
     - [x] Gestion des instances de plugins (create, initialize, destroy)
     - [x] Architecture PluginHost complète
+    - [x] Display des plugins chargés avec détails (nom, sample rate, latency, etc.)
+    - [x] Suppression de plugins chargés (Remove button fonctionnel)
+    - [ ] **GUI native window embedding** (infrastructure prête, intégration native à venir)
   - [ ] Routing audio vers plugins (à venir)
   - [ ] Affichage paramètres dans UI (à venir)
   - [ ] Automation dans séquenceur (à venir)
@@ -1247,7 +1250,13 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
    - 🔄 Intégration plugins dans le routing à venir
    - ✅ **Tests avec vrais plugins CLAP RÉUSSIS** (Surge XT Effects chargé!)
 
-**État actuel (Phase 5 PRESQUE TERMINÉ)** : Phase 4 COMPLÈTE ✅ | **Phase 5 - CLAP Infrastructure COMPLÈTE** ✅ (~3500 lignes, 7 parties) | **Phase 5 - Routing Audio COMPLÈTE** ✅ (architecture node-based complète) | **Phase 5 - Plugin Loading COMPLÈTE** ✅ (Surge XT chargé avec succès!) | Export Audio ✅ | Plugin UI ✅ | Mixeur/Sends/Returns/Plugins Integration à venir
+**État actuel (Phase 5 - 85% COMPLÈTE)** :
+- ✅ **Phase 4 COMPLÈTE** (Séquenceur, Timeline, Piano Roll, Recording, Persistance)
+- ✅ **CLAP Infrastructure COMPLÈTE** (~3500 lignes, 7 parties: FFI, Lifecycle, Audio, MIDI, Params, GUI, BufferPool)
+- ✅ **Routing Audio COMPLÈTE** (architecture node-based, topological sort, cycle detection)
+- ✅ **Plugin Loading & Display COMPLÈTE** (Surge XT chargé avec succès, UI complète avec détails)
+- ✅ **Export Audio COMPLÈTE** (WAV, FLAC avec configurations)
+- 🔄 **À venir Phase 5** : GUI native window embedding, Routing audio vers plugins, Affichage paramètres, Mixeur avancé, Sends/Returns
 
 ---
 

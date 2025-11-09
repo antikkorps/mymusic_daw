@@ -568,14 +568,16 @@ impl Plugin for ClPluginInstance {
 
     fn load_state(&mut self, state: &PluginState) -> Result<(), PluginError> {
         if let Some(sample_rate_str) = state.custom_data.get("sample_rate")
-            && let Ok(sample_rate) = sample_rate_str.parse::<f64>() {
-                self.sample_rate = sample_rate;
-            }
+            && let Ok(sample_rate) = sample_rate_str.parse::<f64>()
+        {
+            self.sample_rate = sample_rate;
+        }
 
         if let Some(initialized_str) = state.custom_data.get("initialized")
-            && let Ok(initialized) = initialized_str.parse::<bool>() {
-                self.is_initialized = initialized;
-            }
+            && let Ok(initialized) = initialized_str.parse::<bool>()
+        {
+            self.is_initialized = initialized;
+        }
 
         // Load parameter values
         for (id, value) in &state.parameters {
