@@ -15,7 +15,7 @@ use crate::messaging::notification::{Notification, NotificationCategory};
 use crate::midi::device::{MidiDeviceInfo, MidiDeviceManager};
 use crate::midi::event::{MidiEvent, MidiEventTimed};
 use crate::midi::manager::MidiConnectionManager;
-use crate::plugin::{InstanceInfo, PluginDescriptor, PluginHost, PluginScanner};
+use crate::plugin::{InstanceInfo, PluginDescriptor, PluginHost, PluginInstanceId, PluginScanner};
 use crate::project::{ProjectError, ProjectLoadOptions, ProjectManager};
 use crate::sampler::SampleBank;
 use crate::sampler::loader::{Sample, load_sample};
@@ -162,6 +162,9 @@ pub struct DawApp {
     scanned_plugins: Vec<PluginDescriptor>,
     loaded_plugins: Vec<InstanceInfo>,
     scan_in_progress: bool,
+    // Deferred actions to avoid egui ID clashes
+    plugin_to_load_next_frame: Option<std::path::PathBuf>,
+    plugin_to_remove_next_frame: Vec<PluginInstanceId>,
 }
 
 impl DawApp {
@@ -314,6 +317,8 @@ impl DawApp {
             scanned_plugins: Vec::new(),
             loaded_plugins: Vec::new(),
             scan_in_progress: false,
+            plugin_to_load_next_frame: None,
+            plugin_to_remove_next_frame: Vec::new(),
         }
     }
 
@@ -1354,6 +1359,28 @@ impl DawApp {
 
 impl eframe::App for DawApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Process deferred plugin actions BEFORE rendering to avoid ID clashes
+        if let Some(path) = self.plugin_to_load_next_frame.take() {
+            match self.load_plugin(&path) {
+                Ok(_) => {
+                    println!("✅ Plugin loaded successfully!");
+                }
+                Err(e) => {
+                    println!("❌ Failed to load: {}", e);
+                }
+            }
+        }
+
+        // Process deferred plugin removals
+        for instance_id in self.plugin_to_remove_next_frame.drain(..) {
+            if let Err(e) = self.plugin_host.destroy_instance(instance_id) {
+                println!("❌ Failed to remove plugin: {}", e);
+            } else {
+                println!("✅ Plugin removed");
+                self.loaded_plugins.retain(|p| p.id != instance_id);
+            }
+        }
+
         // Ask for a refresh to capture keyboard events
         ctx.request_repaint();
 
@@ -2953,12 +2980,9 @@ impl eframe::App for DawApp {
                         egui::ScrollArea::vertical()
                             .max_height(400.0)
                             .show(ui, |ui| {
-                                // Collect plugins to load outside the iteration to avoid borrow issues
-                                let mut plugin_to_load: Option<std::path::PathBuf> = None;
-
                                 for (_idx, plugin) in plugins.iter().enumerate() {
                                     // Use file_path as unique identifier (more unique than plugin.id)
-                                    let unique_id = format!("{:?}", plugin.file_path);
+                                    let unique_id = format!("scanned_{:?}", plugin.file_path);
 
                                     ui.push_id(&unique_id, |ui| {
                                         ui.group(|ui| {
@@ -2996,23 +3020,11 @@ impl eframe::App for DawApp {
                                             });
 
                                             if ui.button("Load Plugin").clicked() {
-                                                plugin_to_load = Some(plugin.file_path.clone());
+                                                // Defer loading to next frame to avoid ID clashes
+                                                self.plugin_to_load_next_frame = Some(plugin.file_path.clone());
                                             }
                                         });
                                     });
-
-                                }
-
-                                // Load the plugin after iteration to avoid borrow issues
-                                if let Some(path) = plugin_to_load {
-                                    match self.load_plugin(&path) {
-                                        Ok(_) => {
-                                            println!("✅ Plugin loaded successfully!");
-                                        }
-                                        Err(e) => {
-                                            println!("❌ Failed to load: {}", e);
-                                        }
-                                    }
                                 }
                             });
                     }
@@ -3025,16 +3037,15 @@ impl eframe::App for DawApp {
                     if self.loaded_plugins.is_empty() {
                         ui.label("No plugins loaded. Select a plugin above and click 'Load Plugin'.");
                     } else {
+                        // Clone the list to avoid borrow issues
+                        let loaded_plugins_copy = self.loaded_plugins.clone();
+
                         egui::ScrollArea::vertical()
                             .max_height(200.0)
                             .show(ui, |ui| {
-                                // Clone the list to avoid borrow issues
-                                let loaded_plugins_copy = self.loaded_plugins.clone();
-                                let mut plugins_to_remove = Vec::new();
-
                                 for (_idx, instance_info) in loaded_plugins_copy.iter().enumerate() {
-                                    // Use instance ID as unique identifier
-                                    let unique_id = format!("instance_{:?}", instance_info.id);
+                                    // Use instance ID as unique identifier with "loaded" prefix
+                                    let unique_id = format!("loaded_{:?}", instance_info.id);
 
                                     ui.push_id(&unique_id, |ui| {
                                         ui.group(|ui| {
@@ -3058,21 +3069,12 @@ impl eframe::App for DawApp {
                                                 ui.add_enabled(false, egui::Button::new("Stop"));
 
                                                 if ui.button("Remove").clicked() {
-                                                    plugins_to_remove.push(instance_info.id);
+                                                    // Defer removal to next frame to avoid ID clashes
+                                                    self.plugin_to_remove_next_frame.push(instance_info.id);
                                                 }
                                             });
                                         });
                                     });
-                                }
-
-                                // Remove plugins that were marked for removal
-                                for instance_id in plugins_to_remove {
-                                    if let Err(e) = self.plugin_host.destroy_instance(instance_id) {
-                                        println!("❌ Failed to remove plugin: {}", e);
-                                    } else {
-                                        println!("✅ Plugin removed");
-                                        self.loaded_plugins.retain(|p| p.id != instance_id);
-                                    }
                                 }
                             });
                     }
