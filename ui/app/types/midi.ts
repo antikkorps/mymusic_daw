@@ -42,6 +42,10 @@ export const NOTE_NAMES = [
   "B",
 ];
 
+// MIDI value range constants
+export const MIDI_MIN_VALUE = 0;
+export const MIDI_MAX_VALUE = 127;
+
 // Minimum note duration in beats (1/32 note)
 export const MIN_NOTE_DURATION = 0.03125;
 
