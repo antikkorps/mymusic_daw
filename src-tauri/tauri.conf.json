@@ -1,12 +1,13 @@
 {
+  "$schema": "https://schema.tauri.app/config/2",
   "productName": "MyMusic DAW",
-  "version": "0.1.0",
+  "version": "0.5.1",
   "identifier": "com.mymusic.daw",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "frontendDist": "../ui/build/client",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "npm run build",
-    "frontendDist": "../ui/dist"
+    "beforeDevCommand": "cd ../ui && npm run dev",
+    "beforeBuildCommand": "cd ../ui && npm run build"
   },
   "bundle": {
     "active": true,

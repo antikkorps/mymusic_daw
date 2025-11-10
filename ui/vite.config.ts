@@ -2,11 +2,10 @@ import { reactRouter } from "@react-router/dev/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from 'vite';
 import tsconfigPaths from "vite-tsconfig-paths";
-import react from '@vitejs/plugin-react';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss(), reactRouter(), tsconfigPaths()],
+  plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
 
   // Prevent vite from obscuring rust errors
   clearScreen: false,
