@@ -292,7 +292,13 @@ impl PianoRollEditor {
         _time_signature: &TimeSignature,
         sample_rate: f64,
     ) {
+        // First pass: draw all notes except the one being dragged
         for note in pattern.notes() {
+            // Skip the note being dragged (will draw it separately with special rendering)
+            if self.is_dragging && Some(note.id) == self.drag_note_id {
+                continue;
+            }
+
             // Skip notes outside visible range
             if note.pitch < self.visible_note_start
                 || note.pitch >= self.visible_note_start + self.visible_note_count
@@ -300,43 +306,94 @@ impl PianoRollEditor {
                 continue;
             }
 
-            // Convert start position to beats
-            let start_beats = self.samples_to_beats(note.start.samples, sample_rate, tempo);
-
-            // Convert duration to beats
-            let duration_beats = self.samples_to_beats(note.duration_samples, sample_rate, tempo);
-
-            // Calculate screen position
-            let x_start = rect.left() + start_beats * self.pixels_per_beat;
-            let x_end = x_start + duration_beats * self.pixels_per_beat;
-
-            let note_offset = note.pitch - self.visible_note_start;
-            let y_bottom = rect.bottom() - note_offset as f32 * self.pixels_per_note;
-            let y_top = y_bottom - self.pixels_per_note;
-
-            let note_rect =
-                Rect::from_min_max(Pos2::new(x_start, y_top), Pos2::new(x_end, y_bottom));
-
-            // Color based on velocity (darker = quieter)
-            let velocity_normalized = note.velocity as f32 / 127.0;
-            let base_color = Color32::from_rgb(100, 150, 255);
-            let note_color = Color32::from_rgb(
-                (base_color.r() as f32 * velocity_normalized) as u8,
-                (base_color.g() as f32 * velocity_normalized) as u8,
-                (base_color.b() as f32 * velocity_normalized) as u8,
-            );
-
-            // Highlight selected notes
-            let is_selected = self.selected_notes.contains(&note.id);
-            let final_color = if is_selected {
-                Color32::from_rgb(255, 200, 100)
-            } else {
-                note_color
-            };
-
-            painter.rect_filled(note_rect, 2.0, final_color);
-            painter.rect_stroke(note_rect, 2.0, (1.0, Color32::from_gray(150)));
+            self.draw_single_note(painter, rect, note, tempo, sample_rate, false);
         }
+
+        // Second pass: draw the dragged note with special visual feedback
+        if self.is_dragging {
+            if let Some(drag_id) = self.drag_note_id {
+                if let Some(note) = pattern.notes().iter().find(|n| n.id == drag_id) {
+                    // Skip notes outside visible range
+                    if note.pitch >= self.visible_note_start
+                        && note.pitch < self.visible_note_start + self.visible_note_count
+                    {
+                        self.draw_single_note(painter, rect, note, tempo, sample_rate, true);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Draw a single note with optional dragging visual feedback
+    fn draw_single_note(
+        &self,
+        painter: &egui::Painter,
+        rect: Rect,
+        note: &Note,
+        tempo: &Tempo,
+        sample_rate: f64,
+        is_being_dragged: bool,
+    ) {
+        // Convert start position to beats
+        let start_beats = self.samples_to_beats(note.start.samples, sample_rate, tempo);
+
+        // Convert duration to beats
+        let duration_beats = self.samples_to_beats(note.duration_samples, sample_rate, tempo);
+
+        // Calculate screen position
+        let x_start = rect.left() + start_beats * self.pixels_per_beat;
+        let x_end = x_start + duration_beats * self.pixels_per_beat;
+
+        let note_offset = note.pitch - self.visible_note_start;
+        let y_bottom = rect.bottom() - note_offset as f32 * self.pixels_per_note;
+        let y_top = y_bottom - self.pixels_per_note;
+
+        let note_rect =
+            Rect::from_min_max(Pos2::new(x_start, y_top), Pos2::new(x_end, y_bottom));
+
+        // Color based on velocity (darker = quieter)
+        let velocity_normalized = note.velocity as f32 / 127.0;
+        let base_color = Color32::from_rgb(100, 150, 255);
+        let note_color = Color32::from_rgb(
+            (base_color.r() as f32 * velocity_normalized) as u8,
+            (base_color.g() as f32 * velocity_normalized) as u8,
+            (base_color.b() as f32 * velocity_normalized) as u8,
+        );
+
+        // Highlight selected notes
+        let is_selected = self.selected_notes.contains(&note.id);
+
+        // Special rendering for dragged notes
+        let (final_color, stroke_color, stroke_width) = if is_being_dragged {
+            // Dragged note: brighter with thick outline and semi-transparent
+            let drag_color = Color32::from_rgba_unmultiplied(
+                255,
+                220,
+                100,
+                200, // Semi-transparent
+            );
+            (drag_color, Color32::from_rgb(255, 255, 0), 3.0)
+        } else if is_selected {
+            // Selected but not dragged
+            (Color32::from_rgb(255, 200, 100), Color32::from_gray(150), 1.0)
+        } else {
+            // Normal note
+            (note_color, Color32::from_gray(150), 1.0)
+        };
+
+        // Add a subtle shadow effect for dragged notes to make them "pop"
+        // Draw shadow BEFORE the note so it appears behind
+        if is_being_dragged {
+            let shadow_rect = note_rect.translate(Vec2::new(2.0, 2.0));
+            painter.rect_filled(
+                shadow_rect,
+                2.0,
+                Color32::from_rgba_unmultiplied(0, 0, 0, 50),
+            );
+        }
+
+        painter.rect_filled(note_rect, 2.0, final_color);
+        painter.rect_stroke(note_rect, 2.0, (stroke_width, stroke_color));
     }
 
     /// Draw the playback cursor showing current position
