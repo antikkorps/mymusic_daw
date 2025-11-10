@@ -154,7 +154,7 @@ export function useDawEngine(): UseDawEngine {
     }
 
     initialize();
-  }, [refreshEngineStatus]);
+  }, []);
 
   return {
     volume,
