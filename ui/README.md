@@ -1,202 +1,275 @@
-# DAW Studio - Frontend POC
+# MyMusic DAW - React Frontend
 
-A modern Digital Audio Workstation (DAW) frontend built with React, designed as a proof-of-concept to validate UI/UX before integration with a Rust audio engine backend via Tauri.
+Interface utilisateur React pour MyMusic DAW, connectée au moteur audio Rust via Tauri.
 
-![Version](https://img.shields.io/badge/version-1.0.0--poc-blue)
-![React](https://img.shields.io/badge/React-19-blue)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+## 🎯 Structure
 
-## ✨ Features
+```
+ui/
+├── app/
+│   ├── hooks/
+│   │   └── useDawEngine.ts      # Hook principal pour contrôler le moteur audio
+│   └── components/
+│       └── DawEngineTest.tsx    # Composant de test/démonstration
+└── README.md
+```
 
-### Phase 1 (Complete)
+## 🔌 Integration Tauri
 
-- **🎛️ Professional Mixer**: 8-track mixer with vertical faders, pan knobs, solo/mute, and VU meters
-- **🎹 Piano Roll**: MIDI note editor with grid snapping and velocity visualization
-- **⏱️ Timeline**: Audio/MIDI clip arranger with visual waveforms
-- **🔌 Plugin Manager**: Browse, load, and manage CLAP/VST3/AU plugins
-- **🌊 Effect Routing**: Visual effect chain with React Flow
-- **📊 Dashboard**: Project overview with stats and quick actions
-- **🎨 Dark Theme**: Professional DAW-style dark UI with custom components
+### Architecture
 
-## 🚀 Quick Start
+```
+┌─────────────────┐          ┌──────────────────┐
+│  React Frontend │ ◄──IPC──► │  Tauri Backend   │
+│  (TypeScript)   │          │  (Rust)          │
+└─────────────────┘          └──────────────────┘
+                                      │
+                                      ▼
+                             ┌─────────────────┐
+                             │  Audio Engine   │
+                             │  (CPAL + Synth) │
+                             └─────────────────┘
+```
 
-### Prerequisites
+### Commandes Tauri Disponibles
 
-- Node.js 20+ (recommended: use nvm)
-- npm or pnpm
+#### 1. `set_volume(volume: number)`
+Définit le volume maître du DAW.
 
-### Installation
+```typescript
+import { invoke } from '@tauri-apps/api/core';
+
+await invoke('set_volume', { volume: 0.5 }); // 50%
+```
+
+#### 2. `get_volume()`
+Récupère le volume actuel.
+
+```typescript
+const volume = await invoke<number>('get_volume');
+console.log('Current volume:', volume);
+```
+
+#### 3. `play_note(note: number, velocity: number)`
+Joue une note MIDI.
+
+```typescript
+// Jouer middle C (60) avec vélocité 100
+await invoke('play_note', { note: 60, velocity: 100 });
+```
+
+#### 4. `stop_note(note: number)`
+Arrête une note MIDI.
+
+```typescript
+await invoke('stop_note', { note: 60 });
+```
+
+#### 5. `get_engine_status()`
+Récupère le statut du moteur audio.
+
+```typescript
+const status = await invoke('get_engine_status');
+// { name: "MyMusic DAW", version: "0.1.0", status: "running" }
+```
+
+## 🪝 Utilisation du Hook `useDawEngine`
+
+### Exemple basique
+
+```typescript
+import { useDawEngine } from './hooks/useDawEngine';
+
+function VolumeControl() {
+  const { volume, setVolume, isEngineReady } = useDawEngine();
+
+  return (
+    <div>
+      <h3>Volume: {Math.round(volume * 100)}%</h3>
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.01"
+        value={volume}
+        onChange={(e) => setVolume(parseFloat(e.target.value))}
+        disabled={!isEngineReady}
+      />
+    </div>
+  );
+}
+```
+
+### Exemple avec notes
+
+```typescript
+import { useDawEngine } from './hooks/useDawEngine';
+
+function PianoKey({ note }: { note: number }) {
+  const { playNote, stopNote, isEngineReady } = useDawEngine();
+
+  return (
+    <button
+      onMouseDown={() => playNote(note, 100)}
+      onMouseUp={() => stopNote(note)}
+      disabled={!isEngineReady}
+    >
+      Play Note {note}
+    </button>
+  );
+}
+```
+
+### Hook `useNotePlayer` (helper)
+
+Pour jouer des notes avec note-off automatique :
+
+```typescript
+import { useNotePlayer } from './hooks/useDawEngine';
+
+function QuickNoteButton({ note }: { note: number }) {
+  const { triggerNote } = useNotePlayer();
+
+  return (
+    <button onClick={() => triggerNote(note, 100, 500)}>
+      Play {note} (500ms)
+    </button>
+  );
+}
+```
+
+## 🧪 Composant de Test
+
+Le composant `DawEngineTest` démontre toutes les fonctionnalités :
+
+```typescript
+import { DawEngineTest } from './components/DawEngineTest';
+
+function App() {
+  return <DawEngineTest />;
+}
+```
+
+Fonctionnalités démontrées :
+- ✅ Contrôle de volume avec slider
+- ✅ Boutons presets de volume (0%, 25%, 50%, 75%, 100%)
+- ✅ Triggers rapides de notes (300ms)
+- ✅ Notes maintenues (press & hold)
+- ✅ Statut du moteur en temps réel
+- ✅ Gestion d'erreurs
+
+## 📦 Installation (si vous n'avez pas encore configuré React)
+
+### 1. Initialiser le projet React
 
 ```bash
-# Clone the repository
-git clone <repo-url>
-cd poc_front_daw
-
-# Install dependencies
+cd ui/
+npm create vite@latest . -- --template react-ts
 npm install
-
-# Start development server
-npm run dev
 ```
 
-The app will be available at `http://localhost:5173`
-
-### Available Scripts
+### 2. Installer Tauri API
 
 ```bash
-npm run dev        # Start development server
-npm run build      # Build for production
-npm run typecheck  # Run TypeScript type checking
-npm run start      # Preview production build
+npm install @tauri-apps/api
 ```
 
-## 📁 Project Structure
+### 3. Ajouter le composant au App.tsx
 
-```
-app/
-├── routes/              # Page components
-│   ├── _index.tsx      # Dashboard
-│   ├── mixer.tsx       # Mixer page
-│   ├── piano-roll.tsx  # Piano Roll editor
-│   ├── timeline.tsx    # Timeline/Arranger
-│   ├── plugins.tsx     # Plugin Manager
-│   └── effects.tsx     # Effect Routing
-├── components/
-│   ├── audio/          # Audio-specific components
-│   │   ├── Fader.tsx
-│   │   ├── Knob.tsx
-│   │   ├── VUMeter.tsx
-│   │   └── Waveform.tsx
-│   ├── layout/         # Layout components
-│   │   ├── Sidebar.tsx
-│   │   ├── Toolbar.tsx
-│   │   └── StatusBar.tsx
-│   ├── mixer/          # Mixer components
-│   │   └── Track.tsx
-│   └── ui/             # Base UI components
-│       ├── button.tsx
-│       ├── card.tsx
-│       └── slider.tsx
-├── lib/
-│   ├── utils.ts        # Utility functions
-│   └── mockData.ts     # Mock data for POC
-├── types/
-│   ├── audio.ts        # Audio type definitions
-│   ├── midi.ts         # MIDI type definitions
-│   └── plugin.ts       # Plugin type definitions
-└── hooks/              # Custom React hooks (future)
+```typescript
+// ui/src/App.tsx
+import { DawEngineTest } from './app/components/DawEngineTest';
+
+function App() {
+  return (
+    <div className="App">
+      <DawEngineTest />
+    </div>
+  );
+}
+
+export default App;
 ```
 
-## 🎨 Tech Stack
+## 🚀 Lancer l'application
 
-- **React 19** - UI framework
-- **TypeScript 5.9** - Type safety
-- **Vite** - Build tool
-- **React Router 7** - Routing (SPA mode)
-- **Tailwind CSS 4** - Styling
-- **Lucide React** - Icons
-- **React Flow** - Node-based UI for effect routing
-- **Framer Motion** - Animations
-- **Recharts** - Data visualization
+### Mode développement
 
-## 🎛️ Features Overview
+```bash
+# Terminal 1: Lancer le frontend React
+cd ui/
+npm run dev
 
-### Mixer
-- 8 audio/MIDI tracks + master track
-- Vertical faders (-60dB to +6dB)
-- Pan control (-100% L to +100% R)
-- Real-time VU meters with peak hold
-- Solo/Mute/Arm buttons
-- Effect insert slots (3 per track)
+# Terminal 2: Lancer Tauri
+cd src-tauri/
+cargo tauri dev
+```
 
-### Piano Roll
-- MIDI note editor (C3-C6 range)
-- Grid snapping (1/4, 1/8, 1/16, 1/32)
-- Velocity visualization
-- Piano keyboard sidebar
-- Note selection and editing
+### Mode production
 
-### Timeline
-- Horizontal track lanes
-- Audio/MIDI clips with colors
-- Zoom controls
-- Clip selection
-- Visual waveforms
+```bash
+cd src-tauri/
+cargo tauri build
+```
 
-### Plugin Manager
-- Browse available plugins
-- Filter by category (Instrument, Effect, etc.)
-- Load/Unload plugins
-- Plugin info (vendor, version, format)
-- Search functionality
+## 🎹 Notes MIDI de référence
 
-### Effects
-- Visual effect routing with React Flow
-- Effect nodes: Filter, Delay, Reverb
-- Adjustable parameters per effect
-- Animated signal flow
+| Note | Nom   | Description      |
+|------|-------|------------------|
+| 60   | C4    | Middle C         |
+| 61   | C#4   |                  |
+| 62   | D4    |                  |
+| 63   | D#4   |                  |
+| 64   | E4    |                  |
+| 65   | F4    |                  |
+| 66   | F#4   |                  |
+| 67   | G4    |                  |
+| 68   | G#4   |                  |
+| 69   | A4    | Concert pitch    |
+| 70   | A#4   |                  |
+| 71   | B4    |                  |
 
-## 🔧 Configuration
+## 🔧 Dépannage
 
-### Tailwind CSS
-The project uses Tailwind CSS 4 with custom theme configuration in `app.css`.
+### Erreur: "Failed to get volume"
+- Vérifiez que le moteur audio est bien démarré
+- Regardez les logs dans la console Rust
 
-### TypeScript
-Strict mode enabled. Type definitions are in `app/types/`.
+### Notes ne sonnent pas
+- Vérifiez le volume (peut-être à 0%)
+- Vérifiez que votre carte son est bien détectée
+- Regardez les logs du moteur audio
 
-## 🚧 Roadmap
+### Build Tauri échoue
+```bash
+# Installer les dépendances système (Ubuntu/Debian)
+sudo apt update
+sudo apt install libwebkit2gtk-4.0-dev \
+    build-essential \
+    curl \
+    wget \
+    file \
+    libssl-dev \
+    libgtk-3-dev \
+    libayatana-appindicator3-dev \
+    librsvg2-dev
 
-See [TODO.md](./TODO.md) for detailed roadmap.
+# macOS
+xcode-select --install
+```
 
-### Phase 2: UI Enhancements
-- Drag-and-drop for clips
-- Framer Motion animations
-- Context menus
-- Keyboard shortcuts
+## 📚 Ressources
 
-### Phase 3: Tauri Integration
-- Connect to Rust audio engine
-- Real-time audio processing
-- MIDI input
-- Plugin hosting
-- Project save/load
+- [Tauri Documentation](https://tauri.app/)
+- [Tauri API Docs](https://tauri.app/v1/api/js/)
+- [React Documentation](https://react.dev/)
+- [MIDI Specification](https://www.midi.org/specifications)
 
-## 📚 Documentation
+## 🎵 Prochaines étapes
 
-- [AGENTS.md](./AGENTS.md) - Architecture and development guide
-- [TODO.md](./TODO.md) - Detailed task list and roadmap
-
-## 🤝 Contributing
-
-This is a POC project. Contributions are welcome!
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 🐛 Known Issues
-
-- VU meters use mock data (random values)
-- Drag-and-drop not yet implemented for timeline clips
-- No keyboard shortcuts yet
-- Desktop-only (not responsive for mobile)
-
-## 📝 License
-
-MIT License - see [LICENSE](./LICENSE) file for details
-
-## 🙏 Acknowledgments
-
-- Inspired by professional DAWs (Ableton Live, Logic Pro, Reaper)
-- UI components based on Shadcn/ui design system
-- Audio concepts from CPAL and CLAP plugin standards
-
----
-
-**Status**: Phase 1 Complete ✅
-**Next**: Phase 2 - UI Enhancements
-
-Built with ❤️ using React Router and TypeScript.
+- [ ] Ajouter des contrôles ADSR
+- [ ] Interface pour LFO et modulation
+- [ ] Piano roll interactif
+- [ ] Gestion des plugins CLAP
+- [ ] Mixeur multi-pistes
+- [ ] Séquenceur avec timeline

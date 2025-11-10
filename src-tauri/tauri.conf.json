@@ -1,29 +1,12 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
   "productName": "MyMusic DAW",
-  "version": "0.5.1",
+  "version": "0.1.0",
   "identifier": "com.mymusic.daw",
   "build": {
-    "frontendDist": "../ui/build/client",
+    "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "cd ../ui && npm run dev",
-    "beforeBuildCommand": "cd ../ui && npm run build"
-  },
-  "app": {
-    "windows": [
-      {
-        "title": "MyMusic DAW",
-        "width": 1280,
-        "height": 800,
-        "minWidth": 1024,
-        "minHeight": 600,
-        "resizable": true,
-        "fullscreen": false
-      }
-    ],
-    "security": {
-      "csp": null
-    }
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../ui/dist"
   },
   "bundle": {
     "active": true,
@@ -34,6 +17,27 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
-  }
+    ],
+    "shortDescription": "A Digital Audio Workstation built with Rust and Tauri",
+    "longDescription": "MyMusic DAW is a professional digital audio workstation featuring real-time audio processing, MIDI support, plugin hosting (CLAP), and a modern React-based interface.",
+    "category": "Audio",
+    "copyright": "Copyright 2024"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "MyMusic DAW",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 768,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'"
+    }
+  },
+  "plugins": {}
 }
