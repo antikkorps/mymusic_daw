@@ -53,6 +53,28 @@ export function DawEngineTest() {
     triggerNote(note, 100, 300); // Play for 300ms
   };
 
+  // Keyboard event handlers for sustained notes
+  const handleKeyDown = (e: React.KeyboardEvent, note: number) => {
+    // Only handle Space and Enter keys
+    if (e.key !== ' ' && e.key !== 'Enter') return;
+    
+    // Prevent default behavior (e.g., scrolling for Space)
+    e.preventDefault();
+    
+    // Don't trigger if already active (prevents key repeat)
+    if (activeNotes.has(note)) return;
+    
+    handleNotePress(note);
+  };
+
+  const handleKeyUp = (e: React.KeyboardEvent, note: number) => {
+    // Only handle Space and Enter keys
+    if (e.key !== ' ' && e.key !== 'Enter') return;
+    
+    e.preventDefault();
+    handleNoteRelease(note);
+  };
+
   return (
     <div style={styles.container}>
       <h2 style={styles.title}>🎵 MyMusic DAW - Engine Test</h2>
@@ -134,7 +156,7 @@ export function DawEngineTest() {
       {/* Sustained Notes */}
       <div style={styles.section}>
         <h3 style={styles.sectionTitle}>🎹 Sustained Notes (Hold)</h3>
-        <p style={styles.helperText}>Press and hold to play, release to stop</p>
+        <p style={styles.helperText}>Press and hold to play, release to stop (mouse or keyboard)</p>
         <div style={styles.noteGrid}>
           {middleCOctave.map((note) => (
             <button
@@ -142,6 +164,8 @@ export function DawEngineTest() {
               onMouseDown={() => handleNotePress(note)}
               onMouseUp={() => handleNoteRelease(note)}
               onMouseLeave={() => activeNotes.has(note) && handleNoteRelease(note)}
+              onKeyDown={(e) => handleKeyDown(e, note)}
+              onKeyUp={(e) => handleKeyUp(e, note)}
               style={{
                 ...styles.noteButton,
                 ...(activeNotes.has(note) ? styles.noteButtonActive : {}),
