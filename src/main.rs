@@ -56,13 +56,18 @@ fn main() {
         "MyMusic DAW",
         native_options,
         Box::new(|_cc| {
-            Ok(Box::new(DawApp::new(
+            let mut app = DawApp::new(
                 command_tx_ui,
                 audio_engine.volume.clone(),
                 midi_manager,
                 audio_engine.cpu_monitor.clone(),
                 notification_rx,
-            )))
+            );
+
+            // Load cached plugins on startup
+            app.load_cached_plugins();
+
+            Ok(Box::new(app))
         }),
     );
 }

@@ -2,3 +2,15 @@
 .env
 # macOS Finder metadata should not be versioned
 .DS_Store
+
+# Frontend (React Router 7)
+ui/node_modules/
+ui/dist/
+ui/build/
+ui/.react-router/
+ui/.turbo/
+ui/.vite/
+
+# Tauri
+src-tauri/target/
+src-tauri/WixTools/

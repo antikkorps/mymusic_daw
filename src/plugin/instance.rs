@@ -38,11 +38,7 @@ pub struct ParameterChange {
 
 impl PluginInstance {
     /// Create a new plugin instance
-    pub fn new(
-        plugin: Box<dyn Plugin>,
-        id: PluginInstanceId,
-        name: String,
-    ) -> Self {
+    pub fn new(plugin: Box<dyn Plugin>, id: PluginInstanceId, name: String) -> Self {
         Self {
             plugin,
             id,
@@ -119,7 +115,7 @@ impl PluginInstance {
         // Setup input buffers
         for input_port in &descriptor.audio_inputs {
             let buffer = crate::audio::buffer::AudioBuffer::new(
-                input_port.channel_count as usize * self.buffer_size
+                input_port.channel_count as usize * self.buffer_size,
             );
             self.input_buffers.insert(input_port.id.clone(), buffer);
         }
@@ -127,7 +123,7 @@ impl PluginInstance {
         // Setup output buffers
         for output_port in &descriptor.audio_outputs {
             let buffer = crate::audio::buffer::AudioBuffer::new(
-                output_port.channel_count as usize * self.buffer_size
+                output_port.channel_count as usize * self.buffer_size,
             );
             self.output_buffers.insert(output_port.id.clone(), buffer);
         }
@@ -136,9 +132,11 @@ impl PluginInstance {
     }
 
     /// Process audio through the plugin
-    pub fn process(&mut self, sample_frames: usize) -> PluginResult<()> {
+    pub fn process(&mut self, _sample_frames: usize) -> PluginResult<()> {
         if !self.is_active {
-            return Err(PluginError::ProcessingFailed("Plugin not active".to_string()));
+            return Err(PluginError::ProcessingFailed(
+                "Plugin not active".to_string(),
+            ));
         }
 
         self.is_processing = true;
@@ -152,17 +150,16 @@ impl PluginInstance {
         for (key, buffer) in &self.input_buffers {
             input_refs.insert(key.clone(), buffer);
         }
-        
-        let mut output_refs: HashMap<String, &mut crate::audio::buffer::AudioBuffer> = HashMap::new();
+
+        let mut output_refs: HashMap<String, &mut crate::audio::buffer::AudioBuffer> =
+            HashMap::new();
         for (key, buffer) in &mut self.output_buffers {
             output_refs.insert(key.clone(), buffer);
         }
 
-        let result = self.plugin.process(
-            &input_refs,
-            &mut output_refs,
-            self.buffer_size,
-        );
+        let result = self
+            .plugin
+            .process(&input_refs, &mut output_refs, self.buffer_size);
 
         self.is_processing = false;
         result
@@ -171,9 +168,10 @@ impl PluginInstance {
     /// Apply queued parameter changes
     fn apply_parameter_changes(&mut self) -> PluginResult<()> {
         let mut queue = self.parameter_queue.lock().unwrap();
-        
+
         for change in queue.drain(..) {
-            self.plugin.set_parameter(&change.parameter_id, change.value)?;
+            self.plugin
+                .set_parameter(&change.parameter_id, change.value)?;
         }
 
         Ok(())
@@ -235,7 +233,10 @@ impl PluginInstance {
     }
 
     /// Get mutable input buffer by port ID
-    pub fn get_input_buffer_mut(&mut self, port_id: &str) -> Option<&mut crate::audio::buffer::AudioBuffer> {
+    pub fn get_input_buffer_mut(
+        &mut self,
+        port_id: &str,
+    ) -> Option<&mut crate::audio::buffer::AudioBuffer> {
         self.input_buffers.get_mut(port_id)
     }
 
@@ -245,7 +246,10 @@ impl PluginInstance {
     }
 
     /// Get mutable output buffer by port ID
-    pub fn get_output_buffer_mut(&mut self, port_id: &str) -> Option<&mut crate::audio::buffer::AudioBuffer> {
+    pub fn get_output_buffer_mut(
+        &mut self,
+        port_id: &str,
+    ) -> Option<&mut crate::audio::buffer::AudioBuffer> {
         self.output_buffers.get_mut(port_id)
     }
 
@@ -253,12 +257,12 @@ impl PluginInstance {
     pub fn deactivate(&mut self) {
         self.is_active = false;
         self.is_processing = false;
-        
+
         // Clear buffers
         for buffer in self.input_buffers.values_mut() {
             buffer.clear();
         }
-        
+
         for buffer in self.output_buffers.values_mut() {
             buffer.clear();
         }
@@ -306,7 +310,6 @@ pub struct PluginInstanceInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugin::parameters::*;
 
     // Mock plugin for testing
     struct MockPlugin {
@@ -363,17 +366,18 @@ mod tests {
 
     #[test]
     fn test_plugin_instance_creation() {
-        let descriptor = PluginDescriptor::new("test", "Test Plugin");
+        let descriptor = PluginDescriptor::new(
+            "test",
+            "Test Plugin",
+            std::path::PathBuf::from("/test/plugin.clap"),
+        );
         let plugin = Box::new(MockPlugin {
             descriptor: descriptor.clone(),
             initialized: false,
         });
-        
-        let instance = PluginInstance::new(
-            plugin,
-            PluginInstanceId::new(),
-            "Test Instance".to_string(),
-        );
+
+        let instance =
+            PluginInstance::new(plugin, PluginInstanceId::new(), "Test Instance".to_string());
 
         assert_eq!(instance.name(), "Test Instance");
         assert!(!instance.is_active());
@@ -382,20 +386,21 @@ mod tests {
 
     #[test]
     fn test_initialization() {
-        let descriptor = PluginDescriptor::new("test", "Test Plugin");
+        let descriptor = PluginDescriptor::new(
+            "test",
+            "Test Plugin",
+            std::path::PathBuf::from("/test/plugin.clap"),
+        );
         let plugin = Box::new(MockPlugin {
             descriptor: descriptor.clone(),
             initialized: false,
         });
-        
-        let mut instance = PluginInstance::new(
-            plugin,
-            PluginInstanceId::new(),
-            "Test Instance".to_string(),
-        );
+
+        let mut instance =
+            PluginInstance::new(plugin, PluginInstanceId::new(), "Test Instance".to_string());
 
         instance.initialize(44100.0, 512).unwrap();
-        
+
         assert!(instance.is_active());
         assert_eq!(instance.sample_rate(), 44100.0);
         assert_eq!(instance.buffer_size(), 512);
@@ -403,20 +408,21 @@ mod tests {
 
     #[test]
     fn test_parameter_queue() {
-        let descriptor = PluginDescriptor::new("test", "Test Plugin");
+        let descriptor = PluginDescriptor::new(
+            "test",
+            "Test Plugin",
+            std::path::PathBuf::from("/test/plugin.clap"),
+        );
         let plugin = Box::new(MockPlugin {
             descriptor: descriptor.clone(),
             initialized: false,
         });
-        
-        let instance = PluginInstance::new(
-            plugin,
-            PluginInstanceId::new(),
-            "Test Instance".to_string(),
-        );
+
+        let instance =
+            PluginInstance::new(plugin, PluginInstanceId::new(), "Test Instance".to_string());
 
         instance.set_parameter("test_param".to_string(), 0.5);
-        
+
         let queue = instance.parameter_queue.lock().unwrap();
         assert_eq!(queue.len(), 1);
         assert_eq!(queue[0].parameter_id, "test_param");

@@ -128,7 +128,12 @@ impl AudioBufferPool {
     /// Resize pool (reallocates buffers)
     ///
     /// Should only be called when audio is not processing
-    pub fn resize(&mut self, input_channels: usize, output_channels: usize, max_buffer_size: usize) {
+    pub fn resize(
+        &mut self,
+        input_channels: usize,
+        output_channels: usize,
+        max_buffer_size: usize,
+    ) {
         *self = Self::new(input_channels, output_channels, max_buffer_size);
     }
 

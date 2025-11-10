@@ -1,21 +1,21 @@
 pub mod buffer_pool;
-pub mod scanner;
-// pub mod host;
-// pub mod instance;
-pub mod parameters;
-pub mod clap_gui;
 pub mod clap_ffi;
+pub mod clap_gui;
 pub mod clap_integration;
+pub mod host;
+pub mod instance;
+pub mod parameters;
+pub mod scanner;
 pub mod trait_def;
 
 pub use buffer_pool::*;
-pub use scanner::*;
-// pub use host::*;
-// pub use instance::*;
-pub use parameters::*;
-pub use clap_gui::*;
 pub use clap_ffi::*;
+pub use clap_gui::*;
 pub use clap_integration::*;
+pub use host::*;
+pub use instance::*;
+pub use parameters::*;
+pub use scanner::*;
 pub use trait_def::*;
 
 use thiserror::Error;
