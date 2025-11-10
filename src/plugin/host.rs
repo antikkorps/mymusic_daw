@@ -29,6 +29,12 @@ pub struct HostInfo {
     pub url: String,
 }
 
+impl Default for HostInfo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HostInfo {
     pub fn new() -> Self {
         Self {
@@ -561,16 +567,16 @@ impl Plugin for ClPluginInstance {
     }
 
     fn load_state(&mut self, state: &PluginState) -> Result<(), PluginError> {
-        if let Some(sample_rate_str) = state.custom_data.get("sample_rate") {
-            if let Ok(sample_rate) = sample_rate_str.parse::<f64>() {
-                self.sample_rate = sample_rate;
-            }
+        if let Some(sample_rate_str) = state.custom_data.get("sample_rate")
+            && let Ok(sample_rate) = sample_rate_str.parse::<f64>()
+        {
+            self.sample_rate = sample_rate;
         }
 
-        if let Some(initialized_str) = state.custom_data.get("initialized") {
-            if let Ok(initialized) = initialized_str.parse::<bool>() {
-                self.is_initialized = initialized;
-            }
+        if let Some(initialized_str) = state.custom_data.get("initialized")
+            && let Ok(initialized) = initialized_str.parse::<bool>()
+        {
+            self.is_initialized = initialized;
         }
 
         // Load parameter values
