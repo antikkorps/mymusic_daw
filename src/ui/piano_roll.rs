@@ -292,10 +292,14 @@ impl PianoRollEditor {
         _time_signature: &TimeSignature,
         sample_rate: f64,
     ) {
+        // Store reference to dragged note during iteration to avoid second search
+        let mut dragged_note: Option<&Note> = None;
+
         // First pass: draw all notes except the one being dragged
         for note in pattern.notes() {
-            // Skip the note being dragged (will draw it separately with special rendering)
+            // Store the dragged note reference for later rendering
             if self.is_dragging && Some(note.id) == self.drag_note_id {
+                dragged_note = Some(note);
                 continue;
             }
 
@@ -310,16 +314,12 @@ impl PianoRollEditor {
         }
 
         // Second pass: draw the dragged note with special visual feedback
-        if self.is_dragging {
-            if let Some(drag_id) = self.drag_note_id {
-                if let Some(note) = pattern.notes().iter().find(|n| n.id == drag_id) {
-                    // Skip notes outside visible range
-                    if note.pitch >= self.visible_note_start
-                        && note.pitch < self.visible_note_start + self.visible_note_count
-                    {
-                        self.draw_single_note(painter, rect, note, tempo, sample_rate, true);
-                    }
-                }
+        if let Some(note) = dragged_note {
+            // Skip notes outside visible range
+            if note.pitch >= self.visible_note_start
+                && note.pitch < self.visible_note_start + self.visible_note_count
+            {
+                self.draw_single_note(painter, rect, note, tempo, sample_rate, true);
             }
         }
     }
