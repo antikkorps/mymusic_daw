@@ -348,8 +348,7 @@ impl PianoRollEditor {
         let y_bottom = rect.bottom() - note_offset as f32 * self.pixels_per_note;
         let y_top = y_bottom - self.pixels_per_note;
 
-        let note_rect =
-            Rect::from_min_max(Pos2::new(x_start, y_top), Pos2::new(x_end, y_bottom));
+        let note_rect = Rect::from_min_max(Pos2::new(x_start, y_top), Pos2::new(x_end, y_bottom));
 
         // Color based on velocity (darker = quieter)
         let velocity_normalized = note.velocity as f32 / 127.0;
@@ -367,15 +366,16 @@ impl PianoRollEditor {
         let (final_color, stroke_color, stroke_width) = if is_being_dragged {
             // Dragged note: brighter with thick outline and semi-transparent
             let drag_color = Color32::from_rgba_unmultiplied(
-                255,
-                220,
-                100,
-                200, // Semi-transparent
+                255, 220, 100, 200, // Semi-transparent
             );
             (drag_color, Color32::from_rgb(255, 255, 0), 3.0)
         } else if is_selected {
             // Selected but not dragged
-            (Color32::from_rgb(255, 200, 100), Color32::from_gray(150), 1.0)
+            (
+                Color32::from_rgb(255, 200, 100),
+                Color32::from_gray(150),
+                1.0,
+            )
         } else {
             // Normal note
             (note_color, Color32::from_gray(150), 1.0)

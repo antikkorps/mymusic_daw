@@ -1067,15 +1067,21 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 
 **⚠️ ARCHITECTURE CRITIQUE** : Gestion de l'état global avec **Commands & Events** (voir "Décisions Architecturales"). Le moteur audio est la source de vérité, l'UI est une vue. Redux optionnel côté frontend.
 
-### Architecture Tauri
+### Architecture Tauri ✅ (FONDATIONS COMPLÈTES)
 
-- [ ] Setup projet Tauri
-  - [ ] Configuration Tauri.conf.json
-  - [ ] Choix du framework frontend (React/Vue/Svelte recommandé)
-  - [ ] Configuration du build system (vite/webpack)
-  - [ ] Migration graduelle depuis egui
-- [ ] Bridge Rust ↔ Frontend
-  - [ ] API Tauri Commands pour contrôle du moteur audio
+- [x] **Setup projet Tauri** ✅ (TERMINÉ)
+  - [x] Configuration Tauri.conf.json (version 0.5.1, window 1280x800)
+  - [x] Frontend React Router 7 intégré (POC complet)
+  - [x] Configuration build system (Vite avec React Router 7)
+  - [x] Mono-repo structure (`ui/` + `src-tauri/`)
+  - [x] Hot reload fonctionnel en dev mode
+  - [x] Application native qui se lance correctement
+- [x] **Bridge Rust ↔ Frontend (MVP)** ✅ (PREMIER BRIDGE FONCTIONNEL)
+  - [x] API Tauri Commands basiques (get_engine_info, play_test_beep, get_waveforms)
+  - [x] Hook React `useDawEngine()` pour appeler les commandes Rust
+  - [x] Test de communication réussi (bouton "Test Audio Bridge" fonctionnel)
+  - [x] Dashboard affiche les infos du moteur Rust en temps réel
+  - [ ] Commandes audio réelles (set_volume, play_note, stop_note) - À FAIRE
   - [ ] Event system pour streaming des données audio/MIDI vers UI
   - [ ] État partagé (Tauri State) pour paramètres du synthé
   - [ ] IPC performance optimization (batch updates)
@@ -1250,13 +1256,16 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
    - 🔄 Intégration plugins dans le routing à venir
    - ✅ **Tests avec vrais plugins CLAP RÉUSSIS** (Surge XT Effects chargé!)
 
-**État actuel (Phase 5 - 85% COMPLÈTE)** :
+**État actuel (Phase 7 - 25% COMMENCÉE | Phase 5 - 85% COMPLÈTE)** :
 - ✅ **Phase 4 COMPLÈTE** (Séquenceur, Timeline, Piano Roll, Recording, Persistance)
-- ✅ **CLAP Infrastructure COMPLÈTE** (~3500 lignes, 7 parties: FFI, Lifecycle, Audio, MIDI, Params, GUI, BufferPool)
-- ✅ **Routing Audio COMPLÈTE** (architecture node-based, topological sort, cycle detection)
-- ✅ **Plugin Loading & Display COMPLÈTE** (Surge XT chargé avec succès, UI complète avec détails)
-- ✅ **Export Audio COMPLÈTE** (WAV, FLAC avec configurations)
+- ✅ **Phase 5 - CLAP Infrastructure COMPLÈTE** (~3500 lignes, 7 parties: FFI, Lifecycle, Audio, MIDI, Params, GUI, BufferPool)
+- ✅ **Phase 5 - Routing Audio COMPLÈTE** (architecture node-based, topological sort, cycle detection)
+- ✅ **Phase 5 - Plugin Loading & Display COMPLÈTE** (Surge XT chargé avec succès, UI complète avec détails)
+- ✅ **Phase 5 - Export Audio COMPLÈTE** (WAV, FLAC avec configurations)
 - 🔄 **À venir Phase 5** : GUI native window embedding, Routing audio vers plugins, Affichage paramètres, Mixeur avancé, Sends/Returns
+- ✅ **Phase 7 - Tauri Setup COMPLÉTÉ** (React Router 7 + fenêtre native + hot reload)
+- ✅ **Phase 7 - Premier Bridge React ↔ Rust FONCTIONNEL** (Tauri Commands + useDawEngine hook)
+- 🔄 **À venir Phase 7** : Commandes audio réelles, Event system, State management, UI complète
 
 ---
 

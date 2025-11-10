@@ -3,10 +3,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { Button } from "~/components/ui/button";
 import { Waveform } from "~/components/audio/Waveform";
 import { mockTracks, mockPlugins } from "~/lib/mockData";
-import { FileAudio, Music, Puzzle, Clock, Activity } from "lucide-react";
+import { FileAudio, Music, Puzzle, Clock, Activity, Cpu } from "lucide-react";
 import { Link } from "react-router";
+import { useDawEngine } from "~/hooks/useDawEngine";
 
 export default function DashboardPage() {
+  const { engineInfo, waveforms, playTestBeep, isLoading, error } = useDawEngine();
   const loadedPlugins = mockPlugins.filter((p) => p.loaded);
   const totalTracks = mockTracks.length;
   const audioTracks = mockTracks.filter((t) => t.type === "audio").length;
@@ -68,6 +70,72 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Rust Engine Status - TEST BRIDGE */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Cpu className="w-5 h-5 text-green-500" />
+                Rust Audio Engine
+              </CardTitle>
+              <CardDescription>Connection test: React ↔ Rust (Tauri)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <p className="text-zinc-400">Loading engine info...</p>
+              ) : error ? (
+                <p className="text-red-400">❌ Error: {error}</p>
+              ) : engineInfo ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-zinc-500">Name</p>
+                      <p className="font-medium">{engineInfo.name}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500">Version</p>
+                      <p className="font-medium">{engineInfo.version}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500">Status</p>
+                      <p className="font-medium text-green-400">✓ {engineInfo.status}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500">Audio Engine</p>
+                      <p className="font-medium">{engineInfo.audio_engine}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500">Sample Rate</p>
+                      <p className="font-medium">{engineInfo.sample_rate} Hz</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500">Buffer Size</p>
+                      <p className="font-medium">{engineInfo.buffer_size} samples</p>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-zinc-800">
+                    <p className="text-xs text-zinc-500 mb-2">Available Waveforms</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {waveforms.map((wf) => (
+                        <span key={wf} className="px-2 py-1 bg-zinc-800 rounded text-xs">
+                          {wf}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-3">
+                    <Button onClick={playTestBeep} className="w-full">
+                      🔊 Test Audio Bridge
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-zinc-400">No engine info available</p>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Master Output Waveform */}
           <Card>
