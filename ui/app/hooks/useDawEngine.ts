@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { MIDI_MIN_VALUE, MIDI_MAX_VALUE } from '../types/midi';
 
 // Engine status interface
 interface EngineStatus {
@@ -82,11 +83,11 @@ export function useDawEngine(): UseDawEngine {
   const playNote = useCallback(async (note: number, velocity: number = 100) => {
     try {
       // Validate inputs
-      if (note < 0 || note > 127) {
-        throw new Error(`Invalid note number: ${note} (must be 0-127)`);
+      if (note < MIDI_MIN_VALUE || note > MIDI_MAX_VALUE) {
+        throw new Error(`Invalid note number: ${note} (must be ${MIDI_MIN_VALUE}-${MIDI_MAX_VALUE})`);
       }
-      if (velocity < 0 || velocity > 127) {
-        throw new Error(`Invalid velocity: ${velocity} (must be 0-127)`);
+      if (velocity < MIDI_MIN_VALUE || velocity > MIDI_MAX_VALUE) {
+        throw new Error(`Invalid velocity: ${velocity} (must be ${MIDI_MIN_VALUE}-${MIDI_MAX_VALUE})`);
       }
 
       await invoke('play_note', { note, velocity });
@@ -105,8 +106,8 @@ export function useDawEngine(): UseDawEngine {
   const stopNote = useCallback(async (note: number) => {
     try {
       // Validate input
-      if (note < 0 || note > 127) {
-        throw new Error(`Invalid note number: ${note} (must be 0-127)`);
+      if (note < MIDI_MIN_VALUE || note > MIDI_MAX_VALUE) {
+        throw new Error(`Invalid note number: ${note} (must be ${MIDI_MIN_VALUE}-${MIDI_MAX_VALUE})`);
       }
 
       await invoke('stop_note', { note });
