@@ -88,11 +88,19 @@ fn main() {
         })
         .manage(daw_state)
         .invoke_handler(tauri::generate_handler![
+            // Audio engine commands
             lib::set_volume,
             lib::play_note,
             lib::stop_note,
             lib::get_volume,
             lib::get_engine_status,
+            // Plugin management commands
+            lib::load_plugin_instance,
+            lib::get_plugin_parameters,
+            lib::get_plugin_parameter_value,
+            lib::set_plugin_parameter_value,
+            lib::unload_plugin_instance,
+            lib::get_loaded_plugins,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

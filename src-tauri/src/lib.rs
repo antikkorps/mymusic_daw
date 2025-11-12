@@ -1,6 +1,7 @@
 // Tauri commands for MyMusic DAW
 // Exposes audio engine controls to the React frontend
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::State;
 
@@ -8,6 +9,12 @@ use tauri::State;
 use mymusic_daw::audio::AtomicF32;
 use mymusic_daw::messaging::{Command, CommandProducer};
 use mymusic_daw::midi::MidiEvent;
+use mymusic_daw::plugin::{ClapPluginFactory, Plugin, PluginDescriptor};
+
+/// Plugin instance wrapper with unique ID
+struct ManagedPlugin {
+    instance: Box<dyn Plugin>,
+}
 
 /// Shared state for the DAW engine
 /// This is accessible from all Tauri commands
@@ -17,6 +24,12 @@ pub struct DawState {
 
     /// Volume control (atomic for thread-safe access)
     volume_atomic: Arc<AtomicF32>,
+
+    /// Loaded plugin instances (plugin_id -> instance)
+    plugins: Arc<Mutex<HashMap<String, ManagedPlugin>>>,
+
+    /// Next plugin ID counter
+    next_plugin_id: Arc<Mutex<u32>>,
 }
 
 impl DawState {
@@ -24,7 +37,17 @@ impl DawState {
         Self {
             command_tx: Arc::new(Mutex::new(command_tx)),
             volume_atomic,
+            plugins: Arc::new(Mutex::new(HashMap::new())),
+            next_plugin_id: Arc::new(Mutex::new(0)),
         }
+    }
+
+    /// Generate a unique plugin ID
+    fn generate_plugin_id(&self) -> String {
+        let mut counter = self.next_plugin_id.lock().unwrap();
+        let id = format!("plugin_{}", *counter);
+        *counter += 1;
+        id
     }
 }
 
@@ -157,13 +180,255 @@ pub fn get_engine_status() -> Result<serde_json::Value, String> {
     }))
 }
 
+//
+// ============ PLUGIN COMMANDS ============
+//
+
+/// Load a CLAP plugin instance
+///
+/// # Arguments
+/// * `plugin_path` - Path to the .clap plugin file
+///
+/// # Returns
+/// Plugin ID (unique identifier for this instance)
+///
+/// # Example
+/// ```js
+/// const pluginId = await invoke('load_plugin_instance', {
+///   pluginPath: '/Library/Audio/Plug-Ins/CLAP/Surge XT.clap'
+/// });
+/// ```
+#[tauri::command]
+pub fn load_plugin_instance(plugin_path: String, state: State<DawState>) -> Result<String, String> {
+    // Create plugin factory
+    let factory = ClapPluginFactory::from_path(&plugin_path)
+        .map_err(|e| format!("Failed to load plugin: {}", e))?;
+
+    // Create plugin instance
+    let mut instance = factory
+        .create_instance()
+        .map_err(|e| format!("Failed to create plugin instance: {}", e))?;
+
+    // Initialize plugin with default sample rate (44100 Hz)
+    instance
+        .initialize(44100.0)
+        .map_err(|e| format!("Failed to initialize plugin: {}", e))?;
+
+    // Generate unique ID for this instance
+    let plugin_id = state.generate_plugin_id();
+
+    // Store the instance
+    let mut plugins = state
+        .plugins
+        .lock()
+        .map_err(|_| "Failed to acquire plugins lock".to_string())?;
+
+    plugins.insert(
+        plugin_id.clone(),
+        ManagedPlugin { instance },
+    );
+
+    println!("✅ Loaded plugin instance: {}", plugin_id);
+    Ok(plugin_id)
+}
+
+/// Get all parameters for a loaded plugin
+///
+/// # Arguments
+/// * `plugin_id` - Plugin instance ID
+///
+/// # Returns
+/// Array of parameter descriptors with id, name, min, max, default values
+///
+/// # Example
+/// ```js
+/// const params = await invoke('get_plugin_parameters', { pluginId });
+/// // Returns: [{ id: "cutoff", name: "Cutoff", min: 20, max: 20000, ... }, ...]
+/// ```
+#[tauri::command]
+pub fn get_plugin_parameters(
+    plugin_id: String,
+    state: State<DawState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let plugins = state
+        .plugins
+        .lock()
+        .map_err(|_| "Failed to acquire plugins lock".to_string())?;
+
+    let managed_plugin = plugins
+        .get(&plugin_id)
+        .ok_or_else(|| format!("Plugin not found: {}", plugin_id))?;
+
+    let descriptor = managed_plugin.instance.descriptor();
+
+    // Convert parameters to JSON
+    let params: Vec<serde_json::Value> = descriptor
+        .parameters
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "id": p.id,
+                "name": p.name,
+                "min": p.min_value,
+                "max": p.max_value,
+                "default": p.default_value,
+                "unit": p.unit
+            })
+        })
+        .collect();
+
+    Ok(params)
+}
+
+/// Get current value of a plugin parameter
+///
+/// # Arguments
+/// * `plugin_id` - Plugin instance ID
+/// * `parameter_id` - Parameter ID
+///
+/// # Returns
+/// Current parameter value
+///
+/// # Example
+/// ```js
+/// const value = await invoke('get_plugin_parameter_value', {
+///   pluginId,
+///   parameterId: 'cutoff'
+/// });
+/// ```
+#[tauri::command]
+pub fn get_plugin_parameter_value(
+    plugin_id: String,
+    parameter_id: String,
+    state: State<DawState>,
+) -> Result<f64, String> {
+    let plugins = state
+        .plugins
+        .lock()
+        .map_err(|_| "Failed to acquire plugins lock".to_string())?;
+
+    let managed_plugin = plugins
+        .get(&plugin_id)
+        .ok_or_else(|| format!("Plugin not found: {}", plugin_id))?;
+
+    managed_plugin
+        .instance
+        .get_parameter(&parameter_id)
+        .ok_or_else(|| format!("Parameter not found: {}", parameter_id))
+}
+
+/// Set a plugin parameter value
+///
+/// # Arguments
+/// * `plugin_id` - Plugin instance ID
+/// * `parameter_id` - Parameter ID
+/// * `value` - New parameter value
+///
+/// # Example
+/// ```js
+/// await invoke('set_plugin_parameter_value', {
+///   pluginId,
+///   parameterId: 'cutoff',
+///   value: 1000.0
+/// });
+/// ```
+#[tauri::command]
+pub fn set_plugin_parameter_value(
+    plugin_id: String,
+    parameter_id: String,
+    value: f64,
+    state: State<DawState>,
+) -> Result<(), String> {
+    let mut plugins = state
+        .plugins
+        .lock()
+        .map_err(|_| "Failed to acquire plugins lock".to_string())?;
+
+    let managed_plugin = plugins
+        .get_mut(&plugin_id)
+        .ok_or_else(|| format!("Plugin not found: {}", plugin_id))?;
+
+    managed_plugin
+        .instance
+        .set_parameter(&parameter_id, value)
+        .map_err(|e| format!("Failed to set parameter: {}", e))?;
+
+    Ok(())
+}
+
+/// Unload a plugin instance
+///
+/// # Arguments
+/// * `plugin_id` - Plugin instance ID
+///
+/// # Example
+/// ```js
+/// await invoke('unload_plugin_instance', { pluginId });
+/// ```
+#[tauri::command]
+pub fn unload_plugin_instance(plugin_id: String, state: State<DawState>) -> Result<(), String> {
+    let mut plugins = state
+        .plugins
+        .lock()
+        .map_err(|_| "Failed to acquire plugins lock".to_string())?;
+
+    plugins
+        .remove(&plugin_id)
+        .ok_or_else(|| format!("Plugin not found: {}", plugin_id))?;
+
+    println!("🗑️  Unloaded plugin instance: {}", plugin_id);
+    Ok(())
+}
+
+/// Get info about all loaded plugin instances
+///
+/// # Returns
+/// Array of loaded plugin IDs and their descriptors
+///
+/// # Example
+/// ```js
+/// const loadedPlugins = await invoke('get_loaded_plugins');
+/// // Returns: [{ id: "plugin_0", name: "Surge XT", vendor: "Surge Synth Team" }, ...]
+/// ```
+#[tauri::command]
+pub fn get_loaded_plugins(state: State<DawState>) -> Result<Vec<serde_json::Value>, String> {
+    let plugins = state
+        .plugins
+        .lock()
+        .map_err(|_| "Failed to acquire plugins lock".to_string())?;
+
+    let loaded: Vec<serde_json::Value> = plugins
+        .iter()
+        .map(|(id, managed_plugin)| {
+            let descriptor = managed_plugin.instance.descriptor();
+            serde_json::json!({
+                "id": id,
+                "name": descriptor.name,
+                "vendor": descriptor.vendor,
+                "version": descriptor.version,
+                "category": format!("{:?}", descriptor.category)
+            })
+        })
+        .collect();
+
+    Ok(loaded)
+}
+
 // Helper function to initialize Tauri with DAW commands
 pub fn register_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder.invoke_handler(tauri::generate_handler![
+        // Audio engine commands
         set_volume,
         play_note,
         stop_note,
         get_volume,
         get_engine_status,
+        // Plugin commands
+        load_plugin_instance,
+        get_plugin_parameters,
+        get_plugin_parameter_value,
+        set_plugin_parameter_value,
+        unload_plugin_instance,
+        get_loaded_plugins,
     ])
 }
