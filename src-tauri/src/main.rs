@@ -7,32 +7,29 @@ use std::sync::Arc;
 use tauri::Manager;
 
 // Import DAW modules
-use mymusic_daw::audio::{AtomicF32, AudioDeviceManager, AudioEngine, CpuMonitor};
-use mymusic_daw::messaging::create_channels;
-use mymusic_daw::midi::MidiConnectionManager;
+use mymusic_daw::audio::device::AudioDeviceManager;
+use mymusic_daw::{
+    create_command_channel, create_notification_channel, AudioEngine, MidiConnectionManager,
+};
 
-// Import Tauri commands
-mod lib;
-use lib::DawState;
+// Import library with commands and state
+use app_lib::{register_commands, DawState};
 
 fn main() {
     // Initialize the audio engine
     println!("🎵 Initializing MyMusic DAW...");
 
     // Create communication channels
-    let (command_tx, command_rx) = create_channels();
+    // We need two separate channels: one for UI commands and one for MIDI commands
+    let (command_tx_ui, command_rx_ui) = create_command_channel(1024);
+    let (command_tx_midi, command_rx_midi) = create_command_channel(1024);
 
-    // Create volume atomic
-    let volume_atomic = Arc::new(AtomicF32::new(0.5)); // Default 50% volume
+    // Create notification channel
+    let (notification_tx, _notification_rx) = create_notification_channel(256);
+    let notification_tx_arc = Arc::new(std::sync::Mutex::new(notification_tx));
 
     // Create MIDI connection manager
-    let midi_manager = MidiConnectionManager::new(command_tx.clone());
-
-    // Create CPU monitor
-    let cpu_monitor = CpuMonitor::new();
-
-    // Create notification channel (unused in Tauri for now, but required by AudioEngine)
-    let (notification_tx, _notification_rx) = ringbuf::HeapRb::new(256).split();
+    let _midi_manager = MidiConnectionManager::new(command_tx_midi, notification_tx_arc.clone());
 
     // Initialize audio device manager
     let audio_device_manager = AudioDeviceManager::new();
@@ -48,33 +45,33 @@ fn main() {
     }
 
     // Create audio engine
-    let audio_engine = AudioEngine::new(
-        command_rx,
-        volume_atomic.clone(),
-        cpu_monitor.clone(),
-        notification_tx,
-    );
-
-    // Start audio stream
-    match audio_engine.start() {
-        Ok(_stream) => {
+    let audio_engine = match AudioEngine::new(
+        command_rx_ui,
+        command_rx_midi,
+        notification_tx_arc.clone(),
+    ) {
+        Ok(engine) => {
             println!("✅ Audio engine started successfully");
-
-            // Store stream to keep it alive (Tauri will manage its lifetime)
-            // In a real app, you'd want to store this in managed state
-            std::mem::forget(_stream);
+            engine
         }
         Err(e) => {
             eprintln!("❌ Failed to start audio engine: {}", e);
             std::process::exit(1);
         }
-    }
+    };
+
+    // Get volume from audio engine (it's created internally)
+    // Wrap it in Arc to match DawState::new() signature
+    let volume_atomic = Arc::new(audio_engine.volume.clone());
 
     // Create DAW state for Tauri
-    let daw_state = DawState::new(command_tx, volume_atomic);
+    let daw_state = DawState::new(command_tx_ui, volume_atomic);
+
+    // Keep the audio engine alive (Tauri will manage its lifetime)
+    std::mem::forget(audio_engine);
 
     // Build and run Tauri application
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .setup(|app| {
             println!("🚀 Tauri app initialized");
             println!("🎹 DAW is ready!");
@@ -86,24 +83,10 @@ fn main() {
 
             Ok(())
         })
-        .manage(daw_state)
-        .invoke_handler(tauri::generate_handler![
-            // Audio engine commands
-            lib::set_volume,
-            lib::play_note,
-            lib::stop_note,
-            lib::get_volume,
-            lib::get_engine_status,
-            lib::get_engine_info,
-            lib::play_test_beep,
-            // Plugin management commands
-            lib::load_plugin_instance,
-            lib::get_plugin_parameters,
-            lib::get_plugin_parameter_value,
-            lib::set_plugin_parameter_value,
-            lib::unload_plugin_instance,
-            lib::get_loaded_plugins,
-        ])
+        .manage(daw_state);
+
+    // Register all Tauri commands
+    register_commands(builder)
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
