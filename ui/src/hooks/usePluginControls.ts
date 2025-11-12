@@ -324,7 +324,7 @@ export function usePluginControls(): UsePluginControls {
    */
   useEffect(() => {
     refreshPlugins();
-  }, [refreshPlugins]);
+  }, []);
 
   return {
     loadedPlugins,
