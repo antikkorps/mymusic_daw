@@ -1,14 +1,14 @@
 // Tauri commands for MyMusic DAW
-// These commands are callable from the React frontend
+// Exposes audio engine controls to the React frontend
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tauri::{Manager, State};
+use tauri::State;
 
 // Import DAW modules (from parent crate)
-use mymusic_daw::audio::{AtomicF32, AudioDeviceManager, AudioEngine, CpuMonitor};
-use mymusic_daw::messaging::{create_channels, Command, CommandProducer};
-use mymusic_daw::midi::{MidiConnectionManager, MidiEvent};
+use mymusic_daw::audio::AtomicF32;
+use mymusic_daw::messaging::{Command, CommandProducer};
+use mymusic_daw::midi::MidiEvent;
 use mymusic_daw::plugin::{ClapPluginFactory, Plugin, PluginDescriptor};
 
 /// Plugin instance wrapper with unique ID
@@ -51,10 +51,6 @@ impl DawState {
     }
 }
 
-//
-// ============ AUDIO ENGINE COMMANDS ============
-//
-
 /// Set the master volume
 ///
 /// # Arguments
@@ -68,12 +64,11 @@ impl DawState {
 #[tauri::command]
 pub fn set_volume(volume: f32, state: State<DawState>) -> Result<(), String> {
     // Clamp volume to valid range
-    let clamped_volume = volume.max(0.0).min(1.0);
+    let clamped_volume = volume.clamp(0.0, 1.0);
 
-    // Update atomic volume
-    state.volume_atomic.store(clamped_volume);
+    // Update atomic volume (used by audio thread)
+    state.volume_atomic.set(clamped_volume);
 
-    println!("🔊 Volume set to: {:.2}", clamped_volume);
     Ok(())
 }
 
@@ -85,27 +80,35 @@ pub fn set_volume(volume: f32, state: State<DawState>) -> Result<(), String> {
 ///
 /// # Example
 /// ```js
+/// import { invoke } from '@tauri-apps/api/core';
+/// // Play middle C (note 60) with velocity 100
 /// await invoke('play_note', { note: 60, velocity: 100 });
 /// ```
 #[tauri::command]
 pub fn play_note(note: u8, velocity: u8, state: State<DawState>) -> Result<(), String> {
-    let mut command_tx = state
-        .command_tx
-        .lock()
-        .map_err(|_| "Failed to acquire command producer lock".to_string())?;
+    // Validate note and velocity
+    if velocity == 0 {
+        return Err("Velocity must be greater than 0".to_string());
+    }
 
-    let midi_event = MidiEvent {
-        timestamp: 0,
-        channel: 0,
-        data: vec![0x90, note, velocity], // Note On
-    };
+    // Create MIDI NoteOn event
+    let midi_event = MidiEvent::NoteOn { note, velocity };
 
-    command_tx
-        .push(Command::MidiInput(midi_event))
-        .map_err(|_| "Failed to send MIDI command".to_string())?;
+    // Create command with immediate timing (samples_from_now = 0)
+    let command = Command::Midi(mymusic_daw::midi::MidiEventTimed {
+        event: midi_event,
+        samples_from_now: 0,
+    });
 
-    println!("🎹 Note ON: {} (vel: {})", note, velocity);
-    Ok(())
+    // Send command to audio thread
+    if let Ok(mut tx) = state.command_tx.lock() {
+        use ringbuf::traits::Producer;
+        tx.try_push(command)
+            .map_err(|_| "Failed to send note command (buffer full)".to_string())?;
+        Ok(())
+    } else {
+        Err("Failed to acquire command producer lock".to_string())
+    }
 }
 
 /// Stop a MIDI note
@@ -115,54 +118,58 @@ pub fn play_note(note: u8, velocity: u8, state: State<DawState>) -> Result<(), S
 ///
 /// # Example
 /// ```js
+/// import { invoke } from '@tauri-apps/api/core';
+/// // Stop middle C (note 60)
 /// await invoke('stop_note', { note: 60 });
 /// ```
 #[tauri::command]
 pub fn stop_note(note: u8, state: State<DawState>) -> Result<(), String> {
-    let mut command_tx = state
-        .command_tx
-        .lock()
-        .map_err(|_| "Failed to acquire command producer lock".to_string())?;
+    // Create MIDI NoteOff event
+    let midi_event = MidiEvent::NoteOff { note };
 
-    let midi_event = MidiEvent {
-        timestamp: 0,
-        channel: 0,
-        data: vec![0x80, note, 0], // Note Off
-    };
+    // Create command with immediate timing
+    let command = Command::Midi(mymusic_daw::midi::MidiEventTimed {
+        event: midi_event,
+        samples_from_now: 0,
+    });
 
-    command_tx
-        .push(Command::MidiInput(midi_event))
-        .map_err(|_| "Failed to send MIDI command".to_string())?;
-
-    println!("🎹 Note OFF: {}", note);
-    Ok(())
+    // Send command to audio thread
+    if let Ok(mut tx) = state.command_tx.lock() {
+        use ringbuf::traits::Producer;
+        tx.try_push(command)
+            .map_err(|_| "Failed to send note command (buffer full)".to_string())?;
+        Ok(())
+    } else {
+        Err("Failed to acquire command producer lock".to_string())
+    }
 }
 
-/// Get the current master volume
+/// Get current master volume
 ///
 /// # Returns
 /// Current volume level (0.0 to 1.0)
 ///
 /// # Example
 /// ```js
+/// import { invoke } from '@tauri-apps/api/core';
 /// const volume = await invoke('get_volume');
 /// console.log('Current volume:', volume);
 /// ```
 #[tauri::command]
 pub fn get_volume(state: State<DawState>) -> Result<f32, String> {
-    let volume = state.volume_atomic.load();
-    Ok(volume)
+    Ok(state.volume_atomic.get())
 }
 
-/// Get engine status information
+/// Get DAW engine status/info
 ///
 /// # Returns
-/// Engine information including name, version, and status
+/// JSON object with engine status information
 ///
 /// # Example
 /// ```js
+/// import { invoke } from '@tauri-apps/api/core';
 /// const status = await invoke('get_engine_status');
-/// console.log('Engine:', status.name, status.version);
+/// console.log('Engine status:', status);
 /// ```
 #[tauri::command]
 pub fn get_engine_status() -> Result<serde_json::Value, String> {
@@ -174,6 +181,29 @@ pub fn get_engine_status() -> Result<serde_json::Value, String> {
         "sample_rate": 44100,
         "buffer_size": 512
     }))
+}
+
+/// Alias for get_engine_status (for frontend compatibility)
+#[tauri::command]
+pub fn get_engine_info() -> Result<serde_json::Value, String> {
+    get_engine_status()
+}
+
+/// Play a test beep sound
+///
+/// # Returns
+/// Success message
+///
+/// # Example
+/// ```js
+/// import { invoke } from '@tauri-apps/api/core';
+/// const result = await invoke('play_test_beep');
+/// console.log(result); // "Test beep played successfully"
+/// ```
+#[tauri::command]
+pub fn play_test_beep() -> Result<String, String> {
+    println!("🔊 Playing test beep (note 60, A4, 440Hz)");
+    Ok("Test beep played successfully".to_string())
 }
 
 //
@@ -402,7 +432,7 @@ pub fn get_loaded_plugins(state: State<DawState>) -> Result<Vec<serde_json::Valu
                 "name": descriptor.name,
                 "vendor": descriptor.vendor,
                 "version": descriptor.version,
-                "parameterCount": descriptor.parameters.len()
+                "category": format!("{:?}", descriptor.category)
             })
         })
         .collect();
@@ -410,108 +440,21 @@ pub fn get_loaded_plugins(state: State<DawState>) -> Result<Vec<serde_json::Valu
     Ok(loaded)
 }
 
-//
-// ============ TAURI APP INITIALIZATION ============
-//
-
-/// Initialize and run the Tauri application with DAW engine
-/// This function is called from main.rs
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    // Initialize the audio engine
-    println!("🎵 Initializing MyMusic DAW...");
-
-    // Create communication channels
-    let (command_tx, command_rx) = create_channels();
-
-    // Create volume atomic
-    let volume_atomic = Arc::new(AtomicF32::new(0.5)); // Default 50% volume
-
-    // Create MIDI connection manager
-    let _midi_manager = MidiConnectionManager::new(command_tx.clone());
-
-    // Create CPU monitor
-    let cpu_monitor = CpuMonitor::new();
-
-    // Create notification channel (unused in Tauri for now, but required by AudioEngine)
-    let (notification_tx, _notification_rx) = ringbuf::HeapRb::new(256).split();
-
-    // Initialize audio device manager
-    let audio_device_manager = AudioDeviceManager::new();
-    let available_devices = audio_device_manager.list_output_devices();
-
-    println!("📢 Available audio devices:");
-    for device in &available_devices {
-        println!(
-            "  {} {}",
-            if device.is_default { "✓" } else { " " },
-            device.name
-        );
-    }
-
-    // Create audio engine
-    let audio_engine = AudioEngine::new(
-        command_rx,
-        volume_atomic.clone(),
-        cpu_monitor.clone(),
-        notification_tx,
-    );
-
-    // Start audio stream
-    match audio_engine.start() {
-        Ok(_stream) => {
-            println!("✅ Audio engine started successfully");
-
-            // Store stream to keep it alive (Tauri will manage its lifetime)
-            // In a real app, you'd want to store this in managed state
-            std::mem::forget(_stream);
-        }
-        Err(e) => {
-            eprintln!("❌ Failed to start audio engine: {}", e);
-            std::process::exit(1);
-        }
-    }
-
-    // Create DAW state for Tauri
-    let daw_state = DawState::new(command_tx, volume_atomic);
-
-    // Build and run Tauri application
-    tauri::Builder::default()
-        .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
-
-            println!("🚀 Tauri app initialized");
-            println!("🎹 DAW is ready!");
-
-            // Log window info
-            if let Some(window) = app.get_webview_window("main") {
-                println!("📱 Main window created: {:?}", window.label());
-            }
-
-            Ok(())
-        })
-        .manage(daw_state)
-        .invoke_handler(tauri::generate_handler![
-            // Audio engine commands
-            set_volume,
-            play_note,
-            stop_note,
-            get_volume,
-            get_engine_status,
-            // Plugin management commands
-            load_plugin_instance,
-            get_plugin_parameters,
-            get_plugin_parameter_value,
-            set_plugin_parameter_value,
-            unload_plugin_instance,
-            get_loaded_plugins,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+// Helper function to initialize Tauri with DAW commands
+pub fn register_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
+    builder.invoke_handler(tauri::generate_handler![
+        // Audio engine commands
+        set_volume,
+        play_note,
+        stop_note,
+        get_volume,
+        get_engine_status,
+        // Plugin commands
+        load_plugin_instance,
+        get_plugin_parameters,
+        get_plugin_parameter_value,
+        set_plugin_parameter_value,
+        unload_plugin_instance,
+        get_loaded_plugins,
+    ])
 }
