@@ -3,7 +3,7 @@
  * Provides functions to load, control, and manage CLAP plugin instances
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
 // Plugin parameter interface
@@ -376,22 +376,38 @@ export function useSinglePlugin(pluginPath: string | null) {
   const { loadPlugin, unloadPlugin, setParameterValue, loadedPlugins, error } = usePluginControls();
   const [pluginId, setPluginId] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
+  
+  // Use a ref to track the current plugin ID for cleanup
+  // This avoids stale closure issues in the cleanup function
+  const pluginIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     if (pluginPath) {
       loadPlugin(pluginPath).then((id) => {
-        setPluginId(id);
-        setIsLoaded(!!id);
+        if (isMounted && id) {
+          setPluginId(id);
+          setIsLoaded(true);
+          pluginIdRef.current = id;
+        }
       });
 
-      // Cleanup on unmount
+      // Cleanup on unmount or when pluginPath changes
       return () => {
-        if (pluginId) {
-          unloadPlugin(pluginId);
+        isMounted = false;
+        const currentPluginId = pluginIdRef.current;
+        if (currentPluginId) {
+          unloadPlugin(currentPluginId);
+          pluginIdRef.current = null;
         }
       };
+    } else {
+      // Reset state when pluginPath is null
+      setPluginId(null);
+      setIsLoaded(false);
     }
-  }, [pluginPath]); // Note: intentionally not including loadPlugin/unloadPlugin to avoid re-loading
+  }, [pluginPath, loadPlugin, unloadPlugin]);
 
   const plugin = pluginId ? loadedPlugins.get(pluginId) : undefined;
 
