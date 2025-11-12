@@ -3,7 +3,7 @@
  * Provides functions to control the audio engine via Tauri commands
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
 // Engine status interface
@@ -187,6 +187,7 @@ export function useDawEngine(): UseDawEngine {
  */
 export function useNotePlayer() {
   const { playNote, stopNote } = useDawEngine();
+  const timeoutIdsRef = useRef<Set<NodeJS.Timeout>>(new Set());
 
   /**
    * Play a note and automatically stop it after a duration
@@ -198,12 +199,27 @@ export function useNotePlayer() {
     async (note: number, velocity: number = 100, duration: number = 500) => {
       await playNote(note, velocity);
 
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         stopNote(note);
+        timeoutIdsRef.current.delete(timeoutId);
       }, duration);
+
+      timeoutIdsRef.current.add(timeoutId);
     },
     [playNote, stopNote]
   );
+
+  /**
+   * Clean up all pending timeouts when component unmounts
+   */
+  useEffect(() => {
+    return () => {
+      timeoutIdsRef.current.forEach((timeoutId) => {
+        clearTimeout(timeoutId);
+      });
+      timeoutIdsRef.current.clear();
+    };
+  }, []);
 
   return {
     triggerNote,
