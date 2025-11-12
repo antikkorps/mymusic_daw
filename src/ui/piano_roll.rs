@@ -292,10 +292,14 @@ impl PianoRollEditor {
         _time_signature: &TimeSignature,
         sample_rate: f64,
     ) {
+        // Store reference to dragged note during iteration to avoid second search
+        let mut dragged_note: Option<&Note> = None;
+
         // First pass: draw all notes except the one being dragged
         for note in pattern.notes() {
-            // Skip the note being dragged (will draw it separately with special rendering)
+            // Store the dragged note reference for later rendering
             if self.is_dragging && Some(note.id) == self.drag_note_id {
+                dragged_note = Some(note);
                 continue;
             }
 
@@ -310,16 +314,12 @@ impl PianoRollEditor {
         }
 
         // Second pass: draw the dragged note with special visual feedback
-        if self.is_dragging {
-            if let Some(drag_id) = self.drag_note_id {
-                if let Some(note) = pattern.notes().iter().find(|n| n.id == drag_id) {
-                    // Skip notes outside visible range
-                    if note.pitch >= self.visible_note_start
-                        && note.pitch < self.visible_note_start + self.visible_note_count
-                    {
-                        self.draw_single_note(painter, rect, note, tempo, sample_rate, true);
-                    }
-                }
+        if let Some(note) = dragged_note {
+            // Skip notes outside visible range
+            if note.pitch >= self.visible_note_start
+                && note.pitch < self.visible_note_start + self.visible_note_count
+            {
+                self.draw_single_note(painter, rect, note, tempo, sample_rate, true);
             }
         }
     }
@@ -348,8 +348,7 @@ impl PianoRollEditor {
         let y_bottom = rect.bottom() - note_offset as f32 * self.pixels_per_note;
         let y_top = y_bottom - self.pixels_per_note;
 
-        let note_rect =
-            Rect::from_min_max(Pos2::new(x_start, y_top), Pos2::new(x_end, y_bottom));
+        let note_rect = Rect::from_min_max(Pos2::new(x_start, y_top), Pos2::new(x_end, y_bottom));
 
         // Color based on velocity (darker = quieter)
         let velocity_normalized = note.velocity as f32 / 127.0;
@@ -367,15 +366,16 @@ impl PianoRollEditor {
         let (final_color, stroke_color, stroke_width) = if is_being_dragged {
             // Dragged note: brighter with thick outline and semi-transparent
             let drag_color = Color32::from_rgba_unmultiplied(
-                255,
-                220,
-                100,
-                200, // Semi-transparent
+                255, 220, 100, 200, // Semi-transparent
             );
             (drag_color, Color32::from_rgb(255, 255, 0), 3.0)
         } else if is_selected {
             // Selected but not dragged
-            (Color32::from_rgb(255, 200, 100), Color32::from_gray(150), 1.0)
+            (
+                Color32::from_rgb(255, 200, 100),
+                Color32::from_gray(150),
+                1.0,
+            )
         } else {
             // Normal note
             (note_color, Color32::from_gray(150), 1.0)

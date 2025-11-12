@@ -3,10 +3,9 @@
 // This module provides GUI support for CLAP plugins, enabling native
 // window embedding into the host application.
 
-use crate::plugin::clap_ffi::*;
 use crate::plugin::PluginError;
+use crate::plugin::clap_ffi::*;
 use std::ffi::{CStr, CString};
-use std::ptr;
 
 /// CLAP plugin GUI wrapper
 pub struct ClapPluginGui {
@@ -23,7 +22,10 @@ impl ClapPluginGui {
     /// Create a new CLAP plugin GUI wrapper
     ///
     /// Returns None if the plugin doesn't support GUI extension
-    pub fn new(plugin_ptr: *const clap_plugin) -> Option<Self> {
+    ///
+    /// # Safety
+    /// plugin_ptr must be a valid CLAP plugin pointer
+    pub unsafe fn new(plugin_ptr: *const clap_plugin) -> Option<Self> {
         if plugin_ptr.is_null() {
             return None;
         }
@@ -122,15 +124,19 @@ impl ClapPluginGui {
     ///
     /// # Safety
     /// window_handle must be a valid platform-specific window handle
-    pub unsafe fn attach_to_window(&mut self, window_handle: *mut std::ffi::c_void) -> Result<(), PluginError> {
+    pub unsafe fn attach_to_window(
+        &mut self,
+        window_handle: *mut std::ffi::c_void,
+    ) -> Result<(), PluginError> {
         if !self.is_created {
             self.create()?;
         }
 
-        let gui = &*self.gui_ext;
+        // SAFETY: gui_ext is valid and caller must ensure proper window handle
+        let gui = unsafe { &*self.gui_ext };
 
         // Create platform-specific window handle
-        let clap_handle = self.create_window_handle(window_handle)?;
+        let clap_handle = unsafe { self.create_window_handle(window_handle)? };
 
         let api_cstring = CString::new(self.api.clone())
             .map_err(|_| PluginError::GuiFailed("Invalid API string".to_string()))?;
@@ -143,7 +149,9 @@ impl ClapPluginGui {
         let result = (gui.set_parent)(self.plugin_ptr, &window);
 
         if !result {
-            return Err(PluginError::GuiFailed("Failed to set parent window".to_string()));
+            return Err(PluginError::GuiFailed(
+                "Failed to set parent window".to_string(),
+            ));
         }
 
         Ok(())
@@ -168,15 +176,11 @@ impl ClapPluginGui {
         {
             // For X11, handle is a Window (u64)
             if self.api == "x11" {
-                Ok(clap_window_handle {
-                    x11: handle as u64,
-                })
+                Ok(clap_window_handle { x11: handle as u64 })
             } else if self.api == "wayland" {
                 Ok(clap_window_handle { wayland: handle })
             } else {
-                Err(PluginError::GuiFailed(
-                    "Unsupported window API".to_string(),
-                ))
+                Err(PluginError::GuiFailed("Unsupported window API".to_string()))
             }
         }
     }
@@ -290,8 +294,6 @@ unsafe impl Send for ClapPluginGui {}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_platform_api_selection() {
         // Platform API selection is tested via integration tests

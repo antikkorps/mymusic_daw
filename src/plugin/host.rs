@@ -1,11 +1,10 @@
 use crate::plugin::parameters::*;
+use crate::plugin::scanner::PluginScanner;
 use crate::plugin::trait_def::*;
 use crate::plugin::{PluginError, PluginResult};
 use libloading::Library;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use uuid::Uuid;
 
 /// Plugin host for managing loaded plugins and instances
 pub struct PluginHost {
@@ -30,6 +29,12 @@ pub struct HostInfo {
     pub url: String,
 }
 
+impl Default for HostInfo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HostInfo {
     pub fn new() -> Self {
         Self {
@@ -50,6 +55,22 @@ struct PluginInstanceWrapper {
     is_active: bool,
     sample_rate: f64,
     buffer_size: usize,
+}
+
+impl Clone for PluginInstanceWrapper {
+    fn clone(&self) -> Self {
+        // Note: This is a simplified clone for the UI
+        // In a real implementation, we'd need to handle plugin cloning properly
+        Self {
+            plugin: Box::new(ClPluginInstance::new(self.plugin.descriptor().clone())),
+            instance_id: self.instance_id,
+            plugin_id: self.plugin_id.clone(),
+            name: self.name.clone(),
+            is_active: self.is_active,
+            sample_rate: self.sample_rate,
+            buffer_size: self.buffer_size,
+        }
+    }
 }
 
 /// Instance information for external queries
@@ -90,8 +111,7 @@ impl PluginHost {
     }
 
     /// Load a plugin from file
-    pub fn load_plugin<P: AsRef<std::path::Path>>(&self, plugin_path: P) -> PluginResult<String> {
-        let plugin_path = plugin_path.as_ref();
+    pub fn load_plugin(&self, plugin_path: &std::path::Path) -> PluginResult<String> {
         let path_str = plugin_path.to_string_lossy().to_string();
 
         // Check if already loaded
@@ -102,12 +122,20 @@ impl PluginHost {
             }
         }
 
-        // Load the library
-        let library = unsafe { Library::new(plugin_path) }
-            .map_err(|e| PluginError::LoadFailed(format!("Failed to load library: {}", e)))?;
+        // Get the actual library path (handles macOS bundles)
+        let library_path = PluginScanner::get_library_path(plugin_path);
 
-        // Get the entry point and create factory
-        let factory = self.create_factory_from_library(&library, plugin_path)?;
+        // Load the library
+        let library = unsafe { Library::new(&library_path) }.map_err(|e| {
+            PluginError::LoadFailed(format!(
+                "Failed to load library from {}: {}",
+                library_path.display(),
+                e
+            ))
+        })?;
+
+        // Create factory without borrowing library
+        let factory = ClPluginFactory::new(path_str.clone());
 
         // Store library and factory
         {
@@ -126,12 +154,14 @@ impl PluginHost {
     /// Create a plugin factory from a loaded library
     fn create_factory_from_library(
         &self,
-        library: &Library,
+        _library: &Library,
         plugin_path: &std::path::Path,
     ) -> PluginResult<impl PluginFactory> {
         // This is a simplified factory implementation
         // In a real implementation, this would use the CLAP API properly
-        Ok(ClPluginFactory::new(plugin_path.to_string_lossy().to_string()))
+        Ok(ClPluginFactory::new(
+            plugin_path.to_string_lossy().to_string(),
+        ))
     }
 
     /// Get available plugins
@@ -146,9 +176,14 @@ impl PluginHost {
     }
 
     /// Create a new plugin instance
-    pub fn create_instance(&self, plugin_id: &str, name: Option<String>) -> PluginResult<PluginInstanceId> {
+    pub fn create_instance(
+        &self,
+        plugin_id: &str,
+        name: Option<String>,
+    ) -> PluginResult<PluginInstanceId> {
         let factories = self.factories.lock().unwrap();
-        let factory = factories.get(plugin_id)
+        let factory = factories
+            .get(plugin_id)
             .ok_or_else(|| PluginError::LoadFailed(format!("Plugin not found: {}", plugin_id)))?;
 
         let plugin = factory.create_instance()?;
@@ -174,7 +209,10 @@ impl PluginHost {
     }
 
     /// Get a plugin instance wrapper
-    pub fn get_instance_wrapper(&self, instance_id: PluginInstanceId) -> Option<PluginInstanceWrapper> {
+    pub fn get_instance_wrapper(
+        &self,
+        instance_id: PluginInstanceId,
+    ) -> Option<PluginInstanceWrapper> {
         let instances = self.instances.lock().unwrap();
         instances.get(&instance_id).cloned()
     }
@@ -196,25 +234,20 @@ impl PluginHost {
     }
 
     /// Get a plugin instance
-    pub fn get_instance(&self, instance_id: PluginInstanceId) -> Option<Box<dyn Plugin>> {
+    pub fn get_instance(&self, _instance_id: PluginInstanceId) -> Option<Box<dyn Plugin>> {
         // Note: This is problematic because we can't return a reference to the instance
         // In a real implementation, we'd need a different approach
         // For now, this is a placeholder that shows the concept
         None
     }
 
-    /// Get a mutable reference to a plugin instance
-    pub fn get_instance_mut(&self, instance_id: PluginInstanceId) -> Option<&mut Box<dyn Plugin>> {
-        let mut instances = self.instances.lock().unwrap();
-        instances.get_mut(&instance_id)
-    }
-
     /// Destroy a plugin instance
     pub fn destroy_instance(&self, instance_id: PluginInstanceId) -> PluginResult<()> {
         let mut instances = self.instances.lock().unwrap();
-        instances.remove(&instance_id)
-            .ok_or_else(|| PluginError::InitializationFailed(format!("Instance not found: {:?}", instance_id)))?;
-        
+        instances.remove(&instance_id).ok_or_else(|| {
+            PluginError::InitializationFailed(format!("Instance not found: {:?}", instance_id))
+        })?;
+
         Ok(())
     }
 
@@ -231,7 +264,7 @@ impl PluginHost {
         sample_frames: usize,
     ) -> PluginResult<()> {
         let mut instances = self.instances.lock().unwrap();
-        
+
         for wrapper in instances.values_mut() {
             if wrapper.is_active {
                 wrapper.plugin.process(inputs, outputs, sample_frames)?;
@@ -242,9 +275,14 @@ impl PluginHost {
     }
 
     /// Initialize a plugin instance
-    pub fn initialize_instance(&self, instance_id: PluginInstanceId, sample_rate: f64, buffer_size: usize) -> PluginResult<()> {
+    pub fn initialize_instance(
+        &self,
+        instance_id: PluginInstanceId,
+        sample_rate: f64,
+        buffer_size: usize,
+    ) -> PluginResult<()> {
         let mut instances = self.instances.lock().unwrap();
-        
+
         if let Some(wrapper) = instances.get_mut(&instance_id) {
             wrapper.plugin.initialize(sample_rate)?;
             wrapper.sample_rate = sample_rate;
@@ -252,48 +290,64 @@ impl PluginHost {
             wrapper.is_active = true;
             Ok(())
         } else {
-            Err(PluginError::InitializationFailed(format!("Instance not found: {:?}", instance_id)))
+            Err(PluginError::InitializationFailed(format!(
+                "Instance not found: {:?}",
+                instance_id
+            )))
         }
     }
 
     /// Deactivate a plugin instance
     pub fn deactivate_instance(&self, instance_id: PluginInstanceId) -> PluginResult<()> {
         let mut instances = self.instances.lock().unwrap();
-        
+
         if let Some(wrapper) = instances.get_mut(&instance_id) {
             wrapper.is_active = false;
             Ok(())
         } else {
-            Err(PluginError::InitializationFailed(format!("Instance not found: {:?}", instance_id)))
+            Err(PluginError::InitializationFailed(format!(
+                "Instance not found: {:?}",
+                instance_id
+            )))
         }
     }
 
     /// Set instance name
-    pub fn set_instance_name(&self, instance_id: PluginInstanceId, name: String) -> PluginResult<()> {
+    pub fn set_instance_name(
+        &self,
+        instance_id: PluginInstanceId,
+        name: String,
+    ) -> PluginResult<()> {
         let mut instances = self.instances.lock().unwrap();
-        
+
         if let Some(wrapper) = instances.get_mut(&instance_id) {
             wrapper.name = name;
             Ok(())
         } else {
-            Err(PluginError::InitializationFailed(format!("Instance not found: {:?}", instance_id)))
+            Err(PluginError::InitializationFailed(format!(
+                "Instance not found: {:?}",
+                instance_id
+            )))
         }
     }
 
     /// Get all instance information
     pub fn get_all_instances(&self) -> Vec<InstanceInfo> {
         let instances = self.instances.lock().unwrap();
-        instances.values().map(|wrapper| InstanceInfo {
-            id: wrapper.instance_id,
-            name: wrapper.name.clone(),
-            plugin_id: wrapper.plugin_id.clone(),
-            plugin_name: wrapper.plugin.descriptor().name.clone(),
-            is_active: wrapper.is_active,
-            sample_rate: wrapper.sample_rate,
-            buffer_size: wrapper.buffer_size,
-            latency: wrapper.plugin.get_latency(),
-            tail: wrapper.plugin.get_tail(),
-        }).collect()
+        instances
+            .values()
+            .map(|wrapper| InstanceInfo {
+                id: wrapper.instance_id,
+                name: wrapper.name.clone(),
+                plugin_id: wrapper.plugin_id.clone(),
+                plugin_name: wrapper.plugin.descriptor().name.clone(),
+                is_active: wrapper.is_active,
+                sample_rate: wrapper.sample_rate,
+                buffer_size: wrapper.buffer_size,
+                latency: wrapper.plugin.get_latency(),
+                tail: wrapper.plugin.get_tail(),
+            })
+            .collect()
     }
 
     /// Generate a new instance ID
@@ -309,8 +363,9 @@ impl PluginHost {
         // Remove all instances of this plugin first
         let instances_to_remove: Vec<PluginInstanceId> = {
             let instances = self.instances.lock().unwrap();
-            instances.iter()
-                .filter(|(_, instance)| {
+            instances
+                .iter()
+                .filter(|(_, _instance)| {
                     // This is a simplified check - in reality we'd need to track which factory created which instance
                     false // Placeholder
                 })
@@ -393,7 +448,8 @@ impl ClPluginFactory {
     fn new(plugin_path: String) -> Self {
         let descriptor = PluginDescriptor::new(
             format!("clap_plugin_{}", plugin_path),
-            "CLAP Plugin"
+            "CLAP Plugin",
+            std::path::PathBuf::from(&plugin_path),
         )
         .with_vendor("CLAP")
         .with_description("A CLAP plugin")
@@ -440,7 +496,7 @@ struct ClPluginInstance {
 impl ClPluginInstance {
     fn new(descriptor: PluginDescriptor) -> Self {
         let mut parameters = HashMap::new();
-        
+
         // Initialize parameters with default values
         for param in &descriptor.parameters {
             parameters.insert(param.id.clone(), param.default_value);
@@ -473,7 +529,9 @@ impl Plugin for ClPluginInstance {
         _sample_frames: usize,
     ) -> Result<(), PluginError> {
         if !self.is_initialized {
-            return Err(PluginError::ProcessingFailed("Plugin not initialized".to_string()));
+            return Err(PluginError::ProcessingFailed(
+                "Plugin not initialized".to_string(),
+            ));
         }
 
         // Placeholder processing - in reality this would call the CLAP plugin's process function
@@ -483,10 +541,14 @@ impl Plugin for ClPluginInstance {
     fn set_parameter(&mut self, parameter_id: &str, value: f64) -> Result<(), PluginError> {
         if let Some(param) = self.descriptor.find_parameter(parameter_id) {
             let clamped_value = value.clamp(param.min_value, param.max_value);
-            self.parameters.insert(parameter_id.to_string(), clamped_value);
+            self.parameters
+                .insert(parameter_id.to_string(), clamped_value);
             Ok(())
         } else {
-            Err(PluginError::InvalidParameter(format!("Parameter not found: {}", parameter_id)))
+            Err(PluginError::InvalidParameter(format!(
+                "Parameter not found: {}",
+                parameter_id
+            )))
         }
     }
 
@@ -505,16 +567,16 @@ impl Plugin for ClPluginInstance {
     }
 
     fn load_state(&mut self, state: &PluginState) -> Result<(), PluginError> {
-        if let Some(sample_rate_str) = state.custom_data.get("sample_rate") {
-            if let Ok(sample_rate) = sample_rate_str.parse::<f64>() {
-                self.sample_rate = sample_rate;
-            }
+        if let Some(sample_rate_str) = state.custom_data.get("sample_rate")
+            && let Ok(sample_rate) = sample_rate_str.parse::<f64>()
+        {
+            self.sample_rate = sample_rate;
         }
 
-        if let Some(initialized_str) = state.custom_data.get("initialized") {
-            if let Ok(initialized) = initialized_str.parse::<bool>() {
-                self.is_initialized = initialized;
-            }
+        if let Some(initialized_str) = state.custom_data.get("initialized")
+            && let Ok(initialized) = initialized_str.parse::<bool>()
+        {
+            self.is_initialized = initialized;
         }
 
         // Load parameter values
@@ -530,7 +592,8 @@ impl Plugin for ClPluginInstance {
     fn reset(&mut self) -> Result<(), PluginError> {
         // Reset all parameters to default values
         for param in &self.descriptor.parameters {
-            self.parameters.insert(param.id.clone(), param.default_value);
+            self.parameters
+                .insert(param.id.clone(), param.default_value);
         }
         Ok(())
     }
@@ -539,13 +602,12 @@ impl Plugin for ClPluginInstance {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
 
     #[test]
     fn test_plugin_host_creation() {
         let host = PluginHost::new();
         let stats = host.get_statistics();
-        
+
         assert_eq!(stats.loaded_plugins, 0);
         assert_eq!(stats.available_factories, 0);
         assert_eq!(stats.active_instances, 0);
@@ -554,7 +616,7 @@ mod tests {
     #[test]
     fn test_instance_management() {
         let host = PluginHost::new();
-        
+
         // This test will fail until we have proper plugin loading
         // For now, it just tests the structure
         let available = host.get_available_plugins();
@@ -565,7 +627,7 @@ mod tests {
     fn test_statistics() {
         let host = PluginHost::new();
         let stats = host.get_statistics();
-        
+
         assert_eq!(stats.loaded_plugins, 0);
         assert_eq!(stats.available_factories, 0);
         assert_eq!(stats.active_instances, 0);

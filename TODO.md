@@ -869,32 +869,81 @@
   - [x] Liste des plugins trouvés (nom, vendor, version, features)
   - [x] Affichage des chemins de recherche par plateforme
   - [x] Méthode scan_plugins() avec gestion multi-directories
+  - [x] **Foundations pour routing audio** - PluginNode préparé pour intégration
+  - [x] **Plugin Loading & UI** ✅ (TERMINÉ)
+    - [x] Chargement réussi de plugins CLAP réels (Surge XT Effects)
+    - [x] Support des bundles macOS (.clap directories)
+    - [x] Résolution automatique des chemins binaires
+    - [x] Intégration UI complète (scan, load, affichage)
+    - [x] Cache automatique au démarrage
+    - [x] UI plugins chargés avec boutons Start/Stop/Remove
+    - [x] Gestion des instances de plugins (create, initialize, destroy)
+    - [x] Architecture PluginHost complète
+    - [x] Display des plugins chargés avec détails (nom, sample rate, latency, etc.)
+    - [x] Suppression de plugins chargés (Remove button fonctionnel)
+    - [ ] **GUI native window embedding** (infrastructure prête, intégration native à venir)
   - [ ] Routing audio vers plugins (à venir)
   - [ ] Affichage paramètres dans UI (à venir)
   - [ ] Automation dans séquenceur (à venir)
 
-**Tests avec vrais plugins CLAP** (à venir Phase 5+):
-- [ ] Surge XT (synth) - infrastructure prête
+**Tests avec vrais plugins CLAP** ✅ (SUCCÈS):
+- [x] Surge XT Effects - **CHARGÉ AVEC SUCCÈS** ✅
+- [x] Surge XT Synth - **DÉTECTÉ ET PRÊT** ✅
 - [ ] Airwindows (effets) - infrastructure prête
 - [ ] Vital (synth) - infrastructure prête
 
-### Routing audio
+### Routing audio ✅ (ARCHITECTURE NODE-BASE COMPLÉTÉE)
 
-- [ ] Graph audio flexible (node-based)
-  - [ ] Nodes : Instruments, Effets, Mixeur
-  - [ ] Connections : Source → Destination
-  - [ ] Gestion cycles (détection + error)
-- [ ] Sends/Returns (bus auxiliaire)
-- [ ] Sidechain routing
+**🎯 Accomplissements Phase 5 - Routing Audio** (TERMINÉ) :
+- [x] **Architecture node-based complète** ✅
+  - [x] Trait `AudioNode` avec interface commune pour tous les nodes
+  - [x] Énumération `AudioNodeType` pour accès type-safe (Instrument, Effect, Mixer, Output, Plugin)
+  - [x] **4 types de nodes implémentés** : `InstrumentNode`, `EffectNode`, `MixerNode`, `OutputNode`
+  - [x] Méthodes d'accès type-safe (`get_instrument_node()`, `get_effect_node()`, etc.)
 
-### Mixeur
+- [x] **AudioRoutingGraph avec connection management** ✅
+  - [x] Gestion des nodes et connections dans un HashMap
+  - [x] Topological sorting pour ordre d'exécution déterministe
+  - [x] Détection de cycles avec l'algorithme de Kahn
+  - [x] Méthodes CRUD : `add_node()`, `add_connection()`, `remove_connection()`
 
-- [ ] Multi-pistes (4-16 tracks)
-- [ ] Pan (stéréo)
-- [ ] Solo/Mute par track
-- [ ] VU meters par track
-- [ ] Master bus avec limiter
-- [ ] Faders avec automation
+- [x] **Système de connections robuste** ✅
+  - [x] Structure `Connection` avec validation de cycles
+  - [x] Support des gains sur les connections (0.0 - 1.0)
+  - [x] Système de buffers : Main, Aux(n), Custom
+  - [x] Implémentation `PartialEq` et `Hash` pour f32 (comparaison approximative)
+
+- [x] **Intégration avec AudioEngine** ✅
+  - [x] Modifications d'architecture pour supporter le routing
+  - [x] Configuration du graph avec nodes par défaut
+  - [x] Intégration du système de commandes (MIDI, paramètres)
+  - [x] Traitement audio via le graph au lieu du système linéaire
+
+- [x] **Tests et validation** ✅
+  - [x] Tests unitaires complets (creation, connections, cycles, processing)
+  - [x] Tests de performance (topological sort, graph processing)
+  - [x] Architecture prête pour l'extension (plugins CLAP, sends/returns)
+
+**Prochaines étapes du routing** :
+- [ ] Sends/Returns (bus auxiliaire) - à venir
+- [ ] Sidechain routing - à venir
+- [ ] Intégration avec plugins CLAP - à venir
+- [ ] UI de routing (visual node editor) - à venir
+
+### Mixeur ✅ (FOUNDATIONS COMPLÉTÉES)
+
+- [x] **MixerNode intégré dans le routing** ✅
+  - [x] Node Mixer dans l'architecture AudioRoutingGraph
+  - [x] Support des gains par input (left_gain, right_gain)
+  - [x] Mélange de multiple inputs avec gains individuels
+  - [x] API type-safe via AudioNodeType::Mixer
+
+**Prochaines étapes du mixeur** :
+- [ ] Multi-pistes (4-16 tracks) - à venir
+- [ ] Solo/Mute par track - à venir
+- [ ] VU meters par track - à venir
+- [ ] Master bus avec limiter - à venir
+- [ ] Faders avec automation - à venir
 
 ---
 
@@ -1018,15 +1067,21 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
 
 **⚠️ ARCHITECTURE CRITIQUE** : Gestion de l'état global avec **Commands & Events** (voir "Décisions Architecturales"). Le moteur audio est la source de vérité, l'UI est une vue. Redux optionnel côté frontend.
 
-### Architecture Tauri
+### Architecture Tauri ✅ (FONDATIONS COMPLÈTES)
 
-- [ ] Setup projet Tauri
-  - [ ] Configuration Tauri.conf.json
-  - [ ] Choix du framework frontend (React/Vue/Svelte recommandé)
-  - [ ] Configuration du build system (vite/webpack)
-  - [ ] Migration graduelle depuis egui
-- [ ] Bridge Rust ↔ Frontend
-  - [ ] API Tauri Commands pour contrôle du moteur audio
+- [x] **Setup projet Tauri** ✅ (TERMINÉ)
+  - [x] Configuration Tauri.conf.json (version 0.5.1, window 1280x800)
+  - [x] Frontend React Router 7 intégré (POC complet)
+  - [x] Configuration build system (Vite avec React Router 7)
+  - [x] Mono-repo structure (`ui/` + `src-tauri/`)
+  - [x] Hot reload fonctionnel en dev mode
+  - [x] Application native qui se lance correctement
+- [x] **Bridge Rust ↔ Frontend (MVP)** ✅ (PREMIER BRIDGE FONCTIONNEL)
+  - [x] API Tauri Commands basiques (get_engine_info, play_test_beep, get_waveforms)
+  - [x] Hook React `useDawEngine()` pour appeler les commandes Rust
+  - [x] Test de communication réussi (bouton "Test Audio Bridge" fonctionnel)
+  - [x] Dashboard affiche les infos du moteur Rust en temps réel
+  - [ ] Commandes audio réelles (set_volume, play_note, stop_note) - À FAIRE
   - [ ] Event system pour streaming des données audio/MIDI vers UI
   - [ ] État partagé (Tauri State) pour paramètres du synthé
   - [ ] IPC performance optimization (batch updates)
@@ -1196,10 +1251,21 @@ Cette section était initialement en Phase 1.5 mais a été reportée car trop p
    - ✅ **Infrastructure plugins complète** (~3500 lignes, 20 tests)
    - ✅ **CLAP réel implémenté** (7 parties: FFI, Lifecycle, Audio, MIDI, Params, GUI, BufferPool)
    - ✅ **UI Plugin tab complète** (scan, liste, affichage détails)
-   - 🔄 Routing audio + Mixeur à venir
-   - 🔄 Tests avec vrais plugins CLAP à venir
+   - ✅ **Routing audio node-based COMPLÉTÉ** (architecture, topological sort, cycle detection)
+   - 🔄 Mixeur avancé + Sends/Returns à venir
+   - 🔄 Intégration plugins dans le routing à venir
+   - ✅ **Tests avec vrais plugins CLAP RÉUSSIS** (Surge XT Effects chargé!)
 
-**État actuel (Phase 5 en cours)** : Phase 4 COMPLÈTE ✅ | **Phase 5 - CLAP Infrastructure COMPLÈTE** ✅ (~3500 lignes, 7 parties implémentées) | Export Audio ✅ | Plugin UI ✅ | Routing/Mixeur à venir
+**État actuel (Phase 7 - 25% COMMENCÉE | Phase 5 - 85% COMPLÈTE)** :
+- ✅ **Phase 4 COMPLÈTE** (Séquenceur, Timeline, Piano Roll, Recording, Persistance)
+- ✅ **Phase 5 - CLAP Infrastructure COMPLÈTE** (~3500 lignes, 7 parties: FFI, Lifecycle, Audio, MIDI, Params, GUI, BufferPool)
+- ✅ **Phase 5 - Routing Audio COMPLÈTE** (architecture node-based, topological sort, cycle detection)
+- ✅ **Phase 5 - Plugin Loading & Display COMPLÈTE** (Surge XT chargé avec succès, UI complète avec détails)
+- ✅ **Phase 5 - Export Audio COMPLÈTE** (WAV, FLAC avec configurations)
+- 🔄 **À venir Phase 5** : GUI native window embedding, Routing audio vers plugins, Affichage paramètres, Mixeur avancé, Sends/Returns
+- ✅ **Phase 7 - Tauri Setup COMPLÉTÉ** (React Router 7 + fenêtre native + hot reload)
+- ✅ **Phase 7 - Premier Bridge React ↔ Rust FONCTIONNEL** (Tauri Commands + useDawEngine hook)
+- 🔄 **À venir Phase 7** : Commandes audio réelles, Event system, State management, UI complète
 
 ---
 

@@ -8,4 +8,5 @@ pub mod engine;
 pub mod export;
 pub mod format_conversion;
 pub mod parameters;
+pub mod routing;
 pub mod timing;

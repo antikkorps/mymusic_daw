@@ -6,26 +6,27 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
-// Engine status interface
-interface EngineStatus {
+// Engine info interface (matches Rust struct)
+export interface EngineInfo {
   name: string;
   version: string;
   status: string;
+  audio_engine: string;
+  sample_rate: number;
+  buffer_size: number;
 }
 
 // Hook return type
 interface UseDawEngine {
   // State
-  volume: number;
-  isEngineReady: boolean;
-  engineStatus: EngineStatus | null;
+  engineInfo: EngineInfo | null;
+  waveforms: string[];
+  isLoading: boolean;
   error: string | null;
 
   // Actions
-  setVolume: (volume: number) => Promise<void>;
-  playNote: (note: number, velocity: number) => Promise<void>;
-  stopNote: (note: number) => Promise<void>;
-  refreshEngineStatus: () => Promise<void>;
+  playTestBeep: () => Promise<void>;
+  refreshEngineInfo: () => Promise<void>;
 }
 
 /**
@@ -33,181 +34,87 @@ interface UseDawEngine {
  *
  * @example
  * ```tsx
- * function VolumeControl() {
- *   const { volume, setVolume } = useDawEngine();
+ * function EngineStatus() {
+ *   const { engineInfo, playTestBeep } = useDawEngine();
  *
  *   return (
- *     <input
- *       type="range"
- *       min="0"
- *       max="1"
- *       step="0.01"
- *       value={volume}
- *       onChange={(e) => setVolume(parseFloat(e.target.value))}
- *     />
+ *     <div>
+ *       <p>Engine: {engineInfo?.name} v{engineInfo?.version}</p>
+ *       <button onClick={playTestBeep}>Test Beep</button>
+ *     </div>
  *   );
  * }
  * ```
  */
 export function useDawEngine(): UseDawEngine {
-  const [volume, setVolumeState] = useState<number>(0.5);
-  const [isEngineReady, setIsEngineReady] = useState<boolean>(false);
-  const [engineStatus, setEngineStatus] = useState<EngineStatus | null>(null);
+  const [engineInfo, setEngineInfo] = useState<EngineInfo | null>(null);
+  const [waveforms, setWaveforms] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * Set the master volume
-   * @param newVolume - Volume level between 0.0 and 1.0
+   * Play a test beep sound
    */
-  const setVolume = useCallback(async (newVolume: number) => {
+  const playTestBeep = useCallback(async () => {
     try {
-      // Clamp volume to valid range
-      const clampedVolume = Math.max(0, Math.min(1, newVolume));
-
-      await invoke('set_volume', { volume: clampedVolume });
-      setVolumeState(clampedVolume);
+      const result = await invoke<string>('play_test_beep');
+      console.log('✅', result);
       setError(null);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      setError(`Failed to set volume: ${errorMessage}`);
-      console.error('Failed to set volume:', err);
+      setError(`Failed to play test beep: ${errorMessage}`);
+      console.error('❌ Failed to play test beep:', err);
     }
   }, []);
 
   /**
-   * Play a MIDI note
-   * @param note - MIDI note number (0-127)
-   * @param velocity - Note velocity (0-127)
+   * Fetch the current engine info
    */
-  const playNote = useCallback(async (note: number, velocity: number = 100) => {
+  const refreshEngineInfo = useCallback(async () => {
     try {
-      // Validate inputs
-      if (note < 0 || note > 127) {
-        throw new Error(`Invalid note number: ${note} (must be 0-127)`);
-      }
-      if (velocity < 0 || velocity > 127) {
-        throw new Error(`Invalid velocity: ${velocity} (must be 0-127)`);
-      }
-
-      await invoke('play_note', { note, velocity });
+      setIsLoading(true);
+      const info = await invoke<EngineInfo>('get_engine_info');
+      setEngineInfo(info);
       setError(null);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      setError(`Failed to play note: ${errorMessage}`);
-      console.error('Failed to play note:', err);
+      setError(`Failed to get engine info: ${errorMessage}`);
+      console.error('❌ Failed to get engine info:', err);
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 
   /**
-   * Stop a MIDI note
-   * @param note - MIDI note number (0-127)
+   * Fetch available waveforms
    */
-  const stopNote = useCallback(async (note: number) => {
+  const fetchWaveforms = useCallback(async () => {
     try {
-      // Validate input
-      if (note < 0 || note > 127) {
-        throw new Error(`Invalid note number: ${note} (must be 0-127)`);
-      }
-
-      await invoke('stop_note', { note });
-      setError(null);
+      const waveformList = await invoke<string[]>('get_waveforms');
+      setWaveforms(waveformList);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      setError(`Failed to stop note: ${errorMessage}`);
-      console.error('Failed to stop note:', err);
+      console.error('❌ Failed to get waveforms:', err);
     }
   }, []);
 
   /**
-   * Fetch the current engine status
-   */
-  const refreshEngineStatus = useCallback(async () => {
-    try {
-      const status = await invoke<EngineStatus>('get_engine_status');
-      setEngineStatus(status);
-      setIsEngineReady(status.status === 'running');
-      setError(null);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      setError(`Failed to get engine status: ${errorMessage}`);
-      console.error('Failed to get engine status:', err);
-      setIsEngineReady(false);
-    }
-  }, []);
-
-  /**
-   * Initialize the hook - fetch initial volume and engine status
+   * Initialize the hook - fetch engine info and waveforms
    */
   useEffect(() => {
     async function initialize() {
-      try {
-        // Get initial volume
-        const currentVolume = await invoke<number>('get_volume');
-        setVolumeState(currentVolume);
-
-        // Get engine status
-        await refreshEngineStatus();
-      } catch (err) {
-        console.error('Failed to initialize DAW engine:', err);
-        setError('Failed to initialize DAW engine');
-      }
+      await refreshEngineInfo();
+      await fetchWaveforms();
     }
 
     initialize();
-  }, [refreshEngineStatus]);
+  }, [refreshEngineInfo, fetchWaveforms]);
 
   return {
-    volume,
-    isEngineReady,
-    engineStatus,
+    engineInfo,
+    waveforms,
+    isLoading,
     error,
-    setVolume,
-    playNote,
-    stopNote,
-    refreshEngineStatus,
-  };
-}
-
-/**
- * Helper hook for playing notes with automatic note-off
- * Useful for button-based note triggers
- *
- * @example
- * ```tsx
- * function PianoKey({ note }: { note: number }) {
- *   const { triggerNote } = useNotePlayer();
- *
- *   return (
- *     <button onClick={() => triggerNote(note, 100, 500)}>
- *       Play Note {note}
- *     </button>
- *   );
- * }
- * ```
- */
-export function useNotePlayer() {
-  const { playNote, stopNote } = useDawEngine();
-
-  /**
-   * Play a note and automatically stop it after a duration
-   * @param note - MIDI note number (0-127)
-   * @param velocity - Note velocity (0-127)
-   * @param duration - Duration in milliseconds
-   */
-  const triggerNote = useCallback(
-    async (note: number, velocity: number = 100, duration: number = 500) => {
-      await playNote(note, velocity);
-
-      setTimeout(() => {
-        stopNote(note);
-      }, duration);
-    },
-    [playNote, stopNote]
-  );
-
-  return {
-    triggerNote,
-    playNote,
-    stopNote,
+    playTestBeep,
+    refreshEngineInfo,
   };
 }
