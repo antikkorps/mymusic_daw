@@ -54,6 +54,7 @@ export function useDawEngine(): UseDawEngine {
   const [isEngineReady, setIsEngineReady] = useState<boolean>(false);
   const [engineStatus, setEngineStatus] = useState<EngineStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const isInitialized = useRef<boolean>(false);
 
   /**
    * Set the master volume
@@ -139,6 +140,11 @@ export function useDawEngine(): UseDawEngine {
    * Initialize the hook - fetch initial volume and engine status
    */
   useEffect(() => {
+    // Prevent re-initialization
+    if (isInitialized.current) {
+      return;
+    }
+
     async function initialize() {
       try {
         // Get initial volume
@@ -146,7 +152,13 @@ export function useDawEngine(): UseDawEngine {
         setVolumeState(currentVolume);
 
         // Get engine status
-        await refreshEngineStatus();
+        const status = await invoke<EngineStatus>('get_engine_status');
+        setEngineStatus(status);
+        setIsEngineReady(status.status === 'running');
+        setError(null);
+
+        // Mark as initialized
+        isInitialized.current = true;
       } catch (err) {
         console.error('Failed to initialize DAW engine:', err);
         setError('Failed to initialize DAW engine');
@@ -154,7 +166,7 @@ export function useDawEngine(): UseDawEngine {
     }
 
     initialize();
-  }, [refreshEngineStatus]);
+  }, []);
 
   return {
     volume,
