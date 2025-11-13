@@ -3,7 +3,7 @@
  * Provides centralized error handling for the MyMusic DAW interface
  */
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { Component, ErrorInfo, ReactNode, useCallback } from 'react';
 import { create } from 'zustand';
 
 // Error types
