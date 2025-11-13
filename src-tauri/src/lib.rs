@@ -14,6 +14,9 @@ mod commands;
 use commands::basic::*;
 use commands::plugin::*;
 
+// Event system
+pub mod events;
+
 /// Plugin instance wrapper with unique ID
 pub struct ManagedPlugin {
     pub instance: Box<dyn Plugin>,
@@ -66,6 +69,18 @@ pub fn register_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri
         get_engine_status,
         get_engine_info,
         play_test_beep,
+        // Synthesizer parameters
+        set_waveform,
+        set_adsr,
+        set_lfo,
+        set_filter,
+        set_poly_mode,
+        set_portamento,
+        set_voice_mode,
+        set_mod_routing,
+        clear_mod_routing,
+        // Event system
+        initialize_events,
         // Plugin commands
         load_plugin_instance,
         get_plugin_parameters,

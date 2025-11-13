@@ -14,6 +14,7 @@ use mymusic_daw::{
 
 // Import library with commands and state
 use app_lib::{register_commands, DawState};
+use app_lib::events::AUDIO_EVENT_EMITTER;
 
 fn main() {
     // Initialize the audio engine
@@ -75,6 +76,14 @@ fn main() {
         .setup(|app| {
             println!("🚀 Tauri app initialized");
             println!("🎹 DAW is ready!");
+
+            // Initialize event system
+            if let Ok(mut emitter) = AUDIO_EVENT_EMITTER.lock() {
+                emitter.set_app_handle(app.handle().clone());
+                println!("📡 Event system initialized");
+            } else {
+                eprintln!("❌ Failed to initialize event system");
+            }
 
             // Log window info
             if let Some(window) = app.get_webview_window("main") {

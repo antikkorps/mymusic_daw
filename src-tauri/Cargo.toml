@@ -29,6 +29,10 @@ mymusic_daw = { path = ".." }
 
 # Audio dependencies (re-exported from main crate)
 ringbuf = { version = "0.4", features = [] }
+lazy_static = "1.4"
+
+[dev-dependencies]
+tokio-test = "0.4"
 
 [features]
 default = ["custom-protocol"]
