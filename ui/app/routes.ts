@@ -7,4 +7,5 @@ export default [
   route("timeline", "routes/timeline.tsx"),
   route("plugins", "routes/plugins.tsx"),
   route("effects", "routes/effects.tsx"),
+  route("synthesizer-demo", "routes/synthesizer-demo.tsx"),
 ] satisfies RouteConfig;
