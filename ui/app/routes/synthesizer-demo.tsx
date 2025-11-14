@@ -111,7 +111,7 @@ export default function SynthesizerDemo() {
   }
 
   return (
-    <div className="bg-gray-900 text-white p-6">
+    <div className="h-screen overflow-y-auto bg-gray-900 text-white p-6">
       <div className="max-w-7xl mx-auto pb-8">
         {/* Header */}
         <div className="mb-8">
