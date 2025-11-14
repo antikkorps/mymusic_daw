@@ -7,17 +7,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useErrorReporting } from '../components/ErrorHandling';
 
-// Conditionally import Tauri APIs (only available in Tauri context)
-let invoke: any = undefined;
-try {
-  if (typeof window !== 'undefined' && '__TAURI__' in window) {
-    import('@tauri-apps/api/core').then(module => {
-      invoke = module.invoke;
-    });
-  }
-} catch (e) {
-  console.warn('Tauri API not available - running in browser mode');
-}
+// Access Tauri API directly from window object (safer than imports)
+const invoke = typeof window !== 'undefined' && (window as any).__TAURI__
+  ? (window as any).__TAURI__.core.invoke
+  : undefined;
 
 /**
  * Wrapper function for Tauri invoke calls with centralized error handling

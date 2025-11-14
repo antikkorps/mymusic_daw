@@ -11,15 +11,10 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 
-// Conditionally import Tauri APIs (only available in Tauri context)
-let listen: any = undefined;
-if (typeof window !== 'undefined' && '__TAURI__' in window) {
-  import('@tauri-apps/api/event').then(module => {
-    listen = module.listen;
-  }).catch(() => {
-    console.warn('Tauri event API not available - running in browser mode');
-  });
-}
+// Access Tauri API directly from window object (safer than imports)
+const listen = typeof window !== 'undefined' && (window as any).__TAURI__
+  ? (window as any).__TAURI__.event.listen
+  : undefined;
 
 // Performance constants
 const CPU_UPDATE_THROTTLE_MS = 100; // Update CPU display max 10 times per second
