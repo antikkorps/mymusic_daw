@@ -10,11 +10,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-
-// Access Tauri API directly from window object (safer than imports)
-const listen = typeof window !== 'undefined' && (window as any).__TAURI__
-  ? (window as any).__TAURI__.event.listen
-  : undefined;
+import { listen } from '@tauri-apps/api/event';
 
 // Performance constants
 const CPU_UPDATE_THROTTLE_MS = 100; // Update CPU display max 10 times per second
@@ -260,13 +256,6 @@ export function useAudioEvents(options: Partial<UseAudioEvents> = {}): UseAudioE
   // Setup event listeners
   useEffect(() => {
     const setupListeners = async () => {
-      // Check if Tauri is available
-      if (!listen) {
-        console.warn('Tauri event API not available - audio events disabled');
-        setIsConnected(false);
-        return;
-      }
-
       try {
         const unlistenFunctionsArray: Array<() => void> = [];
 

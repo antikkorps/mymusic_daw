@@ -5,12 +5,8 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useErrorReporting } from '../components/ErrorHandling';
-
-// Access Tauri API directly from window object (safer than imports)
-const invoke = typeof window !== 'undefined' && (window as any).__TAURI__
-  ? (window as any).__TAURI__.core.invoke
-  : undefined;
 
 /**
  * Wrapper function for Tauri invoke calls with centralized error handling
@@ -22,11 +18,6 @@ async function invokeWithErrorHandling<T>(
   errorContext?: string,
   reportError?: (message: string, type: 'error' | 'warning', source: 'audio' | 'midi' | 'ui' | 'system', details?: any) => void
 ): Promise<T> {
-  // Check if Tauri is available
-  if (!invoke) {
-    throw new Error('Tauri API not available. Please run the app with "npm run tauri dev" or build the native app.');
-  }
-
   try {
     const result = await invoke<T>(command, args);
     return result;
