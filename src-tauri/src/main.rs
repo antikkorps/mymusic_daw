@@ -11,6 +11,7 @@ use mymusic_daw::audio::device::AudioDeviceManager;
 use mymusic_daw::{
     create_command_channel, create_notification_channel, AudioEngine, MidiConnectionManager,
 };
+use mymusic_daw::plugin::PluginHost;
 
 // Import library with commands and state
 use app_lib::{register_commands, DawState};
@@ -29,27 +30,16 @@ fn main() {
     let (notification_tx, _notification_rx) = create_notification_channel(256);
     let notification_tx_arc = Arc::new(std::sync::Mutex::new(notification_tx));
 
-    // Create MIDI connection manager
-    let _midi_manager = MidiConnectionManager::new(command_tx_midi, notification_tx_arc.clone());
-
-    // Initialize audio device manager
-    let audio_device_manager = AudioDeviceManager::new();
-    let available_devices = audio_device_manager.list_output_devices();
-
-    println!("📢 Available audio devices:");
-    for device in &available_devices {
-        println!(
-            "  {} {}",
-            if device.is_default { "✓" } else { " " },
-            device.name
-        );
-    }
+    // Create plugin host
+    let plugin_host = Arc::new(PluginHost::new());
+    println!("🔌 Plugin host initialized");
 
     // Create audio engine
     let audio_engine = match AudioEngine::new(
         command_rx_ui,
         command_rx_midi,
         notification_tx_arc.clone(),
+        plugin_host,
     ) {
         Ok(engine) => {
             println!("✅ Audio engine started successfully");

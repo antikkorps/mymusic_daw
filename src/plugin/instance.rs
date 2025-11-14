@@ -362,6 +362,26 @@ mod tests {
         fn reset(&mut self) -> Result<(), PluginError> {
             Ok(())
         }
+
+        fn get_latency(&self) -> u32 {
+            0
+        }
+
+        fn get_tail(&self) -> u32 {
+            0
+        }
+
+        fn is_processing(&self) -> bool {
+            self.initialized
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
     }
 
     #[test]

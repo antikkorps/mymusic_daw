@@ -27,6 +27,7 @@ impl ClapPluginGui {
     /// plugin_ptr must be a valid CLAP plugin pointer
     pub unsafe fn new(plugin_ptr: *const clap_plugin) -> Option<Self> {
         if plugin_ptr.is_null() {
+            println!("❌ ClapPluginGui::new - plugin_ptr is null");
             return None;
         }
 
@@ -38,13 +39,16 @@ impl ClapPluginGui {
             let gui_ext_ptr = (plugin.get_extension)(plugin_ptr, gui_id.as_ptr());
 
             if gui_ext_ptr.is_null() {
+                println!("⚠️ Plugin does not support GUI extension");
                 return None; // Plugin doesn't support GUI
             }
 
             let gui_ext = gui_ext_ptr as *const clap_plugin_gui;
+            println!("✅ Plugin supports GUI extension");
 
             // Determine which API to use (platform-specific)
             let api = Self::get_platform_api(plugin_ptr, gui_ext)?;
+            println!("✅ Selected GUI API: {}", api);
 
             Some(Self {
                 plugin_ptr,
@@ -92,8 +96,11 @@ impl ClapPluginGui {
     /// Create the GUI
     pub fn create(&mut self) -> Result<(), PluginError> {
         if self.is_created {
+            println!("ℹ️ GUI already created, skipping");
             return Ok(());
         }
+
+        println!("🔨 Creating CLAP GUI with API: {}", self.api);
 
         unsafe {
             let gui = &*self.gui_ext;
@@ -101,16 +108,22 @@ impl ClapPluginGui {
             let api_cstring = CString::new(self.api.clone())
                 .map_err(|_| PluginError::GuiFailed("Invalid API string".to_string()))?;
 
+            println!("📞 Calling gui.create() with API: {}", self.api);
             let result = (gui.create)(self.plugin_ptr, api_cstring.as_ptr(), false);
 
             if !result {
+                println!("❌ GUI create() returned false");
                 return Err(PluginError::GuiFailed("Failed to create GUI".to_string()));
             }
+
+            println!("✅ GUI create() succeeded");
 
             // Get initial size
             let mut width: u32 = 0;
             let mut height: u32 = 0;
             (gui.get_size)(self.plugin_ptr, &mut width, &mut height);
+
+            println!("📏 GUI size: {}x{}", width, height);
 
             self.width = width;
             self.height = height;
@@ -188,17 +201,21 @@ impl ClapPluginGui {
     /// Show the plugin GUI
     pub fn show(&mut self) -> Result<(), PluginError> {
         if !self.is_created {
+            println!("❌ Cannot show GUI - not created");
             return Err(PluginError::GuiFailed("GUI not created".to_string()));
         }
 
+        println!("👁️ Showing CLAP GUI...");
         unsafe {
             let gui = &*self.gui_ext;
             let result = (gui.show)(self.plugin_ptr);
 
             if !result {
+                println!("❌ GUI show() returned false");
                 return Err(PluginError::GuiFailed("Failed to show GUI".to_string()));
             }
 
+            println!("✅ GUI show() succeeded");
             self.is_visible = true;
             Ok(())
         }

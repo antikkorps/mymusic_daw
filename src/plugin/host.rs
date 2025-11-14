@@ -2,6 +2,7 @@ use crate::plugin::parameters::*;
 use crate::plugin::scanner::PluginScanner;
 use crate::plugin::trait_def::*;
 use crate::plugin::{PluginError, PluginResult};
+use crate::MidiEventTimed;
 use libloading::Library;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -47,14 +48,57 @@ impl HostInfo {
 }
 
 /// Wrapper for plugin instances with additional metadata
-struct PluginInstanceWrapper {
+pub struct PluginInstanceWrapper {
     plugin: Box<dyn Plugin>,
-    instance_id: PluginInstanceId,
-    plugin_id: String,
-    name: String,
-    is_active: bool,
-    sample_rate: f64,
-    buffer_size: usize,
+    pub instance_id: PluginInstanceId,
+    pub plugin_id: String,
+    pub name: String,
+    pub is_active: bool,
+    pub sample_rate: f64,
+    pub buffer_size: usize,
+    /// Store whether this is a CLAP plugin for GUI access
+    is_clap_plugin: bool,
+}
+
+impl PluginInstanceWrapper {
+    /// Get a reference to the plugin
+    pub fn plugin(&self) -> &dyn Plugin {
+        self.plugin.as_ref()
+    }
+
+    /// Get a mutable reference to the plugin
+    pub fn plugin_mut(&mut self) -> &mut dyn Plugin {
+        self.plugin.as_mut()
+    }
+
+    /// Try to get a reference to the CLAP plugin instance for GUI operations
+    pub fn as_clap_plugin(&self) -> Option<&crate::plugin::clap_integration::ClapPluginInstance> {
+        if self.is_clap_plugin {
+            self.plugin.as_any().downcast_ref()
+        } else {
+            None
+        }
+    }
+
+    /// Try to get a mutable reference to the CLAP plugin instance for GUI operations
+    pub fn as_clap_plugin_mut(&mut self) -> Option<&mut crate::plugin::clap_integration::ClapPluginInstance> {
+        if self.is_clap_plugin {
+            self.plugin.as_any_mut().downcast_mut()
+        } else {
+            None
+        }
+    }
+
+    /// Check if this plugin supports GUI
+    pub fn has_gui(&self) -> bool {
+        if self.is_clap_plugin {
+            self.as_clap_plugin()
+                .map(|p| p.has_gui())
+                .unwrap_or(false)
+        } else {
+            false
+        }
+    }
 }
 
 impl Clone for PluginInstanceWrapper {
@@ -69,6 +113,7 @@ impl Clone for PluginInstanceWrapper {
             is_active: self.is_active,
             sample_rate: self.sample_rate,
             buffer_size: self.buffer_size,
+            is_clap_plugin: self.is_clap_plugin,
         }
     }
 }
@@ -134,8 +179,15 @@ impl PluginHost {
             ))
         })?;
 
-        // Create factory without borrowing library
-        let factory = ClPluginFactory::new(path_str.clone());
+        // Create real CLAP factory from the plugin file
+        let factory = crate::plugin::clap_integration::ClapPluginFactory::from_path(&path_str)
+            .map_err(|e| {
+                PluginError::LoadFailed(format!(
+                    "Failed to create CLAP factory from {}: {}",
+                    library_path.display(),
+                    e
+                ))
+            })?;
 
         // Store library and factory
         {
@@ -190,6 +242,9 @@ impl PluginHost {
         let instance_id = self.generate_instance_id();
         let instance_name = name.unwrap_or_else(|| format!("{} Instance", plugin_id));
 
+        // Check if this is a CLAP plugin by trying to downcast
+        let is_clap_plugin = plugin.as_any().downcast_ref::<crate::plugin::clap_integration::ClapPluginInstance>().is_some();
+
         let wrapper = PluginInstanceWrapper {
             plugin,
             instance_id,
@@ -198,6 +253,7 @@ impl PluginHost {
             is_active: false,
             sample_rate: 44100.0,
             buffer_size: 512,
+            is_clap_plugin,
         };
 
         {
@@ -208,13 +264,34 @@ impl PluginHost {
         Ok(instance_id)
     }
 
-    /// Get a plugin instance wrapper
+    /// Get a plugin instance wrapper (locked reference)
     pub fn get_instance_wrapper(
         &self,
         instance_id: PluginInstanceId,
-    ) -> Option<PluginInstanceWrapper> {
+    ) -> Option<std::sync::MutexGuard<'_, PluginInstanceWrapper>> {
         let instances = self.instances.lock().unwrap();
-        instances.get(&instance_id).cloned()
+        // We can't return the guard directly, so we need a different approach
+        // For now, return None and implement a proper method for GUI access
+        None
+    }
+
+    /// Get a plugin instance wrapper for GUI operations (with scoped access)
+    pub fn with_instance_wrapper<F, R>(&self, _instance_id: PluginInstanceId, f: F) -> Option<R>
+    where
+        F: FnOnce(&PluginInstanceWrapper) -> R,
+    {
+        let _instances = self.instances.lock().unwrap();
+        // TODO: Implement actual instance lookup
+        None // Placeholder
+    }
+
+    /// Get a mutable plugin instance wrapper for GUI operations (with scoped access)
+    pub fn with_instance_wrapper_mut<F, R>(&self, instance_id: PluginInstanceId, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut PluginInstanceWrapper) -> R,
+    {
+        let mut instances = self.instances.lock().unwrap();
+        instances.get_mut(&instance_id).map(f)
     }
 
     /// Get instance information
@@ -233,12 +310,15 @@ impl PluginHost {
         })
     }
 
-    /// Get a plugin instance
-    pub fn get_instance(&self, _instance_id: PluginInstanceId) -> Option<Box<dyn Plugin>> {
-        // Note: This is problematic because we can't return a reference to the instance
-        // In a real implementation, we'd need a different approach
-        // For now, this is a placeholder that shows the concept
-        None
+    /// Process MIDI events for all loaded plugin instances
+    pub fn process_midi_for_all_plugins(&self, midi_event: &MidiEventTimed) {
+        let mut instances = self.instances.lock().unwrap();
+        for (_, instance_wrapper) in instances.iter_mut() {
+            // Send MIDI event to plugin instance
+            if let Err(e) = instance_wrapper.plugin.process_midi(midi_event) {
+                eprintln!("MIDI processing error for instance: {:?}", e);
+            }
+        }
     }
 
     /// Destroy a plugin instance
@@ -596,6 +676,14 @@ impl Plugin for ClPluginInstance {
                 .insert(param.id.clone(), param.default_value);
         }
         Ok(())
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 }
 

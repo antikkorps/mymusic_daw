@@ -39,6 +39,7 @@ use crate::midi::event::{MidiEvent, MidiEventTimed};
 use crate::sequencer::metronome::{Metronome, MetronomeScheduler};
 use crate::sequencer::timeline::{Tempo, TimeSignature};
 use crate::synth::voice_manager::VoiceManager;
+use crate::plugin::PluginHost;
 
 pub struct AudioEngine {
     _device: Device,
@@ -47,6 +48,7 @@ pub struct AudioEngine {
     pub volume: AtomicF32,
     pub cpu_monitor: CpuMonitor,
     pub status: AtomicDeviceStatus,
+    pub plugin_host: Arc<PluginHost>,
 }
 
 impl AudioEngine {
@@ -54,6 +56,7 @@ impl AudioEngine {
         command_rx_ui: CommandConsumer,
         command_rx_midi: CommandConsumer,
         notification_tx: Arc<Mutex<NotificationProducer>>,
+        plugin_host: Arc<PluginHost>,
     ) -> Result<Self, String> {
         // Obtenir le host audio par défaut
         let host = cpal::default_host();
@@ -137,6 +140,7 @@ impl AudioEngine {
                 metronome_scheduler.clone(), // Clone (for this stream)
                 crate::sequencer::SequencerPlayer::new(sample_rate as f64), // New instance
                 sample_rate,                 // Pass sample rate for scheduler
+                plugin_host.clone(),          // Clone for plugin access
             ),
             SampleFormat::I16 => Self::build_stream::<i16>(
                 &device,
@@ -154,6 +158,7 @@ impl AudioEngine {
                 metronome_scheduler.clone(),
                 crate::sequencer::SequencerPlayer::new(sample_rate as f64), // New instance
                 sample_rate,
+                plugin_host.clone(),
             ),
             SampleFormat::U16 => Self::build_stream::<u16>(
                 &device,
@@ -171,6 +176,7 @@ impl AudioEngine {
                 metronome_scheduler.clone(),
                 crate::sequencer::SequencerPlayer::new(sample_rate as f64), // New instance
                 sample_rate,
+                plugin_host.clone(),
             ),
             _ => {
                 return Err(format!(
@@ -384,6 +390,7 @@ impl AudioEngine {
             volume,
             cpu_monitor,
             status,
+            plugin_host,
         })
     }
 
@@ -418,6 +425,7 @@ impl AudioEngine {
         mut metronome_scheduler: MetronomeScheduler, // Moved into closure (no Mutex)
         mut sequencer_player: crate::sequencer::SequencerPlayer, // Moved into closure (no Mutex)
         sample_rate: f32,                   // Sample rate for scheduler calculations
+        plugin_host: Arc<PluginHost>,      // Clone for plugin access
     ) -> Result<Stream, String>
     where
         T: SizedSample + FromSample<f32> + Send + 'static,
@@ -443,7 +451,7 @@ impl AudioEngine {
 
                     // helper function to process MIDI events
                     let process_midi_event =
-                        |timed_event: MidiEventTimed, vm: &mut VoiceManager| {
+                        |timed_event: MidiEventTimed, vm: &mut VoiceManager, plugin_host: &PluginHost| {
                             // TODO Phase 4+: Implement proper sample-accurate scheduling
                             // For now, process all events immediately at buffer start
                             match timed_event.event {
@@ -464,13 +472,16 @@ impl AudioEngine {
                                 }
                                 _ => {} // Ignore other events for now
                             }
+                            
+                            // Route MIDI events to all loaded plugins
+                            plugin_host.process_midi_for_all_plugins(&timed_event);
                         };
 
                     // helper function to process commands
                     let mut process_command = |cmd: Command, vm: &mut VoiceManager| {
                         match cmd {
                             Command::Midi(timed_event) => {
-                                process_midi_event(timed_event, vm);
+                                process_midi_event(timed_event, vm, &plugin_host);
                             }
                             Command::SetVolume(_vol) => {
                                 // Volume is handled via atomic
@@ -574,7 +585,7 @@ impl AudioEngine {
 
                     // Process generated MIDI events
                     for timed_event in sequencer_events {
-                        process_midi_event(timed_event, &mut voice_manager);
+                        process_midi_event(timed_event, &mut voice_manager, &plugin_host);
                     }
 
                     // Check for metronome clicks (if playing)
@@ -595,7 +606,20 @@ impl AudioEngine {
                     }
 
                     // Generate audio samples (direct access, no locks!)
-                    for frame in data.chunks_mut(channels) {
+                    let buffer_size = data.len() / channels;
+                    
+                    // Create temporary buffers for plugin processing
+                    let mut input_buffers = std::collections::HashMap::new();
+                    let mut output_buffers = std::collections::HashMap::new();
+                    
+                    // Create separate input and output buffers for plugins
+                    let mut input_left = vec![0.0f32; buffer_size];
+                    let mut input_right = vec![0.0f32; buffer_size];
+                    let mut output_left = vec![0.0f32; buffer_size];
+                    let mut output_right = vec![0.0f32; buffer_size];
+                    
+                    // Generate samples from voice manager and metronome into input buffers
+                    for i in 0..buffer_size {
                         // Read target volume from atomic (once per sample for smoothing)
                         let target_volume = volume.get();
 
@@ -621,17 +645,51 @@ impl AudioEngine {
                         left += metronome_sample * 0.3; // Metronome at 30% of main volume
                         right += metronome_sample * 0.3;
 
-                        // Soft saturation (protection against hard clipping)
-                        left = soft_clip(left);
-                        right = soft_clip(right);
-
-                        // Write stereo sample to frame
-                        write_stereo_to_interleaved_frame((left, right), frame);
-
+                        // Store in input buffers for plugins
+                        input_left[i] = left;
+                        input_right[i] = right;
+                        
                         // Advance position counter if playing
                         if is_playing {
                             current_position += 1;
                         }
+                    }
+                    
+                    // Create audio buffers for plugin processing
+                    let mut left_input_buffer = crate::audio::buffer::AudioBuffer::new(buffer_size);
+                    let mut right_input_buffer = crate::audio::buffer::AudioBuffer::new(buffer_size);
+                    let mut left_output_buffer = crate::audio::buffer::AudioBuffer::new(buffer_size);
+                    let mut right_output_buffer = crate::audio::buffer::AudioBuffer::new(buffer_size);
+                    
+                    // Copy input data to buffers
+                    left_input_buffer.data_mut().copy_from_slice(&input_left);
+                    right_input_buffer.data_mut().copy_from_slice(&input_right);
+                    left_output_buffer.data_mut().copy_from_slice(&output_left);
+                    right_output_buffer.data_mut().copy_from_slice(&output_right);
+                    
+                    // Set up input and output buffers for plugins
+                    input_buffers.insert("input_left".to_string(), &left_input_buffer);
+                    input_buffers.insert("input_right".to_string(), &right_input_buffer);
+                    output_buffers.insert("output_left".to_string(), &mut left_output_buffer);
+                    output_buffers.insert("output_right".to_string(), &mut right_output_buffer);
+                    
+                    // Process all plugins
+                    if let Err(e) = plugin_host.process_all_instances(&input_buffers, &mut output_buffers, buffer_size) {
+                        // Log error but continue with audio processing
+                        eprintln!("Plugin processing error: {:?}", e);
+                    }
+                    
+                    // Copy processed audio back to output buffer
+                    for (i, _frame) in data.chunks_mut(channels).enumerate() {
+                        let left = left_output_buffer.data()[i];
+                        let right = right_output_buffer.data()[i];
+                        
+                        // Soft saturation (protection against hard clipping)
+                        let left = soft_clip(left);
+                        let right = soft_clip(right);
+
+                        // Write stereo sample to frame
+                        write_stereo_to_interleaved_frame((left, right), _frame);
                     }
 
                     // End CPU monitoring
