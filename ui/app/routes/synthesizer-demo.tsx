@@ -99,6 +99,33 @@ export default function SynthesizerDemo() {
     { note: 72, label: 'C5', key: 'k' },
   ];
 
+  // Check if running in Tauri
+  const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
+
+  if (!isTauri) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
+        <div className="max-w-2xl text-center p-8 bg-gray-800 rounded-lg border border-yellow-500">
+          <div className="text-6xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold mb-4 text-yellow-400">Tauri Native App Required</h2>
+          <p className="text-gray-300 mb-6">
+            The synthesizer demo requires the native Tauri application to access the audio engine.
+            You're currently running in a web browser.
+          </p>
+          <div className="bg-gray-900 rounded p-4 text-left mb-6">
+            <p className="text-sm text-gray-400 mb-2">To run the full application:</p>
+            <code className="text-green-400 block">npm run tauri dev</code>
+            <p className="text-xs text-gray-500 mt-2">Or build the native app:</p>
+            <code className="text-green-400 block text-xs">npm run tauri build</code>
+          </div>
+          <p className="text-xs text-gray-500">
+            The web version is for UI development only. Audio features require the native application.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (!isEngineReady) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">

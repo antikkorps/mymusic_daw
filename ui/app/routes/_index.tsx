@@ -131,6 +131,27 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
+          {/* Synthesizer Demo Link */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Music className="w-5 h-5 text-purple-500" />
+                Synthesizer Demo
+              </CardTitle>
+              <CardDescription>Interactive synthesizer with real-time controls</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link to="/synthesizer-demo">
+                <Button className="w-full h-16 text-lg bg-purple-600 hover:bg-purple-700">
+                  🎹 Launch Synthesizer Demo
+                </Button>
+              </Link>
+              <p className="text-xs text-zinc-500 mt-2">
+                Full synthesizer with ADSR, LFO, filters, and real-time monitoring
+              </p>
+            </CardContent>
+          </Card>
+
           {/* Quick Actions */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
