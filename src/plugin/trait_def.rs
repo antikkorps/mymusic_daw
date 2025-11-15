@@ -1,6 +1,7 @@
 use crate::audio::buffer::AudioBuffer;
 use crate::plugin::PluginError;
 use crate::plugin::parameters::*;
+use crate::MidiEventTimed;
 use std::collections::HashMap;
 
 /// Core plugin trait that all plugins must implement
@@ -55,6 +56,18 @@ pub trait Plugin: Send + Sync {
     /// Check if plugin is currently processing audio
     fn is_processing(&self) -> bool {
         false
+    }
+
+    /// Get plugin as Any for downcasting
+    fn as_any(&self) -> &dyn std::any::Any;
+    
+    /// Get plugin as Any for downcasting (mutable)
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+
+    /// Process MIDI event sent to plugin
+    fn process_midi(&mut self, _midi_event: &MidiEventTimed) -> Result<(), PluginError> {
+        // Default implementation does nothing
+        Ok(())
     }
 }
 

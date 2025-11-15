@@ -1,13 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Layout } from "~/components/layout/Layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
 import { mockPlugins } from "~/lib/mockData";
-import type { Plugin, PluginCategory } from "~/types/plugin";
+import type { Plugin, PluginCategory, PluginFormat } from "~/types/plugin";
 import { cn } from "~/lib/utils";
 import { useToast } from "~/lib/toast";
-import { Puzzle, Download, Power, Search } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { Puzzle, Download, Power, Search, Eye, EyeOff, Link2, Maximize2 } from "lucide-react";
 
 const CATEGORIES: (PluginCategory | "All")[] = [
   "All",
@@ -21,41 +22,263 @@ const CATEGORIES: (PluginCategory | "All")[] = [
   "Distortion",
 ];
 
+interface PluginGuiInfo {
+  is_visible: boolean;
+  width: number;
+  height: number;
+  can_resize: boolean;
+  api: string;
+}
+
 export default function PluginsPage() {
+  console.log("🎯 PluginsPage component rendering");
   const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<PluginCategory | "All">("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isScanning, setIsScanning] = useState(false);
+  const [guiInfo, setGuiInfo] = useState<Record<string, PluginGuiInfo>>({});
+  const hasLoadedRef = useRef(false); // Prevent double loading in StrictMode
   const { showToast } = useToast();
 
-  // Simulate loading plugins
+  // Load plugins on mount (prevent double calls in StrictMode)
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setPlugins(mockPlugins);
-      setIsLoading(false);
-    }, 1200); // 1.2 second loading time
-
-    return () => clearTimeout(timer);
+    console.log("🎯 useEffect triggered, hasLoadedRef.current:", hasLoadedRef.current);
+    if (!hasLoadedRef.current) {
+      console.log("🚀 Setting hasLoadedRef.current = true");
+      hasLoadedRef.current = true;
+      loadAvailablePlugins();
+    } else {
+      console.log("⏭️ Skipping - already loaded");
+    }
   }, []);
 
-  const togglePluginLoad = (pluginId: string) => {
+  const loadAvailablePlugins = async () => {
+    console.log("🚀 loadAvailablePlugins called");
+    setIsLoading(true);
+    try {
+      // Try to scan for real plugins first
+      console.log("📡 Calling scan_for_plugins...");
+      const scannedPlugins = await invoke<Plugin[]>("scan_for_plugins");
+      
+      console.log("✅ Backend response received:", scannedPlugins);
+      console.log("🔍 Scanned plugins:", scannedPlugins);
+      console.log("📊 Plugin count:", scannedPlugins.length);
+      console.log("📊 Type of response:", typeof scannedPlugins);
+      console.log("📊 Is array:", Array.isArray(scannedPlugins));
+      
+      if (scannedPlugins && scannedPlugins.length > 0) {
+        console.log("🔄 Converting scanned plugins to Plugin format...");
+        // Convert scanned plugins to Plugin format
+        const realPlugins: Plugin[] = scannedPlugins.map((info, index) => {
+          console.log(`🔄 Processing plugin ${index}:`, info);
+          const converted = {
+            id: info.id,
+            name: info.name,
+            vendor: info.vendor,
+            version: "1.0.0",
+            format: "CLAP" as PluginFormat,
+            category: "Effect" as PluginCategory,
+            path: info.path, // Use actual path from backend
+            description: "A CLAP plugin",
+            features: ["GUI"],
+            loaded: false,
+            instanceId: undefined
+          };
+          console.log(`✅ Plugin ${index} converted:`, converted);
+          return converted;
+        });
+        
+        console.log("✅ All real plugins created:", realPlugins);
+        console.log("🔄 Setting plugins with setPlugins...");
+        setPlugins(realPlugins);
+        console.log("✅ Plugins set successfully");
+        showToast(`Found ${realPlugins.length} real plugins`, "success", 2000);
+      } else {
+        // Fallback to mock plugins
+        console.log("⚠️ No real plugins found, using mock plugins");
+        console.log("⚠️ scannedPlugins value:", scannedPlugins);
+        console.log("⚠️ scannedPlugins type:", typeof scannedPlugins);
+        console.log("⚠️ scannedPlugins is null:", scannedPlugins === null);
+        console.log("⚠️ scannedPlugins is undefined:", scannedPlugins === undefined);
+        setPlugins(mockPlugins);
+        showToast("Using demo plugins (no real CLAP plugins found)", "info", 3000);
+      }
+      } catch (error) {
+        console.error("❌ FAILED to scan plugins:", error);
+        console.error("❌ Error type:", typeof error);
+        console.error("❌ Error details:", JSON.stringify(error, null, 2));
+        console.error("❌ Error stack:", error instanceof Error ? error.stack : "No stack");
+        // Fallback to mock plugins
+        console.log("🔄 Falling back to mock plugins");
+        setPlugins(mockPlugins);
+        showToast("Using demo plugins (scanning failed)", "warning", 3000);
+      } finally {
+        console.log("🏁 loadAvailablePlugins finished");
+        setIsLoading(false);
+      }
+  };
+
+  const handleScanPlugins = async () => {
+    setIsScanning(true);
+    try {
+      const scannedPlugins = await invoke<Plugin[]>("scan_for_plugins");
+      
+      if (scannedPlugins.length > 0) {
+        // Convert scanned plugins to Plugin format
+        const realPlugins: Plugin[] = scannedPlugins.map(info => ({
+          id: info.id,
+          name: info.name,
+          vendor: info.vendor,
+          version: "1.0.0",
+          format: "CLAP" as PluginFormat,
+          category: "Effect" as PluginCategory,
+          path: info.path, // Use actual path from backend
+          description: "A CLAP plugin",
+          features: ["GUI"],
+          loaded: false,
+          instanceId: undefined
+        }));
+        
+        setPlugins(realPlugins);
+        showToast(`Scanning complete: ${realPlugins.length} plugins found`, "success", 3000);
+      } else {
+        showToast("No CLAP plugins found in standard locations", "warning", 3000);
+      }
+    } catch (error) {
+      console.error("Plugin scanning failed:", error);
+      showToast(`Plugin scanning failed: ${error}`, "error", 3000);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const togglePluginLoad = async (pluginId: string) => {
     const plugin = plugins.find((p) => p.id === pluginId);
     if (!plugin) return;
 
     const isLoading = !plugin.loaded;
 
-    setPlugins((prev) =>
-      prev.map((p) =>
-        p.id === pluginId
-          ? { ...p, loaded: isLoading, instanceId: isLoading ? `inst-${Date.now()}` : undefined }
-          : p
-      )
-    );
+    if (isLoading) {
+      // Try to load the plugin using the real Tauri command
+// Load the actual plugin using its path from the scanned data
+        const pluginPath = plugin.path; // Use the actual path from backend scan
+        
+      try {
+          
+        const instanceId = await invoke<string>("load_plugin_instance", {
+          pluginPath,
+          pluginId: plugin.id // Use the scanned plugin ID as the state key
+        });
+        
+        setPlugins((prev) =>
+          prev.map((p) =>
+            p.id === pluginId
+              ? { ...p, loaded: true, instanceId }
+              : p
+          )
+        );
 
-    showToast(
-      isLoading ? `Plugin "${plugin.name}" loaded successfully` : `Plugin "${plugin.name}" unloaded`,
-      isLoading ? "success" : "info"
-    );
+        showToast(`Plugin "${plugin.name}" loaded successfully`, "success");
+      } catch (error) {
+        console.error("Failed to load real plugin:", error);
+        console.error("Error details:", JSON.stringify(error, null, 2));
+        console.error("Plugin path:", pluginPath);
+        console.error("Plugin ID:", plugin.id);
+        
+        // Fallback to mock behavior for demo
+        setPlugins((prev) =>
+          prev.map((p) =>
+            p.id === pluginId
+              ? { ...p, loaded: true, instanceId: `inst-${Date.now()}` }
+              : p
+          )
+        );
+
+        showToast(`Plugin "${plugin.name}" loaded (demo mode) - Error: ${error}`, "warning");
+      }
+    } else {
+      // Unload plugin
+      if (plugin.instanceId) {
+        try {
+          await invoke("unload_plugin_instance", {
+            pluginId: plugin.instanceId
+          });
+        } catch (error) {
+          console.error("Failed to unload plugin:", error);
+        }
+      }
+
+      setPlugins((prev) =>
+        prev.map((p) =>
+          p.id === pluginId
+            ? { ...p, loaded: false, instanceId: undefined }
+            : p
+        )
+      );
+
+      showToast(`Plugin "${plugin.name}" unloaded`, "info");
+    }
+  };
+
+  const showPluginGui = async (instanceId: string) => {
+    try {
+      await invoke("show_plugin_gui", { pluginId: instanceId });
+      showToast(`Plugin GUI shown`, "success");
+      await updatePluginGuiInfo(instanceId);
+    } catch (error) {
+      showToast(`Failed to show GUI: ${error}`, "error");
+    }
+  };
+
+  const hidePluginGui = async (instanceId: string) => {
+    try {
+      await invoke("hide_plugin_gui", { pluginId: instanceId });
+      showToast(`Plugin GUI hidden`, "success");
+      await updatePluginGuiInfo(instanceId);
+    } catch (error) {
+      showToast(`Failed to hide GUI: ${error}`, "error");
+    }
+  };
+
+  const attachPluginGui = async (instanceId: string) => {
+    try {
+      const windowHandle = await invoke<string>("get_window_handle_for_plugin", {
+        windowLabel: "main"
+      });
+      
+      await invoke("attach_plugin_gui", {
+        pluginId: instanceId,
+        windowHandle
+      });
+      
+      showToast(`Plugin GUI attached to window`, "success");
+      await updatePluginGuiInfo(instanceId);
+    } catch (error) {
+      showToast(`Failed to attach GUI: ${error}`, "error");
+    }
+  };
+
+  const updatePluginGuiInfo = async (instanceId: string) => {
+    try {
+      const [size, isVisible] = await Promise.all([
+        invoke<[number, number]>("get_plugin_gui_size", { pluginId: instanceId }),
+        invoke<boolean>("is_plugin_gui_visible", { pluginId: instanceId })
+      ]);
+      
+      setGuiInfo(prev => ({
+        ...prev,
+        [instanceId]: {
+          is_visible: isVisible,
+          width: size[0],
+          height: size[1],
+          can_resize: true,
+          api: "native"
+        }
+      }));
+    } catch (error) {
+      console.error(`Failed to update GUI info:`, error);
+    }
   };
 
   const filteredPlugins = plugins.filter((plugin) => {
@@ -164,30 +387,127 @@ export default function PluginsPage() {
                 <CardDescription>Currently active in your session</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
-                  {loadedPlugins.map((plugin) => (
-                    <div
-                      key={plugin.id}
-                      className="flex items-center justify-between p-3 rounded-lg bg-zinc-900 border border-zinc-800"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Puzzle className="w-5 h-5 text-cyan-500" />
-                        <div>
-                          <div className="font-medium text-sm">{plugin.name}</div>
-                          <div className="text-xs text-zinc-500">
-                            {plugin.vendor} · v{plugin.version} · {plugin.format}
-                          </div>
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => togglePluginLoad(plugin.id)}
+                <div className="space-y-4">
+                  {loadedPlugins.map((plugin) => {
+                    const instanceId = plugin.instanceId;
+                    const gui = instanceId ? guiInfo[instanceId] : null;
+                    
+                    return (
+                      <div
+                        key={plugin.id}
+                        className="p-4 rounded-lg bg-zinc-900 border border-zinc-800"
                       >
-                        Unload
-                      </Button>
-                    </div>
-                  ))}
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <Puzzle className="w-5 h-5 text-cyan-500" />
+                            <div>
+                              <div className="font-medium text-sm">{plugin.name}</div>
+                              <div className="text-xs text-zinc-500">
+                                {plugin.vendor} · v{plugin.version} · {plugin.format}
+                              </div>
+                              {instanceId && (
+                                <div className="text-xs text-zinc-600 font-mono">
+                                  ID: {instanceId}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => togglePluginLoad(plugin.id)}
+                          >
+                            Unload
+                          </Button>
+                        </div>
+
+                        {/* GUI Controls */}
+                        {instanceId && (
+                          <div className="space-y-3">
+                            {/* GUI Status */}
+                            {gui && (
+                              <div className="p-2 bg-zinc-800 rounded border border-zinc-700 text-xs">
+                                <div className="grid grid-cols-4 gap-2">
+                                  <div>
+                                    <span className="text-zinc-500">Status:</span>
+                                    <div className="text-white">
+                                      {gui.is_visible ? (
+                                        <span className="text-green-500">Visible</span>
+                                      ) : (
+                                        <span className="text-zinc-400">Hidden</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <span className="text-zinc-500">Size:</span>
+                                    <div className="text-white">
+                                      {gui.width}×{gui.height}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <span className="text-zinc-500">API:</span>
+                                    <div className="text-white">{gui.api}</div>
+                                  </div>
+                                  <div>
+                                    <span className="text-zinc-500">Resize:</span>
+                                    <div className="text-white">
+                                      {gui.can_resize ? "Yes" : "No"}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* GUI Action Buttons */}
+                            <div className="grid grid-cols-2 gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => showPluginGui(instanceId)}
+                                className="flex items-center gap-1 h-8"
+                              >
+                                <Eye className="w-3 h-3" />
+                                Show
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => hidePluginGui(instanceId)}
+                                className="flex items-center gap-1 h-8"
+                              >
+                                <EyeOff className="w-3 h-3" />
+                                Hide
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => attachPluginGui(instanceId)}
+                                className="flex items-center gap-1 h-8"
+                              >
+                                <Link2 className="w-3 h-3" />
+                                Attach
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  invoke("set_plugin_gui_size", {
+                                    pluginId: instanceId,
+                                    width: 800,
+                                    height: 600
+                                  }).then(() => updatePluginGuiInfo(instanceId));
+                                }}
+                                className="flex items-center gap-1 h-8"
+                              >
+                                <Maximize2 className="w-3 h-3" />
+                                800×600
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
@@ -213,9 +533,14 @@ export default function PluginsPage() {
                   />
                 </div>
 
-                <Button variant="outline" size="sm">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={handleScanPlugins}
+                  disabled={isScanning}
+                >
                   <Download className="w-4 h-4 mr-2" />
-                  Scan for Plugins
+                  {isScanning ? "Scanning..." : "Scan for Plugins"}
                 </Button>
               </div>
 

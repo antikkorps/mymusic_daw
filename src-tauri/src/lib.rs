@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 // Import DAW modules (from parent crate)
 use mymusic_daw::audio::parameters::AtomicF32;
 use mymusic_daw::messaging::channels::CommandProducer;
-use mymusic_daw::plugin::Plugin;
+use mymusic_daw::plugin::{Plugin, PluginHost, PluginInstanceId};
 
 // Import modular command modules
 mod commands;
@@ -17,9 +17,24 @@ use commands::plugin::*;
 // Event system
 pub mod events;
 
+// Window utilities
+pub mod window_utils;
+
 /// Plugin instance wrapper with unique ID
 pub struct ManagedPlugin {
-    pub instance: Box<dyn Plugin>,
+    pub host: PluginHost,
+    pub instance_id: PluginInstanceId,
+    pub gui_info: Option<PluginGuiInfo>,
+}
+
+/// Plugin GUI information
+#[derive(Clone)]
+pub struct PluginGuiInfo {
+    pub is_visible: bool,
+    pub width: u32,
+    pub height: u32,
+    pub can_resize: bool,
+    pub api: String,
 }
 
 /// Shared state for the DAW engine
@@ -88,5 +103,25 @@ pub fn register_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri
         set_plugin_parameter_value,
         unload_plugin_instance,
         get_loaded_plugins,
+        scan_for_plugins,
+        get_plugin_search_paths,
+        scan_plugin_directory,
+        // Plugin GUI commands
+        show_plugin_gui,
+        hide_plugin_gui,
+        attach_plugin_gui,
+        get_plugin_gui_size,
+        set_plugin_gui_size,
+        is_plugin_gui_visible,
+        get_window_handle_for_plugin,
+        // MIDI Bridge commands (bypass display server)
+        add_midi_mapping,
+        remove_midi_mapping,
+        get_midi_mappings,
+        auto_map_plugin,
+        send_midi_cc,
+        create_virtual_midi_port,
+        test_midi_communication,
+        get_default_midi_assignments,
     ])
 }

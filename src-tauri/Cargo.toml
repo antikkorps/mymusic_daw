@@ -31,6 +31,20 @@ mymusic_daw = { path = ".." }
 ringbuf = { version = "0.4", features = [] }
 lazy_static = "1.4"
 
+# Base64 encoding for window handles
+base64 = "0.22"
+
+# Platform-specific window handle dependencies
+[target.'cfg(target_os = "macos")'.dependencies]
+objc = "0.2"
+cocoa = "0.25"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.58", features = ["Win32_UI_WindowsAndMessaging"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+
 [dev-dependencies]
 tokio-test = "0.4"
 

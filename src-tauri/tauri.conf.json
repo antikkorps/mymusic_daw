@@ -21,7 +21,7 @@
     ],
     "shortDescription": "A Digital Audio Workstation built with Rust and Tauri",
     "longDescription": "MyMusic DAW is a professional digital audio workstation featuring real-time audio processing, MIDI support, plugin hosting (CLAP), and a modern React-based interface.",
-    "copyright": "Copyright 2024"
+    "copyright": "Copyright 2025"
   },
   "app": {
     "windows": [

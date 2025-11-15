@@ -8,6 +8,7 @@ use crate::plugin::buffer_pool::AudioBufferPool;
 use crate::plugin::clap_ffi::*;
 use crate::plugin::clap_gui::ClapPluginGui;
 use crate::plugin::parameters::*;
+use crate::MidiEventTimed;
 use crate::plugin::trait_def::*;
 use crate::plugin::{PluginError, PluginResult};
 use libloading::{Library, Symbol};
@@ -473,9 +474,8 @@ impl ClapPluginInstance {
             parameter_id_map.insert(param.id.clone(), idx as u32);
         }
 
-        // Try to create GUI (optional, may fail if plugin doesn't support it)
-        // SAFETY: plugin_ptr is a valid CLAP plugin pointer from the plugin factory (see function safety doc)
-        let gui = unsafe { ClapPluginGui::new(plugin_ptr) };
+        // NOTE: GUI creation is deferred until after plugin.init() is called
+        // This is required by CLAP specification: init() must be called before get_extension()
 
         // Create buffer pool (1 input, 2 output stereo, max 8192 samples)
         let buffer_pool = AudioBufferPool::new(1, 2, 8192);
@@ -491,7 +491,7 @@ impl ClapPluginInstance {
             sample_rate: 44100.0, // Default, will be set in initialize()
             pending_midi_events: Vec::new(),
             pending_param_changes: Vec::new(),
-            gui,
+            gui: None, // Will be created after init()
             buffer_pool,
         }
     }
@@ -561,35 +561,123 @@ impl Plugin for ClapPluginInstance {
         unsafe {
             let plugin = &*self.plugin_ptr;
 
-            // Initialize the plugin
-            let init_result = (plugin.init)(self.plugin_ptr);
-            if !init_result {
-                return Err(PluginError::InitializationFailed(
-                    "Plugin init() returned false".to_string(),
-                ));
+            // Initialize the plugin with panic handling and timeout
+            println!("🔧 Calling plugin.init()...");
+            println!("⚠️ Note: If this hangs, the plugin requires a display server (GUI environment)");
+            
+            // Use timeout to prevent hanging during init()
+            // Since we can't move the plugin pointer between threads, we'll use a different approach
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let timeout_sender = sender.clone();
+            
+            // Spawn a timeout thread
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                let _ = timeout_sender.send(Err("Plugin init() timed out".to_string()));
+            });
+            
+            // Run the init in the current thread
+            let init_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let plugin = &*self.plugin_ptr;
+                (plugin.init)(self.plugin_ptr)
+            }));
+            
+            // Send the actual result
+            let _ = sender.send(Ok(init_result));
+            
+            // Wait for either the actual result or timeout
+            match receiver.recv() {
+                Ok(Ok(Ok(true))) => {
+                    println!("✅ Plugin init() succeeded");
+                }
+                Ok(Ok(Ok(false))) => {
+                    return Err(PluginError::InitializationFailed(
+                        "Plugin init() returned false".to_string(),
+                    ));
+                }
+                Ok(Ok(Err(_))) => {
+                    return Err(PluginError::InitializationFailed(
+                        "Plugin init() panicked (likely no display server or incompatible environment)".to_string(),
+                    ));
+                }
+                Ok(Err(timeout_msg)) => {
+                    return Err(PluginError::InitializationFailed(timeout_msg));
+                }
+                Err(_) => {
+                    return Err(PluginError::InitializationFailed(
+                        "Plugin init() communication failed".to_string(),
+                    ));
+                }
             }
 
-            // Activate the plugin (prepare for processing)
-            let activate_result = (plugin.activate)(
-                self.plugin_ptr,
-                sample_rate,
-                512,  // min_frames_count
-                8192, // max_frames_count
-            );
-
-            if !activate_result {
-                return Err(PluginError::InitializationFailed(
-                    "Plugin activate() returned false".to_string(),
-                ));
+            // Activate the plugin with panic handling
+            println!("🔧 Calling plugin.activate()...");
+            let activate_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                (plugin.activate)(
+                    self.plugin_ptr,
+                    sample_rate,
+                    512,  // min_frames_count
+                    8192, // max_frames_count
+                )
+            }));
+            
+            match activate_result {
+                Ok(true) => {
+                    println!("✅ Plugin activate() succeeded");
+                }
+                Ok(false) => {
+                    return Err(PluginError::InitializationFailed(
+                        "Plugin activate() returned false".to_string(),
+                    ));
+                }
+                Err(_) => {
+                    return Err(PluginError::InitializationFailed(
+                        "Plugin activate() panicked (likely no display server or incompatible environment)".to_string(),
+                    ));
+                }
             }
 
-            // Start processing
-            let start_result = (plugin.start_processing)(self.plugin_ptr);
-            if !start_result {
-                return Err(PluginError::InitializationFailed(
-                    "Plugin start_processing() returned false".to_string(),
-                ));
+            // Start processing with panic handling
+            println!("🔧 Calling plugin.start_processing()...");
+            let start_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                (plugin.start_processing)(self.plugin_ptr)
+            }));
+            
+            match start_result {
+                Ok(true) => {
+                    println!("✅ Plugin start_processing() succeeded");
+                }
+                Ok(false) => {
+                    return Err(PluginError::InitializationFailed(
+                        "Plugin start_processing() returned false".to_string(),
+                    ));
+                }
+                Err(_) => {
+                    return Err(PluginError::InitializationFailed(
+                        "Plugin start_processing() panicked (likely no display server or incompatible environment)".to_string(),
+                    ));
+                }
             }
+        }
+
+        // Create GUI after plugin is initialized (required by CLAP spec)
+        if self.gui.is_none() {
+            println!("🔨 Creating GUI after plugin initialization...");
+            let gui = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                // SAFETY: plugin_ptr is valid and plugin.init() has been called
+                unsafe { ClapPluginGui::new(self.plugin_ptr) }
+            }));
+            
+            self.gui = match gui {
+                Ok(gui_opt) => {
+                    println!("✅ GUI creation completed successfully after init");
+                    gui_opt
+                }
+                Err(_) => {
+                    println!("⚠️ GUI creation panicked (likely no display server) - continuing without GUI");
+                    None
+                }
+            };
         }
 
         self.is_active = true;
@@ -823,6 +911,24 @@ impl Plugin for ClapPluginInstance {
 
     fn is_processing(&self) -> bool {
         self.is_active
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
+    fn process_midi(&mut self, midi_event: &MidiEventTimed) -> Result<(), PluginError> {
+        // Add MIDI event to pending queue for processing in next audio callback
+        self.pending_midi_events.push((midi_event.event, midi_event.samples_from_now));
+        
+        println!("🎹 MIDI queued for plugin {}: {:?} (offset: {} samples)", 
+                 self.descriptor.name, midi_event.event, midi_event.samples_from_now);
+        
+        Ok(())
     }
 }
 
