@@ -14,3 +14,13 @@ ui/.vite/
 # Tauri
 src-tauri/target/
 src-tauri/WixTools/
+
+# Profiling and benchmarking
+audio_profile_report.txt
+*.profdata
+flamegraph.svg
+perf.data*
+*.dSYM/
+
+# Criterion benchmark results
+target/criterion/
