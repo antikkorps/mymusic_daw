@@ -31,6 +31,7 @@ use crate::audio::cpu_monitor::CpuMonitor;
 use crate::audio::dsp_utils::{OnePoleSmoother, flush_denormals_to_zero, soft_clip};
 use crate::audio::format_conversion::write_stereo_to_interleaved_frame;
 use crate::audio::parameters::AtomicF32;
+use crate::audio::profiling::{global_profiler, profile_operation};
 use crate::connection::status::{AtomicDeviceStatus, DeviceStatus};
 use crate::messaging::channels::{CommandConsumer, NotificationProducer};
 use crate::messaging::command::Command;
@@ -446,7 +447,8 @@ impl AudioEngine {
                     // ========== SACRED ZONE ==========
                     // No allocations, No I/O, No blocking locks
 
-                    // Start CPU monitoring (only samples some callbacks)
+                    // Start profiling and CPU monitoring
+                    let _callback_timer = global_profiler().start_callback();
                     let measure_start = cpu_monitor.start_measure();
 
                     // helper function to process MIDI events
@@ -560,13 +562,19 @@ impl AudioEngine {
                     };
 
                     // Process UI commands (direct access, no locks!)
-                    while let Some(cmd) = ringbuf::traits::Consumer::try_pop(&mut command_rx_ui) {
-                        process_command(cmd, &mut voice_manager);
+                    {
+                        let _cmd_timer = profile_operation("process_ui_commands");
+                        while let Some(cmd) = ringbuf::traits::Consumer::try_pop(&mut command_rx_ui) {
+                            process_command(cmd, &mut voice_manager);
+                        }
                     }
 
                     // Process MIDI commands (direct access, no locks!)
-                    while let Some(cmd) = ringbuf::traits::Consumer::try_pop(&mut command_rx_midi) {
-                        process_command(cmd, &mut voice_manager);
+                    {
+                        let _cmd_timer = profile_operation("process_midi_commands");
+                        while let Some(cmd) = ringbuf::traits::Consumer::try_pop(&mut command_rx_midi) {
+                            process_command(cmd, &mut voice_manager);
+                        }
                     }
 
                     // Process sequencer pattern (generates MIDI events from notes)
@@ -574,18 +582,24 @@ impl AudioEngine {
                     let buffer_size = data.len() / channels;
 
                     // Generate MIDI events from pattern (RT-safe, no allocations)
-                    let sequencer_events = sequencer_player.process(
-                        &active_pattern,
-                        current_position,
-                        is_playing,
-                        &current_tempo,
-                        &current_time_signature,
-                        buffer_size,
-                    );
+                    let sequencer_events = {
+                        let _seq_timer = profile_operation("sequencer_process");
+                        sequencer_player.process(
+                            &active_pattern,
+                            current_position,
+                            is_playing,
+                            &current_tempo,
+                            &current_time_signature,
+                            buffer_size,
+                        )
+                    };
 
                     // Process generated MIDI events
-                    for timed_event in sequencer_events {
-                        process_midi_event(timed_event, &mut voice_manager, &plugin_host);
+                    {
+                        let _seq_events_timer = profile_operation("process_sequencer_events");
+                        for timed_event in sequencer_events {
+                            process_midi_event(timed_event, &mut voice_manager, &plugin_host);
+                        }
                     }
 
                     // Check for metronome clicks (if playing)
@@ -619,39 +633,42 @@ impl AudioEngine {
                     let mut output_right = vec![0.0f32; buffer_size];
                     
                     // Generate samples from voice manager and metronome into input buffers
-                    for i in 0..buffer_size {
-                        // Read target volume from atomic (once per sample for smoothing)
-                        let target_volume = volume.get();
+                    {
+                        let _audio_gen_timer = profile_operation("audio_generation");
+                        for i in 0..buffer_size {
+                            // Read target volume from atomic (once per sample for smoothing)
+                            let target_volume = volume.get();
 
-                        // Smooth volume to avoid clicks/pops
-                        let smoothed_volume = volume_smoother.process(target_volume);
+                            // Smooth volume to avoid clicks/pops
+                            let smoothed_volume = volume_smoother.process(target_volume);
 
-                        // Generate stereo sample
-                        let (mut left, mut right) = voice_manager.next_sample();
+                            // Generate stereo sample
+                            let (mut left, mut right) = voice_manager.next_sample();
 
-                        // Generate metronome click sample
-                        let metronome_sample = metronome.process_sample();
+                            // Generate metronome click sample
+                            let metronome_sample = metronome.process_sample();
 
-                        // Anti-denormals (flush tiny values to zero)
-                        left = flush_denormals_to_zero(left);
-                        right = flush_denormals_to_zero(right);
-                        let metronome_sample = flush_denormals_to_zero(metronome_sample);
+                            // Anti-denormals (flush tiny values to zero)
+                            left = flush_denormals_to_zero(left);
+                            right = flush_denormals_to_zero(right);
+                            let metronome_sample = flush_denormals_to_zero(metronome_sample);
 
-                        // Apply volume
-                        left *= smoothed_volume;
-                        right *= smoothed_volume;
+                            // Apply volume
+                            left *= smoothed_volume;
+                            right *= smoothed_volume;
 
-                        // Mix in metronome (additive, doesn't affect main audio level)
-                        left += metronome_sample * 0.3; // Metronome at 30% of main volume
-                        right += metronome_sample * 0.3;
+                            // Mix in metronome (additive, doesn't affect main audio level)
+                            left += metronome_sample * 0.3; // Metronome at 30% of main volume
+                            right += metronome_sample * 0.3;
 
-                        // Store in input buffers for plugins
-                        input_left[i] = left;
-                        input_right[i] = right;
-                        
-                        // Advance position counter if playing
-                        if is_playing {
-                            current_position += 1;
+                            // Store in input buffers for plugins
+                            input_left[i] = left;
+                            input_right[i] = right;
+                            
+                            // Advance position counter if playing
+                            if is_playing {
+                                current_position += 1;
+                            }
                         }
                     }
                     
@@ -674,22 +691,28 @@ impl AudioEngine {
                     output_buffers.insert("output_right".to_string(), &mut right_output_buffer);
                     
                     // Process all plugins
-                    if let Err(e) = plugin_host.process_all_instances(&input_buffers, &mut output_buffers, buffer_size) {
-                        // Log error but continue with audio processing
-                        eprintln!("Plugin processing error: {:?}", e);
+                    {
+                        let _plugin_timer = profile_operation("plugin_processing");
+                        if let Err(e) = plugin_host.process_all_instances(&input_buffers, &mut output_buffers, buffer_size) {
+                            // Log error but continue with audio processing
+                            eprintln!("Plugin processing error: {:?}", e);
+                        }
                     }
                     
                     // Copy processed audio back to output buffer
-                    for (i, _frame) in data.chunks_mut(channels).enumerate() {
-                        let left = left_output_buffer.data()[i];
-                        let right = right_output_buffer.data()[i];
-                        
-                        // Soft saturation (protection against hard clipping)
-                        let left = soft_clip(left);
-                        let right = soft_clip(right);
+                    {
+                        let _output_timer = profile_operation("output_processing");
+                        for (i, _frame) in data.chunks_mut(channels).enumerate() {
+                            let left = left_output_buffer.data()[i];
+                            let right = right_output_buffer.data()[i];
+                            
+                            // Soft saturation (protection against hard clipping)
+                            let left = soft_clip(left);
+                            let right = soft_clip(right);
 
-                        // Write stereo sample to frame
-                        write_stereo_to_interleaved_frame((left, right), _frame);
+                            // Write stereo sample to frame
+                            write_stereo_to_interleaved_frame((left, right), _frame);
+                        }
                     }
 
                     // End CPU monitoring
