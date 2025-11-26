@@ -97,6 +97,8 @@ impl AudioEngine {
         let cpu_monitor = CpuMonitor::new(sample_rate, buffer_frames, 10);
         let cpu_monitor_clone = cpu_monitor.clone();
 
+
+
         // Create atomic volume parameter (shared between UI and audio thread via atomic)
         let volume = AtomicF32::new(0.5); // Default volume: 50%
         let volume_clone = volume.clone();
@@ -385,7 +387,7 @@ impl AudioEngine {
         }
 
         Ok(Self {
-            _device: device,
+            _device: device.clone(),
             _stream: stream,
             sample_rate,
             volume,
@@ -447,9 +449,11 @@ impl AudioEngine {
                     // ========== SACRED ZONE ==========
                     // No allocations, No I/O, No blocking locks
 
-                    // Start profiling and CPU monitoring
-                    let _callback_timer = global_profiler().start_callback();
-                    let measure_start = cpu_monitor.start_measure();
+
+
+                    // PROFILING DISABLED FOR DEBUG
+                    // let _callback_timer = global_profiler().start_callback();
+                    // let measure_start = cpu_monitor.start_measure();
 
                     // helper function to process MIDI events
                     let process_midi_event =
@@ -622,17 +626,7 @@ impl AudioEngine {
                     // Generate audio samples (direct access, no locks!)
                     let buffer_size = data.len() / channels;
                     
-                    // Create temporary buffers for plugin processing
-                    let mut input_buffers = std::collections::HashMap::new();
-                    let mut output_buffers = std::collections::HashMap::new();
-                    
-                    // Create separate input and output buffers for plugins
-                    let mut input_left = vec![0.0f32; buffer_size];
-                    let mut input_right = vec![0.0f32; buffer_size];
-                    let mut output_left = vec![0.0f32; buffer_size];
-                    let mut output_right = vec![0.0f32; buffer_size];
-                    
-                    // Generate samples from voice manager and metronome into input buffers
+                    // Generate samples directly into output buffer (no allocations!)
                     {
                         let _audio_gen_timer = profile_operation("audio_generation");
                         for i in 0..buffer_size {
@@ -651,72 +645,34 @@ impl AudioEngine {
                             // Anti-denormals (flush tiny values to zero)
                             left = flush_denormals_to_zero(left);
                             right = flush_denormals_to_zero(right);
-                            let metronome_sample = flush_denormals_to_zero(metronome_sample);
 
-                            // Apply volume
+                            // Mix in metronome (if enabled)
+                            left = left + metronome_sample;
+                            right = right + metronome_sample;
+
+                            // Apply volume smoothing
                             left *= smoothed_volume;
                             right *= smoothed_volume;
 
-                            // Mix in metronome (additive, doesn't affect main audio level)
-                            left += metronome_sample * 0.3; // Metronome at 30% of main volume
-                            right += metronome_sample * 0.3;
+                            // Apply soft clipping to prevent harsh distortion
+                            left = soft_clip(left);
+                            right = soft_clip(right);
 
-                            // Store in input buffers for plugins
-                            input_left[i] = left;
-                            input_right[i] = right;
-                            
-                            // Advance position counter if playing
-                            if is_playing {
-                                current_position += 1;
+                            // Write directly to output buffer
+                            let sample_idx = i * channels;
+                            if channels == 1 {
+                                data[sample_idx] = T::from_sample((left + right) * 0.5);
+                            } else {
+                                data[sample_idx] = T::from_sample(left);
+                                data[sample_idx + 1] = T::from_sample(right);
                             }
                         }
                     }
-                    
-                    // Create audio buffers for plugin processing
-                    let mut left_input_buffer = crate::audio::buffer::AudioBuffer::new(buffer_size);
-                    let mut right_input_buffer = crate::audio::buffer::AudioBuffer::new(buffer_size);
-                    let mut left_output_buffer = crate::audio::buffer::AudioBuffer::new(buffer_size);
-                    let mut right_output_buffer = crate::audio::buffer::AudioBuffer::new(buffer_size);
-                    
-                    // Copy input data to buffers
-                    left_input_buffer.data_mut().copy_from_slice(&input_left);
-                    right_input_buffer.data_mut().copy_from_slice(&input_right);
-                    left_output_buffer.data_mut().copy_from_slice(&output_left);
-                    right_output_buffer.data_mut().copy_from_slice(&output_right);
-                    
-                    // Set up input and output buffers for plugins
-                    input_buffers.insert("input_left".to_string(), &left_input_buffer);
-                    input_buffers.insert("input_right".to_string(), &right_input_buffer);
-                    output_buffers.insert("output_left".to_string(), &mut left_output_buffer);
-                    output_buffers.insert("output_right".to_string(), &mut right_output_buffer);
-                    
-                    // Process all plugins
-                    {
-                        let _plugin_timer = profile_operation("plugin_processing");
-                        if let Err(e) = plugin_host.process_all_instances(&input_buffers, &mut output_buffers, buffer_size) {
-                            // Log error but continue with audio processing
-                            eprintln!("Plugin processing error: {:?}", e);
-                        }
-                    }
-                    
-                    // Copy processed audio back to output buffer
-                    {
-                        let _output_timer = profile_operation("output_processing");
-                        for (i, _frame) in data.chunks_mut(channels).enumerate() {
-                            let left = left_output_buffer.data()[i];
-                            let right = right_output_buffer.data()[i];
-                            
-                            // Soft saturation (protection against hard clipping)
-                            let left = soft_clip(left);
-                            let right = soft_clip(right);
+                     // Plugin processing disabled for debugging
+                     // TODO: Re-enable with pre-allocated buffers
 
-                            // Write stereo sample to frame
-                            write_stereo_to_interleaved_frame((left, right), _frame);
-                        }
-                    }
-
-                    // End CPU monitoring
-                    cpu_monitor.end_measure(measure_start);
+                    // End CPU monitoring (DISABLED FOR DEBUG)
+                    // cpu_monitor.end_measure(measure_start);
                     // ========== SACRED ZONE END ==========
                 },
                 move |err| {

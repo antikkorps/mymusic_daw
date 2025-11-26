@@ -43,6 +43,7 @@ fn main() {
     ) {
         Ok(engine) => {
             println!("✅ Audio engine started successfully");
+            println!("🔊 Initial volume: {}", engine.volume.get());
             engine
         }
         Err(e) => {
@@ -58,7 +59,10 @@ fn main() {
     // Create DAW state for Tauri
     let daw_state = DawState::new(command_tx_ui, volume_atomic);
 
-    // Keep the audio engine alive (Tauri will manage its lifetime)
+    // Keep the audio engine alive for the entire program duration
+    // IMPORTANT: We use `forget` because AudioEngine contains a CoreAudio Stream
+    // which is NOT Send/Sync on macOS, so we can't store it in Tauri State.
+    // The stream must stay alive to keep audio playing.
     std::mem::forget(audio_engine);
 
     // Build and run Tauri application

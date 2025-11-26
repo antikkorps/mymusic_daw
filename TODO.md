@@ -1077,6 +1077,47 @@
   - [ ] Documenter les gains de performance attendus
   - [ ] Créer un guide d'utilisation du profiler (doc/PROFILING.md)
 
+### 🐛 BUG CRITIQUE - Son manquant sous Tauri (À INVESTIGUER)
+
+**Statut** : 🔴 **NON RÉSOLU** - À débugger demain
+
+**Symptôme** :
+- Quand on lance `npx tauri dev`, il n'y a plus de son
+- Le moteur audio semble démarrer correctement (logs OK)
+- Possiblement lié aux modifications de profiling (Phase 6a)
+
+**Hypothèses** :
+1. ~~`AudioEngine` drop prématurément~~ - **VÉRIFIÉ** : `std::mem::forget()` est bien en place
+2. **Stream CPAL** pourrait être interrompu par les timers de profiling dans le callback ?
+3. Volume réinitialisé à 0 ? (À vérifier)
+4. Device audio mal sélectionné ? (À vérifier)
+5. Overhead des timers de profiling trop important ?
+
+**Investigation nécessaire** :
+- [ ] Vérifier que le callback audio est bien appelé (ajouter prints temporaires)
+- [ ] Vérifier le volume atomique (`audio_engine.volume.get()`)
+- [ ] Tester avec profiling **désactivé** (commenter les `_timer` dans `engine.rs`)
+- [ ] Vérifier les logs de démarrage du moteur audio
+- [ ] Tester en dehors de Tauri (cargo run standalone)
+
+**Contexte technique** :
+- `AudioEngine` contient un `Stream` (CoreAudio sur macOS) qui **n'est PAS Send/Sync**
+- Impossible de le stocker dans `Tauri::State`
+- Utilisation de `std::mem::forget(audio_engine)` pour garder le stream vivant
+- Les modifications de profiling ajoutent des RAII timers dans le callback audio (src/audio/engine.rs:447-716)
+
+**Fichiers concernés** :
+- `src/audio/engine.rs` (callback audio avec profiling)
+- `src/audio/profiling.rs` (timers RAII)
+- `src-tauri/src/main.rs` (initialisation AudioEngine)
+- `src-tauri/src/lib.rs` (DawState)
+
+**Prochaines étapes** :
+1. **Reproduire** le bug de façon isolée
+2. **Bisect** : Tester avec/sans profiling pour identifier la cause
+3. **Fix** selon la cause identifiée
+4. **Tester** que le son fonctionne à nouveau
+
 ### Visualisation
 
 - [ ] Waveform display (oscilloscope simple)
