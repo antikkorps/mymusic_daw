@@ -1077,46 +1077,45 @@
   - [ ] Documenter les gains de performance attendus
   - [ ] Créer un guide d'utilisation du profiler (doc/PROFILING.md)
 
-### 🐛 BUG CRITIQUE - Son manquant sous Tauri (À INVESTIGUER)
+### 🐛 BUG CRITIQUE - Son manquant sous Tauri ✅ (RÉSOLU)
 
-**Statut** : 🔴 **NON RÉSOLU** - À débugger demain
+**Statut** : ✅ **RÉSOLU** - **TERMINÉ** 🎉
 
-**Symptôme** :
-- Quand on lance `npx tauri dev`, il n'y a plus de son
-- Le moteur audio semble démarrer correctement (logs OK)
-- Possiblement lié aux modifications de profiling (Phase 6a)
+**Problème identifié** :
+- Allocations de `Vec<f32>` dans le callback audio violaient les règles temps-réel
+- Le code de plugin processing ajoutait encore plus d'allocations et complexité
+- Ces allocations dans la "zone sacrée" causaient des dropouts audio et silence
 
-**Hypothèses** :
-1. ~~`AudioEngine` drop prématurément~~ - **VÉRIFIÉ** : `std::mem::forget()` est bien en place
-2. **Stream CPAL** pourrait être interrompu par les timers de profiling dans le callback ?
-3. Volume réinitialisé à 0 ? (À vérifier)
-4. Device audio mal sélectionné ? (À vérifier)
-5. Overhead des timers de profiling trop important ?
+**Solution appliquée** :
+- [x] **Supprimé les allocations de Vec** dans le callback audio (`vec![0.0f32; buffer_size]`)
+- [x] **Simplifié le traitement** pour écriture directe dans le buffer de sortie
+- [x] **Désactivé le plugin processing temporairement** (pour le réactiver plus tard avec buffers pré-alloués)
+- [x] **Maintenu le volume smoothing et soft-clipping** pour la qualité audio
 
-**Investigation nécessaire** :
-- [ ] Vérifier que le callback audio est bien appelé (ajouter prints temporaires)
-- [ ] Vérifier le volume atomique (`audio_engine.volume.get()`)
-- [ ] Tester avec profiling **désactivé** (commenter les `_timer` dans `engine.rs`)
-- [ ] Vérifier les logs de démarrage du moteur audio
-- [ ] Tester en dehors de Tauri (cargo run standalone)
+**Résultat** :
+- ✅ Le son fonctionne maintenant parfaitement sous Tauri
+- ✅ Le callback audio est RT-safe (zéro allocation)
+- ✅ Qualité audio préservée avec volume smoothing et soft-clipping
 
-**Contexte technique** :
-- `AudioEngine` contient un `Stream` (CoreAudio sur macOS) qui **n'est PAS Send/Sync**
-- Impossible de le stocker dans `Tauri::State`
-- Utilisation de `std::mem::forget(audio_engine)` pour garder le stream vivant
-- Les modifications de profiling ajoutent des RAII timers dans le callback audio (src/audio/engine.rs:447-716)
+**Note** : Le plugin processing sera réactivé dans une future version avec des buffers pré-alloués pour maintenir la RT-safety.
 
-**Fichiers concernés** :
-- `src/audio/engine.rs` (callback audio avec profiling)
-- `src/audio/profiling.rs` (timers RAII)
-- `src-tauri/src/main.rs` (initialisation AudioEngine)
-- `src-tauri/src/lib.rs` (DawState)
+---
 
-**Prochaines étapes** :
-1. **Reproduire** le bug de façon isolée
-2. **Bisect** : Tester avec/sans profiling pour identifier la cause
-3. **Fix** selon la cause identifiée
-4. **Tester** que le son fonctionne à nouveau
+### 🔄 Amélioration UX demandée
+
+**Problème** : Quand le son ne fonctionne pas, l'utilisateur doit tout relancer manuellement
+
+**Solution souhaitée** :
+- [ ] Ajouter un bouton "Retour à la page d'accueil" depuis le synthétiseur
+- [ ] Permettre de redémarrer le moteur audio sans quitter l'application
+- [ ] Ajouter un indicateur visuel de l'état audio dans l'UI
+- [ ] Proposer un mode "fallback" audio si le device principal échoue
+
+**Implémentation prévue** :
+- [ ] Ajouter un bouton "Home" dans la barre de navigation du synthé
+- [ ] Ajouter une commande Tauri `restart_audio_engine()` 
+- [ ] Intégrer un indicateur LED (vert/rouge) pour l'état audio dans la StatusBar
+- [ ] Ajouter un menu déroulant de sélection de device audio avec fallback automatique
 
 ### Visualisation
 
