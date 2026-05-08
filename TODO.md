@@ -995,11 +995,44 @@
   - [x] Calcul CPU usage (avg: 33%, max: 47% @ 512 samples)
   - [x] Analyse de performance et recommandations
   - [x] Identification des bottlenecks automatique
-- [ ] Intégration SIMD dans VoiceManager
-  - [ ] Remplacer génération scalaire par SIMD dans `next_sample()`
-  - [ ] Mesurer gains réels avec benchmarks
-  - [ ] Comparer rapports de profiling avant/après
+- [x] **Intégration SIMD dans VoiceManager** ⚠️ (TENTÉE - ne paie pas dans l'architecture sample-par-sample)
+  - [x] Bugs réels du module `simd.rs` corrigés au passage :
+    - `next_square_polyblep` : `blend()` mal utilisé (sortie figée à -1.0)
+    - `simd_flush_denormals` : `blend()` inversé (gardait les dénormaux, tuait les valeurs normales)
+    - `next_triangle` : formule inversée vs scalaire (pic à phase 0 au lieu de 0.5)
+    - `next_sawtooth_polyblep` : nom trompeur, aucune correction PolyBLEP réelle
+    - `DENORMAL_THRESHOLD` : 1e-10 au lieu de 1e-15 (incohérent avec `dsp_utils`)
+  - [x] **Vrai PolyBLEP SIMD** (`poly_blep_simd`) intégré dans saw/square
+  - [x] `reset_lane(idx)` ajouté pour reset de phase par voix
+  - [x] 4 tests de parité scalaire-vs-SIMD ajoutés (sine, triangle, saw+polyblep, square+polyblep) — tous passent avec tol 1e-3
+  - [x] 2 tests précédemment ignorés réparés (`test_simd_oscillator_individual_frequencies`, `test_simd_flush_denormals`) → 12/12 tests SIMD verts, 0 ignored
+  - [x] `audio/mod.rs` : déclaration des modules `simd`/`profiling`/`memory` (manquaient — lib ne compilait pas sur main avant ce fix)
+  - [x] Infrastructure `SynthVoice::prepare()` / `finalize()` + `VoicePrepared` ajoutée (split pré-osc / post-osc) — disponible pour un futur refactor block-based, marquée `#[allow(dead_code)]` en attendant
+  - [ ] **Conclusion expérimentale** (cf. encart "📊 Résultats SIMD" ci-dessous) : le batching cross-voice par sample (`SimdOscillator` partagé sur 4 voix) **n'apporte pas de gain mesurable** dans l'architecture actuelle (sample-par-sample). `VoiceManager::next_sample()` reste donc en chemin scalaire monolithique.
+  - [ ] **Piste future** : refactor block-based (process N samples par voix dans une boucle inlinée) — la SIMD aurait du sens sur l'axe **temps** (4 samples consécutifs en parallèle) plutôt que cross-voix. Hors scope de Phase 6a.
 - [ ] Multi-threading pour UI (si nécessaire après mesures)
+
+#### 📊 Résultats SIMD (Phase 6a, expérimentation)
+
+**Hypothèse initiale** : 16 voix × `f32::sin` scalaire → 4 groupes de 4 voix avec `f32x4::sin` partagé devrait diviser le coût de la synthèse par ~3-4×.
+
+**Réalité mesurée** (cargo bench `voice_manager` 16 voix actives, sortie sine, buffer 512 samples) :
+| Voix actives | Baseline scalaire | SIMD cross-voice (3-pass) | SIMD cross-voice (group-local) |
+|--------------|-------------------|---------------------------|--------------------------------|
+| 1            | ~258 µs           | ~380 µs (+47%)            | ~351 µs (+36%)                 |
+| 4            | ~269 µs           | ~355 µs (+32%)            | ~360 µs (+34%)                 |
+| 8            | ~270 µs           | ~349 µs (+29%)            | ~351 µs (+30%)                 |
+| 16           | ~288 µs           | ~357 µs (+24%)            | ~410 µs (+42%)                 |
+
+(Variance Criterion ~10-20% sur ce setup WSL2 ; tendance régression robuste.)
+
+**Causes diagnostiquées** :
+1. **`wide::f32x4::sin()`** est une approximation polynomiale qui n'est pas plus rapide que 4× `f32::sin()` scalaire (le compilateur Rust + libm sur x86 sont déjà bien vectorisés).
+2. **Setup d'état coûteux par sample** : `set_frequencies` = 1 division SIMD chaque sample (la fréquence change à cause du portamento + LFO + matrix), alors que le scalaire ne met à jour `phase_increment` qu'au changement de note.
+3. **Cache thrashing** : sortir l'oscillateur de la voix oblige à ré-itérer sur les voix en pré- et post-passes, perdant la localité du chemin monolithique d'origine.
+4. **Voix inactives paient le coût SIMD** : les 4 lanes sont calculées même quand toutes les voix d'un groupe sont silencieuses.
+
+**Décision** : revert de `VoiceManager::next_sample()` au chemin scalaire d'origine. Les bug fixes du module `simd.rs` sont conservés (vraie correction de bugs, indépendamment de l'intégration). L'infrastructure `prepare`/`finalize`/`VoicePrepared` reste en place comme base pour un futur refactor block-based où SIMD serait appliqué sur l'axe **temps** plutôt que **voix** — c'est à ce moment-là qu'un gain réel est attendu.
 
 ### Stabilité ✅ (INFRASTRUCTURE COMPLÈTE)
 
@@ -1040,7 +1073,7 @@
 
 **Conclusion** : L'optimisation SIMD de `audio_generation` (voice synthesis) devrait réduire le temps CPU de ~30-40%, ciblant **<2500μs avg** (~22% CPU).
 
-**Prochaine étape** : Intégrer `SimdOscillator` dans `VoiceManager::next_sample()` et re-profiler.
+**⚠️ Mise à jour (post-expérimentation 2026-05-08)** : la stratégie cross-voice per-sample n'a **pas** atteint la cible (cf. encart "📊 Résultats SIMD" plus haut — régression de 24-47% mesurée). Le gain attendu nécessitera un refactor block-based avec SIMD sur l'axe temps. Ré-évaluer au moment de ce refactor.
 
 ### 📦 Dépendances ajoutées (Phase 6a)
 
@@ -1064,10 +1097,10 @@
 
 ### 🔧 Corrections nécessaires avant commit
 
-- [ ] **Tests ignored à réparer** (3 tests) :
-  - [ ] `src/audio/simd.rs:424` - `test_simd_oscillator_individual_frequencies` (problème de phase initialization)
-  - [ ] `src/audio/simd.rs:474` - `test_simd_flush_denormals` (différences SIMD processing)
-  - [ ] `src/audio/memory.rs:289` - `test_leak_severity_classification` (logique de sévérité à revoir)
+- [x] **Tests ignored à réparer** :
+  - [x] `src/audio/simd.rs` - `test_simd_oscillator_individual_frequencies` ✅ (avance la phase 100 samples avant la comparaison)
+  - [x] `src/audio/simd.rs` - `test_simd_flush_denormals` ✅ (corrigé le bug `blend()` inversé + alignement seuil avec scalaire 1e-15)
+  - [ ] `src/audio/memory.rs:289` - `test_leak_severity_classification` (logique de sévérité à revoir — pas touché par cette session)
 - [ ] **Nettoyage** :
   - [x] Ajouter `audio_profile_report.txt` au `.gitignore` ✅
   - [x] Ajouter fichiers de profiling au `.gitignore` ✅

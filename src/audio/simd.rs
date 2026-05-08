@@ -41,59 +41,120 @@ impl SimdOscillator {
         self.phase_increment = self.frequency / f32x4::from([self.sample_rate; 4]);
     }
 
-    /// Generate 4 samples simultaneously (SIMD)
+    /// Reset the phase of a single lane to 0 (e.g. on note_on).
+    #[inline]
+    pub fn reset_lane(&mut self, lane: usize) {
+        debug_assert!(lane < 4);
+        let mut arr: [f32; 4] = self.phase.into();
+        arr[lane] = 0.0;
+        self.phase = f32x4::from(arr);
+    }
+
+    /// Reset all 4 lane phases to 0.
+    #[inline]
+    pub fn reset_all(&mut self) {
+        self.phase = f32x4::ZERO;
+    }
+
+    /// Generate 4 sine samples simultaneously (SIMD).
     pub fn next_samples(&mut self) -> [f32; 4] {
-        // Generate sine waves using SIMD
+        // sin(2π * phase) using OLD phase to match the scalar oscillator
         let samples = (self.phase * f32x4::from([std::f32::consts::PI * 2.0; 4])).sin();
-        
-        // Update phase
+
+        // Advance phase and wrap to [0, 1)
         self.phase += self.phase_increment;
-        
-        // Wrap phase to [0, 1) using manual implementation
         self.phase = self.phase - self.phase.floor();
-        
+
         samples.into()
     }
 
-    /// Generate 4 samples with PolyBLEP anti-aliasing (sawtooth)
-    pub fn next_sawtooth_polyblep(&mut self) -> [f32; 4] {
-        // Simple sawtooth with phase
-        let saw = self.phase * f32x4::from([2.0; 4]) - f32x4::from([1.0; 4]);
-        
-        // Update phase
-        self.phase += self.phase_increment;
-        
-        // Wrap phase to [0, 1)
-        self.phase = self.phase - self.phase.floor();
-        
-        saw.into()
+    /// PolyBLEP correction (Polynomial Band-Limited Step) — SIMD version.
+    ///
+    /// Mirrors `SimpleOscillator::poly_blep` (synth/oscillator.rs:106) lane-wise:
+    /// - if t < dt:        2u - u² - 1   where u = t / dt
+    /// - if t > 1 - dt:    u² + 2u + 1   where u = (t - 1) / dt
+    /// - otherwise:        0
+    ///
+    /// Both branches are evaluated unconditionally (SIMD has no early exit) and
+    /// then selected via `blend`. Lanes outside both regions get 0.
+    #[inline]
+    fn poly_blep_simd(t: f32x4, dt: f32x4) -> f32x4 {
+        let one = f32x4::from([1.0; 4]);
+
+        // Branch 1: t < dt → 2u − u² − 1, u = t/dt
+        let u_lo = t / dt;
+        let blep_lo = u_lo + u_lo - u_lo * u_lo - one;
+
+        // Branch 2: t > 1 - dt → u² + 2u + 1, u = (t−1)/dt
+        let u_hi = (t - one) / dt;
+        let blep_hi = u_hi * u_hi + u_hi + u_hi + one;
+
+        // Build result: start with 0, blend in blep_lo where t<dt, blep_hi where t>1-dt
+        let lo_mask = t.cmp_lt(dt);
+        let hi_mask = t.cmp_gt(one - dt);
+        let with_lo = lo_mask.blend(blep_lo, f32x4::ZERO);
+        hi_mask.blend(blep_hi, with_lo)
     }
 
-    /// Generate 4 samples with PolyBLEP anti-aliasing (square)
+    /// Generate 4 sawtooth samples with PolyBLEP anti-aliasing (matches scalar
+    /// `SimpleOscillator` for `WaveformType::Saw`).
+    pub fn next_saw_polyblep(&mut self) -> [f32; 4] {
+        let two = f32x4::from([2.0; 4]);
+        let one = f32x4::from([1.0; 4]);
+
+        // Naive saw using OLD phase: 2*phase − 1
+        let saw = self.phase * two - one;
+
+        // Advance phase and wrap (matches scalar order: PolyBLEP uses NEW phase)
+        self.phase += self.phase_increment;
+        self.phase = self.phase - self.phase.floor();
+
+        // Subtract PolyBLEP at the falling edge (phase 0 / 1)
+        let blep = Self::poly_blep_simd(self.phase, self.phase_increment);
+        let result = saw - blep;
+
+        result.into()
+    }
+
+    /// Generate 4 square samples with PolyBLEP anti-aliasing (matches scalar
+    /// `SimpleOscillator` for `WaveformType::Square`).
     pub fn next_square_polyblep(&mut self) -> [f32; 4] {
-        // Simple square wave
-        let square = f32x4::from([1.0; 4]).blend(self.phase.cmp_ge(f32x4::from([0.5; 4])), f32x4::from([-1.0; 4]));
-        
-        // Update phase
+        let half = f32x4::from([0.5; 4]);
+        let one = f32x4::from([1.0; 4]);
+        let neg_one = f32x4::from([-1.0; 4]);
+
+        // Naive square using OLD phase: +1 if phase < 0.5 else −1
+        let mask_lt_half = self.phase.cmp_lt(half);
+        let square = mask_lt_half.blend(one, neg_one);
+
+        // Advance phase and wrap
         self.phase += self.phase_increment;
-        
-        // Wrap phase to [0, 1)
         self.phase = self.phase - self.phase.floor();
-        
-        square.into()
+
+        // Two corrections per period: + at phase 0, − at phase 0.5
+        let blep1 = Self::poly_blep_simd(self.phase, self.phase_increment);
+        let mut p2 = self.phase + half;
+        p2 = p2 - p2.floor();
+        let blep2 = Self::poly_blep_simd(p2, self.phase_increment);
+
+        let result = square + blep1 - blep2;
+        result.into()
     }
 
-    /// Generate 4 samples (triangle wave)
+    /// Generate 4 triangle samples (matches scalar `SimpleOscillator`).
+    ///
+    /// Scalar formula: `if p < 0.5 { 4p − 1 } else { 3 − 4p }`
+    /// Equivalent SIMD-friendly form: `1 − 2 * |2p − 1|`
+    /// (verified: p=0 → −1, p=0.5 → +1, p=1 → −1).
     pub fn next_triangle(&mut self) -> [f32; 4] {
-        // Triangle wave: 2*abs(2*phase - 1) - 1
-        let triangle = (self.phase * f32x4::from([2.0; 4]) - f32x4::from([1.0; 4])).abs() * f32x4::from([2.0; 4]) - f32x4::from([1.0; 4]);
-        
-        // Update phase
+        let two = f32x4::from([2.0; 4]);
+        let one = f32x4::from([1.0; 4]);
+
+        let triangle = one - two * (two * self.phase - one).abs();
+
         self.phase += self.phase_increment;
-        
-        // Wrap phase to [0, 1)
         self.phase = self.phase - self.phase.floor();
-        
+
         triangle.into()
     }
 }
@@ -157,7 +218,8 @@ pub fn simd_soft_clip(samples: &mut [f32]) {
 /// SIMD-optimized denormal flushing
 pub fn simd_flush_denormals(samples: &mut [f32]) {
     const CHUNK_SIZE: usize = 4;
-    const DENORMAL_THRESHOLD: f32 = 1e-10;
+    // Match the scalar threshold in `dsp_utils::flush_denormals_to_zero`.
+    const DENORMAL_THRESHOLD: f32 = 1e-15;
     
     // Process in chunks to avoid borrowing issues
     for chunk_start in (0..samples.len()).step_by(CHUNK_SIZE) {
@@ -167,7 +229,11 @@ pub fn simd_flush_denormals(samples: &mut [f32]) {
             let chunk_array: [f32; 4] = samples[chunk_start..end].try_into().unwrap_or([0.0; 4]);
             let simd_samples = f32x4::from(chunk_array);
             let threshold = f32x4::from([DENORMAL_THRESHOLD; 4]);
-            let flushed = simd_samples.abs().cmp_lt(threshold).blend(simd_samples, f32x4::ZERO);
+            // mask is true where |sample| < threshold (denormal) → flush to 0
+            let flushed = simd_samples
+                .abs()
+                .cmp_lt(threshold)
+                .blend(f32x4::ZERO, simd_samples);
             let flushed_array: [f32; 4] = flushed.into();
             samples[chunk_start..end].copy_from_slice(&flushed_array);
         } else {
@@ -419,23 +485,24 @@ mod tests {
         }
     }
 
-    // TODO: Fix this test - individual frequency setting needs phase reset
     #[test]
-    #[ignore] // Temporarily ignored due to phase initialization issues
     fn test_simd_oscillator_individual_frequencies() {
         let mut osc = SimdOscillator::new(440.0, 44100.0);
-        
-        // Set individual frequencies
         osc.set_frequencies([220.0, 440.0, 880.0, 1760.0]);
-        
-        // Generate samples
+
+        // First sample is always 0 (sin(0)=0 in all lanes). Advance enough samples
+        // so that the per-lane phase differences become audible.
+        for _ in 0..100 {
+            osc.next_samples();
+        }
+
         let samples = osc.next_samples();
-        
-        // Samples should be different (different frequencies)
-        // Note: This is a basic test - in practice, phase differences make exact comparison difficult
-        // We just check that not all samples are identical
-        let all_same = samples.iter().all(|&s| s == samples[0]);
-        assert!(!all_same, "Samples should differ with different frequencies");
+        let all_same = samples.iter().all(|&s| (s - samples[0]).abs() < 1e-6);
+        assert!(
+            !all_same,
+            "Samples should differ across lanes when frequencies differ: {:?}",
+            samples
+        );
     }
 
     #[test]
@@ -469,19 +536,20 @@ mod tests {
         assert_eq!(samples[4], original[4]); // 0.0 should remain unchanged
     }
 
-    // TODO: Fix SIMD denormal flushing test
     #[test]
-    #[ignore] // Temporarily ignored due to SIMD processing differences
     fn test_simd_flush_denormals() {
-        let mut samples = [1e-15, -1e-12, 1e-8, 0.1];
-        
+        // Threshold is 1e-15 (matches scalar `dsp_utils::flush_denormals_to_zero`).
+        // Values strictly below are flushed; values >= are kept.
+        let mut samples = [1e-30, -1e-20, 1e-8, 0.1];
+
         simd_flush_denormals(&mut samples);
-        
-        // Small values should be flushed to zero
-        assert_eq!(samples[0], 0.0);
-        assert_eq!(samples[1], 0.0);
-        assert_eq!(samples[2], 0.0);
-        // Normal value should remain unchanged (allow small floating point differences)
+
+        // True denormal-range values are flushed to zero
+        assert_eq!(samples[0], 0.0, "1e-30 should be flushed");
+        assert_eq!(samples[1], 0.0, "-1e-20 should be flushed");
+        // 1e-8 is well above the threshold and is normal audio territory: keep it
+        assert!((samples[2] - 1e-8).abs() < 1e-12);
+        // Normal value unchanged
         assert!((samples[3] - 0.1).abs() < 1e-6);
     }
 
@@ -498,5 +566,106 @@ mod tests {
         assert_eq!(output[1], 0.3 * gain);  // R0
         assert_eq!(output[2], -0.5 * gain); // L1
         assert_eq!(output[3], -0.3 * gain); // R1
+    }
+
+    // -----------------------------------------------------------------------
+    // Parity tests: SIMD oscillator output vs scalar SimpleOscillator.
+    //
+    // The SIMD lanes share a single oscillator state. With identical phase
+    // and frequency we expect bit-identical (up to f32 rounding) output to
+    // `SimpleOscillator` for every waveform.
+    // -----------------------------------------------------------------------
+    use crate::synth::oscillator::{Oscillator, SimpleOscillator, WaveformType};
+
+    const PARITY_SR: f32 = 44100.0;
+    const PARITY_FREQ: f32 = 440.0;
+    const PARITY_SAMPLES: usize = 1024;
+    /// Slack allowed between scalar and SIMD output. f32x4::sin and f32::sin
+    /// are different implementations (`wide` vs std); the spec from `wide`
+    /// guarantees only ~1e-6 absolute accuracy. PolyBLEP-corrected waveforms
+    /// inherit any sin error indirectly via the saw/square base.
+    const PARITY_TOL: f32 = 1e-3;
+
+    fn collect_scalar(waveform: WaveformType) -> Vec<f32> {
+        let mut osc = SimpleOscillator::new(waveform, PARITY_SR);
+        osc.set_frequency(PARITY_FREQ);
+        (0..PARITY_SAMPLES).map(|_| osc.next_sample()).collect()
+    }
+
+    fn collect_simd<F>(mut next: F) -> Vec<f32>
+    where
+        F: FnMut(&mut SimdOscillator) -> [f32; 4],
+    {
+        let mut osc = SimdOscillator::new(PARITY_FREQ, PARITY_SR);
+        let mut out = Vec::with_capacity(PARITY_SAMPLES);
+        for _ in 0..PARITY_SAMPLES {
+            // All 4 lanes share frequency and start phase, so any lane is fine
+            // — pick lane 0 for the comparison.
+            out.push(next(&mut osc)[0]);
+        }
+        out
+    }
+
+    fn assert_parity(name: &str, scalar: &[f32], simd: &[f32], tol: f32) {
+        assert_eq!(scalar.len(), simd.len());
+        let mut max_diff = 0.0f32;
+        let mut argmax = 0usize;
+        for (i, (a, b)) in scalar.iter().zip(simd.iter()).enumerate() {
+            let d = (a - b).abs();
+            if d > max_diff {
+                max_diff = d;
+                argmax = i;
+            }
+        }
+        assert!(
+            max_diff < tol,
+            "{name}: max divergence {max_diff} (tol {tol}) at sample {argmax}: scalar={} simd={}",
+            scalar[argmax],
+            simd[argmax]
+        );
+    }
+
+    #[test]
+    fn test_simd_parity_sine() {
+        let scalar = collect_scalar(WaveformType::Sine);
+        let simd = collect_simd(|o| o.next_samples());
+        assert_parity("sine", &scalar, &simd, PARITY_TOL);
+    }
+
+    #[test]
+    fn test_simd_parity_triangle() {
+        let scalar = collect_scalar(WaveformType::Triangle);
+        let simd = collect_simd(|o| o.next_triangle());
+        assert_parity("triangle", &scalar, &simd, PARITY_TOL);
+    }
+
+    #[test]
+    fn test_simd_parity_saw_polyblep() {
+        let scalar = collect_scalar(WaveformType::Saw);
+        let simd = collect_simd(|o| o.next_saw_polyblep());
+        assert_parity("saw+polyblep", &scalar, &simd, PARITY_TOL);
+    }
+
+    #[test]
+    fn test_simd_parity_square_polyblep() {
+        let scalar = collect_scalar(WaveformType::Square);
+        let simd = collect_simd(|o| o.next_square_polyblep());
+        assert_parity("square+polyblep", &scalar, &simd, PARITY_TOL);
+    }
+
+    #[test]
+    fn test_simd_oscillator_reset_lane() {
+        let mut osc = SimdOscillator::new(440.0, 44100.0);
+        // Advance phase
+        for _ in 0..100 {
+            osc.next_samples();
+        }
+        // Reset lane 2 only
+        osc.reset_lane(2);
+        let phases: [f32; 4] = osc.phase.into();
+        assert_eq!(phases[2], 0.0, "Lane 2 should be reset to 0");
+        assert!(phases[0] > 0.0, "Other lanes should keep their phase");
+        assert!(phases[1] > 0.0);
+        assert!(phases[3] > 0.0);
     }
 }

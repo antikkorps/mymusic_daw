@@ -95,6 +95,38 @@ impl Voice {
         }
     }
 
+    /// Returns whether this voice is a Synth (vs Sampler).
+    pub fn is_synth(&self) -> bool {
+        matches!(self, Voice::Synth(_))
+    }
+
+    /// SIMD-friendly first half of synth voice processing.
+    /// Returns `None` for sampler voices.
+    ///
+    /// Currently unused — kept as infrastructure for a future block-based
+    /// SIMD path (see [`SynthVoice::prepare`] doc).
+    #[inline(always)]
+    #[allow(dead_code)]
+    pub fn prepare(&mut self, matrix: &ModulationMatrix) -> Option<VoicePrepared> {
+        match self {
+            Voice::Synth(v) => Some(v.prepare(matrix)),
+            Voice::Sampler(_) => None,
+        }
+    }
+
+    /// SIMD-friendly second half of synth voice processing.
+    ///
+    /// Currently unused — kept as infrastructure for a future block-based
+    /// SIMD path (see [`SynthVoice::prepare`] doc).
+    #[inline(always)]
+    #[allow(dead_code)]
+    pub fn finalize(&mut self, osc_sample: f32, prepared: VoicePrepared) -> (f32, f32) {
+        match self {
+            Voice::Synth(v) => v.finalize(osc_sample, prepared),
+            Voice::Sampler(_) => (0.0, 0.0),
+        }
+    }
+
     // --- Synth-only methods ---
     pub fn set_waveform(&mut self, waveform: WaveformType) {
         if let Voice::Synth(v) = self {
@@ -378,6 +410,114 @@ impl SynthVoice {
         let left = sample * angle.cos();
         let right = sample * angle.sin();
         (left, right)
+    }
+
+    /// Phase 1 of split processing: advances modulation state (portamento,
+    /// LFO, envelope) and computes everything the oscillator and the
+    /// post-oscillator chain will need.
+    ///
+    /// Available for a future block-based / SIMD-batched processing path
+    /// (the `VoiceManager` hot loop currently uses the monolithic
+    /// `next_sample_with_matrix` because per-sample cross-voice SIMD did
+    /// not pay off in benchmarking — see `TODO.md` Phase 6a).
+    #[inline(always)]
+    #[allow(dead_code)]
+    pub fn prepare(&mut self, matrix: &ModulationMatrix) -> VoicePrepared {
+        use super::lfo::LfoDestination;
+        self.base_frequency = self.portamento.process(self.target_frequency);
+        let lfo_value = self.lfo.process();
+        let envelope_value = self.envelope.process();
+
+        // Legacy LFO→Pitch routing (depth ±2 semitones).
+        let legacy_lfo_semitones = if matches!(self.lfo.destination(), LfoDestination::Pitch) {
+            lfo_value * 2.0
+        } else {
+            0.0
+        };
+        let mut frequency = if legacy_lfo_semitones != 0.0 {
+            let mult = 2_f32.powf(legacy_lfo_semitones / 12.0);
+            self.base_frequency * mult
+        } else {
+            self.base_frequency
+        };
+
+        // Modulation matrix routings.
+        let (pitch_semitones, amp_mult, pan_mod, filter_cutoff_mult) = matrix.apply(
+            self.velocity,
+            self.aftertouch,
+            &[lfo_value],
+            self.envelope.current_value(),
+        );
+        if pitch_semitones != 0.0 {
+            let mult = 2_f32.powf(pitch_semitones / 12.0);
+            frequency *= mult;
+        }
+
+        let volume_lfo_mult = if matches!(self.lfo.destination(), LfoDestination::Volume) {
+            1.0 + lfo_value
+        } else {
+            1.0
+        };
+        let amp = self.velocity * envelope_value * amp_mult;
+
+        VoicePrepared {
+            frequency,
+            amp,
+            volume_lfo_mult,
+            pan_mod,
+            filter_cutoff_mult,
+        }
+    }
+
+    /// Phase 2 of split processing: takes the oscillator sample produced by
+    /// the SIMD batch (or any other source) and applies filter, effects,
+    /// gain and stereo panning. Mirrors the post-oscillator portion of
+    /// `next_sample_with_matrix` exactly.
+    ///
+    /// Available for a future block-based / SIMD-batched processing path
+    /// (see [`SynthVoice::prepare`] doc).
+    #[inline(always)]
+    #[allow(dead_code)]
+    pub fn finalize(&mut self, osc_sample: f32, prepared: VoicePrepared) -> (f32, f32) {
+        let base_cutoff = self.filter.params().cutoff;
+        let modulated_cutoff = base_cutoff * prepared.filter_cutoff_mult;
+        let mut sample = self.filter.process_modulated(osc_sample, modulated_cutoff);
+        sample = self.effect_chain.process(sample);
+        sample *= prepared.volume_lfo_mult;
+        sample *= prepared.amp;
+        let final_pan = (self.pan + prepared.pan_mod).clamp(-1.0, 1.0);
+        let angle = (final_pan * 0.5 + 0.5) * FRAC_PI_2;
+        let left = sample * angle.cos();
+        let right = sample * angle.sin();
+        (left, right)
+    }
+}
+
+/// Per-sample modulation snapshot produced by [`SynthVoice::prepare`] and
+/// consumed by [`SynthVoice::finalize`]. Decouples voice processing into a
+/// pre-oscillator phase (cheap, runs scalar) and a post-oscillator phase
+/// (filter/effects/gain), allowing the oscillator generation in between to
+/// be batched across voices via SIMD.
+#[derive(Clone, Copy, Debug)]
+pub struct VoicePrepared {
+    pub frequency: f32,
+    /// Total scalar gain to apply: `velocity * envelope * amp_mod`.
+    pub amp: f32,
+    /// Volume-LFO multiplier (1.0 if LFO doesn't target Volume).
+    pub volume_lfo_mult: f32,
+    pub pan_mod: f32,
+    pub filter_cutoff_mult: f32,
+}
+
+impl Default for VoicePrepared {
+    fn default() -> Self {
+        Self {
+            frequency: 0.0,
+            amp: 0.0,
+            volume_lfo_mult: 1.0,
+            pan_mod: 0.0,
+            filter_cutoff_mult: 1.0,
+        }
     }
 }
 
