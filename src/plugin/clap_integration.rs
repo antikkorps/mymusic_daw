@@ -134,6 +134,8 @@ include!("simple_tests.rs");
 pub struct ClapPluginFactory {
     descriptor: PluginDescriptor,
     library: Arc<Library>,
+    /// Kept alive so the plugin entry pointer below stays valid; not read directly.
+    #[allow(dead_code)]
     plugin_entry: *const clap_plugin_entry,
     plugin_factory: *const clap_plugin_factory,
     bundle_path: String,
@@ -439,6 +441,9 @@ pub struct ClapPluginInstance {
     parameter_id_map: HashMap<String, u32>, // String ID -> CLAP param ID
     is_active: bool,
     plugin_ptr: *mut clap_plugin,
+    /// Host descriptor passed to the CLAP plugin; held by reference inside
+    /// `plugin_ptr`'s state and not read directly from Rust.
+    #[allow(dead_code)]
     host: clap_host,
     #[allow(dead_code)]
     library: Arc<Library>, // Keep library alive

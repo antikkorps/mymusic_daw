@@ -83,7 +83,7 @@ impl AudioEventEmitter {
 
     /// Emit an event to the UI
     pub fn emit(&self, event: AudioEvent) {
-        if let Some(ref app_handle) = self.app_handle {
+        if self.app_handle.is_some() {
             self.emit_event_internal(event);
         } else {
             // Store for later emission when app_handle is available

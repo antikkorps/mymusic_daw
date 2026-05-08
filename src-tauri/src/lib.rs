@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 // Import DAW modules (from parent crate)
 use mymusic_daw::audio::parameters::AtomicF32;
 use mymusic_daw::messaging::channels::CommandProducer;
-use mymusic_daw::plugin::{Plugin, PluginHost, PluginInstanceId};
+use mymusic_daw::plugin::{PluginHost, PluginInstanceId};
 
 // Import modular command modules
 mod commands;

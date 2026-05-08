@@ -6,11 +6,10 @@
 use mymusic_daw::audio::dsp_utils::OnePoleSmoother;
 use mymusic_daw::audio::format_conversion::f32_to_i16;
 use mymusic_daw::synth::envelope::{AdsrEnvelope, AdsrParams};
-use mymusic_daw::synth::filter::{FilterParams, FilterType, StateVariableFilter};
+use mymusic_daw::synth::filter::{FilterParams, StateVariableFilter};
 use mymusic_daw::synth::lfo::{Lfo, LfoDestination, LfoParams};
 use mymusic_daw::synth::oscillator::{Oscillator, SimpleOscillator, WaveformType};
 use mymusic_daw::synth::voice_manager::VoiceManager;
-use std::f32::{INFINITY, NAN, NEG_INFINITY};
 
 /// Test oscillator with extreme frequencies
 #[test]
@@ -24,7 +23,7 @@ fn test_oscillator_extreme_frequencies() {
     for _ in 0..1000 {
         let sample = osc.next_sample();
         assert!(sample.is_finite());
-        assert!(sample >= -1.0 && sample <= 1.0);
+        assert!((-1.0..=1.0).contains(&sample));
     }
 
     // Test very high frequencies (near Nyquist)
@@ -34,7 +33,7 @@ fn test_oscillator_extreme_frequencies() {
     for _ in 0..1000 {
         let sample = osc.next_sample();
         assert!(sample.is_finite());
-        assert!(sample >= -1.0 && sample <= 1.0);
+        assert!((-1.0..=1.0).contains(&sample));
     }
 
     // Test exactly Nyquist frequency
@@ -77,7 +76,7 @@ fn test_oscillator_invalid_frequencies() {
     }
 
     // Test NaN frequency
-    osc.set_frequency(NAN);
+    osc.set_frequency(f32::NAN);
     for _ in 0..100 {
         let sample = osc.next_sample();
         // Should produce NaN samples but not crash
@@ -85,7 +84,7 @@ fn test_oscillator_invalid_frequencies() {
     }
 
     // Test infinite frequency
-    osc.set_frequency(INFINITY);
+    osc.set_frequency(f32::INFINITY);
     for _ in 0..100 {
         let sample = osc.next_sample();
         // Should produce NaN samples but not crash
@@ -151,21 +150,21 @@ fn test_filter_nan_inf_input() {
     let mut filter = StateVariableFilter::new(params, sample_rate);
 
     // Test NaN input
-    let output = filter.process(NAN);
+    let output = filter.process(f32::NAN);
     assert!(output.is_nan() || output.is_finite());
 
     // Reset filter
     filter.reset();
 
     // Test Infinity input
-    let output = filter.process(INFINITY);
+    let output = filter.process(f32::INFINITY);
     assert!(output.is_nan() || output.is_infinite() || output.is_finite());
 
     // Reset filter
     filter.reset();
 
     // Test negative infinity input
-    let output = filter.process(NEG_INFINITY);
+    let output = filter.process(f32::NEG_INFINITY);
     assert!(output.is_nan() || output.is_infinite() || output.is_finite());
 }
 
@@ -280,22 +279,22 @@ fn test_smoother_extreme_values() {
     for _ in 0..1000 {
         let output = smoother.process(1.0);
         assert!(output.is_finite());
-        assert!(output >= 0.0 && output <= 1.0);
+        assert!((0.0..=1.0).contains(&output));
     }
 
     // Test step from 1 to 0
     for _ in 0..1000 {
         let output = smoother.process(0.0);
         assert!(output.is_finite());
-        assert!(output >= 0.0 && output <= 1.0);
+        assert!((0.0..=1.0).contains(&output));
     }
 
     // Test with NaN target
-    let output = smoother.process(NAN);
+    let output = smoother.process(f32::NAN);
     assert!(output.is_finite() || output.is_nan());
 
     // Test with Infinity target
-    let output = smoother.process(INFINITY);
+    let output = smoother.process(f32::INFINITY);
     assert!(output.is_finite() || output.is_infinite() || output.is_nan());
 }
 
@@ -308,15 +307,17 @@ fn test_format_conversion_extreme_values() {
         -2.0,  // Below -1
         10.0,  // Way above
         -10.0, // Way below
-        INFINITY,
-        NEG_INFINITY,
-        NAN,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        f32::NAN,
     ];
 
     for &value in &test_values {
-        let converted = f32_to_i16(value);
-        // Should not crash and should produce valid i16
-        assert!(converted >= -32768 && converted <= 32767);
+        // The point of the test: the conversion must not panic on extreme,
+        // infinite, or NaN inputs. The result type is `i16` — every i16 is
+        // by definition within `i16::MIN..=i16::MAX`, so a range assertion
+        // would be tautological (clippy::absurd_extreme_comparisons).
+        let _converted = f32_to_i16(value);
     }
 }
 
@@ -449,7 +450,7 @@ fn test_denormal_handling() {
 
     // Create denormal numbers
     let denormal = 1e-40_f32;
-    assert!(denormal.is_normal() == false);
+    assert!(!denormal.is_normal());
 
     // Test oscillator with denormal frequency
     let mut osc = SimpleOscillator::new(WaveformType::Sine, sample_rate);

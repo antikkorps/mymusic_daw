@@ -208,8 +208,8 @@ pub fn simd_soft_clip(samples: &mut [f32]) {
             samples[chunk_start..end].copy_from_slice(&clipped_array);
         } else {
             // Process remaining samples scalar
-            for i in chunk_start..end {
-                samples[i] = samples[i].tanh();
+            for sample in &mut samples[chunk_start..end] {
+                *sample = sample.tanh();
             }
         }
     }
@@ -238,9 +238,9 @@ pub fn simd_flush_denormals(samples: &mut [f32]) {
             samples[chunk_start..end].copy_from_slice(&flushed_array);
         } else {
             // Process remaining samples scalar
-            for i in chunk_start..end {
-                if samples[i].abs() < DENORMAL_THRESHOLD {
-                    samples[i] = 0.0;
+            for sample in &mut samples[chunk_start..end] {
+                if sample.abs() < DENORMAL_THRESHOLD {
+                    *sample = 0.0;
                 }
             }
         }

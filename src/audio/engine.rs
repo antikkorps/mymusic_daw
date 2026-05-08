@@ -634,8 +634,8 @@ impl AudioEngine {
                     // Create separate input and output buffers for plugins
                     let mut input_left = vec![0.0f32; buffer_size];
                     let mut input_right = vec![0.0f32; buffer_size];
-                    let mut output_left = vec![0.0f32; buffer_size];
-                    let mut output_right = vec![0.0f32; buffer_size];
+                    let output_left = vec![0.0f32; buffer_size];
+                    let output_right = vec![0.0f32; buffer_size];
 
                     // Generate samples from voice manager and metronome into input buffers
                     {

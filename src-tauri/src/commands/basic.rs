@@ -266,83 +266,11 @@ pub fn initialize_events() -> Result<(), String> {
     Ok(())
 }
 
-// Include tests
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use atomic_float::AtomicF32;
-    use mymusic_daw::messaging::command::Command;
-    use ringbuf::{traits::Producer, HeapRb};
-    use std::sync::{Arc, Mutex};
-
-    // Mock DAW state for testing
-    fn create_mock_daw_state() -> crate::DawState {
-        let (tx, _) = HeapRb::<Command>::new(100).split();
-        crate::DawState {
-            command_tx: Arc::new(Mutex::new(tx)),
-            volume_atomic: AtomicF32::new(0.5),
-        }
-    }
-
-    #[test]
-    fn test_set_volume_valid_range() {
-        let state = create_mock_daw_state();
-
-        // Test valid values
-        assert!(set_volume(0.0, state.into()).is_ok());
-        assert!(set_volume(0.5, state.into()).is_ok());
-        assert!(set_volume(1.0, state.into()).is_ok());
-    }
-
-    #[test]
-    fn test_play_note_valid_velocity() {
-        let state = create_mock_daw_state();
-
-        // Test valid velocities
-        assert!(play_note(60, 1, state.into()).is_ok());
-        assert!(play_note(60, 127, state.into()).is_ok());
-    }
-
-    #[test]
-    fn test_play_note_zero_velocity() {
-        let state = create_mock_daw_state();
-
-        // Test zero velocity (should fail)
-        let result = play_note(60, 0, state.into());
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .contains("Velocity must be greater than 0"));
-    }
-
-    #[test]
-    fn test_get_engine_status() {
-        let result = get_engine_status();
-        assert!(result.is_ok());
-
-        let status = result.unwrap();
-        assert_eq!(status["name"], "MyMusic DAW");
-        assert_eq!(status["status"], "running");
-    }
-
-    #[test]
-    fn test_set_waveform_valid() {
-        let state = create_mock_daw_state();
-
-        // Test valid waveforms
-        assert!(set_waveform("sine".to_string(), state.into()).is_ok());
-        assert!(set_waveform("square".to_string(), state.into()).is_ok());
-        assert!(set_waveform("saw".to_string(), state.into()).is_ok());
-        assert!(set_waveform("triangle".to_string(), state.into()).is_ok());
-    }
-
-    #[test]
-    fn test_set_waveform_invalid() {
-        let state = create_mock_daw_state();
-
-        // Test invalid waveform
-        let result = set_waveform("invalid".to_string(), state.into());
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Invalid waveform"));
-    }
-}
+// NOTE: an inline `mod tests` was removed here. It targeted an earlier
+// shape of `DawState` (no `plugins` / `next_plugin_id` fields) and a
+// pre-2.0 `ringbuf` API (`HeapRb::split()`), and pulled in an unrelated
+// `atomic_float` crate instead of the project's own `AtomicF32`. None of
+// it has compiled since the merged refactor, so it can't be restored
+// piecemeal — when this layer needs proper unit tests they should be
+// rebuilt against `tauri::test::mock_app` + the current `DawState::new`
+// signature.

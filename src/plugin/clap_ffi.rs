@@ -442,6 +442,11 @@ pub struct clap_plugin_params {
 }
 
 /// Helper function to convert C string to Rust String
+///
+/// # Safety
+///
+/// Caller must guarantee that `ptr` is either null or points to a
+/// NUL-terminated, valid C string for the lifetime of this call.
 pub unsafe fn c_str_to_string(ptr: *const c_char) -> Option<String> {
     if ptr.is_null() {
         return None;
@@ -453,6 +458,12 @@ pub unsafe fn c_str_to_string(ptr: *const c_char) -> Option<String> {
 }
 
 /// Helper function to read NULL-terminated string array
+///
+/// # Safety
+///
+/// Caller must guarantee that `ptr` is either null or points to a
+/// NULL-terminated array of valid C string pointers (each itself
+/// NUL-terminated and valid for the lifetime of this call).
 pub unsafe fn read_string_array(mut ptr: *const *const c_char) -> Vec<String> {
     let mut result = Vec::new();
 

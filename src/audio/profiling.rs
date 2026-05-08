@@ -26,6 +26,12 @@ pub struct AudioProfiler {
     operation_counts: Mutex<HashMap<String, AtomicU64>>,
 }
 
+impl Default for AudioProfiler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AudioProfiler {
     /// Create a new profiler instance
     pub fn new() -> Self {
@@ -40,7 +46,7 @@ impl AudioProfiler {
     }
 
     /// Record start of an audio callback
-    pub fn start_callback(&self) -> CallbackTimer {
+    pub fn start_callback(&self) -> CallbackTimer<'_> {
         self.callback_count.fetch_add(1, Ordering::Relaxed);
         CallbackTimer {
             start_time: Instant::now(),

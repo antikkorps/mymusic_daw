@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for path in &search_paths {
         println!("🔍 Checking: {:?}", path);
         if path.exists() {
-            let mut entries = std::fs::read_dir(path)?;
+            let entries = std::fs::read_dir(path)?;
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.extension().and_then(|s| s.to_str()) == Some("clap") {

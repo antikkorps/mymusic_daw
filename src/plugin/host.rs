@@ -17,7 +17,8 @@ pub struct PluginHost {
     instances: Arc<Mutex<HashMap<PluginInstanceId, PluginInstanceWrapper>>>,
     /// Next instance ID
     next_instance_id: Arc<Mutex<u64>>,
-    /// Host information for plugins
+    /// Host information for plugins (held for future plugin-side access).
+    #[allow(dead_code)]
     host_info: HostInfo,
 }
 
@@ -203,7 +204,9 @@ impl PluginHost {
         Ok(path_str)
     }
 
-    /// Create a plugin factory from a loaded library
+    /// Create a plugin factory from a loaded library.
+    /// Currently unused — kept for the in-progress CLAP factory loading path.
+    #[allow(dead_code)]
     fn create_factory_from_library(
         &self,
         _library: &Library,
@@ -267,19 +270,21 @@ impl PluginHost {
         Ok(instance_id)
     }
 
-    /// Get a plugin instance wrapper (locked reference)
+    /// Get a plugin instance wrapper (locked reference).
+    /// Stub for now — see TODO inside.
     pub fn get_instance_wrapper(
         &self,
-        instance_id: PluginInstanceId,
+        _instance_id: PluginInstanceId,
     ) -> Option<std::sync::MutexGuard<'_, PluginInstanceWrapper>> {
-        let instances = self.instances.lock().unwrap();
-        // We can't return the guard directly, so we need a different approach
-        // For now, return None and implement a proper method for GUI access
+        let _instances = self.instances.lock().unwrap();
+        // We can't return the guard directly, so we need a different approach.
+        // For now, return None and implement a proper method for GUI access.
         None
     }
 
-    /// Get a plugin instance wrapper for GUI operations (with scoped access)
-    pub fn with_instance_wrapper<F, R>(&self, _instance_id: PluginInstanceId, f: F) -> Option<R>
+    /// Get a plugin instance wrapper for GUI operations (with scoped access).
+    /// Stub for now — see TODO inside.
+    pub fn with_instance_wrapper<F, R>(&self, _instance_id: PluginInstanceId, _f: F) -> Option<R>
     where
         F: FnOnce(&PluginInstanceWrapper) -> R,
     {
@@ -521,12 +526,16 @@ pub struct PluginHostStats {
     pub active_instances: usize,
 }
 
-/// Simple CLAP plugin factory implementation
+/// Simple CLAP plugin factory implementation.
+/// Currently unused — kept for the in-progress CLAP factory loading path
+/// (see `create_factory_from_library`).
+#[allow(dead_code)]
 struct ClPluginFactory {
     plugin_path: String,
     descriptor: PluginDescriptor,
 }
 
+#[allow(dead_code)]
 impl ClPluginFactory {
     fn new(plugin_path: String) -> Self {
         let descriptor = PluginDescriptor::new(

@@ -32,7 +32,8 @@ pub struct MidiMapping {
 pub struct MidiPluginBridge {
     /// Current MIDI mappings
     mappings: Arc<Mutex<HashMap<u8, MidiMapping>>>,
-    /// Plugin host reference
+    /// Plugin host reference (kept for future plugin-side MIDI dispatch).
+    #[allow(dead_code)]
     plugin_host: Arc<PluginHost>,
     /// MIDI output buffer (to send to plugins)
     midi_output: ringbuf::HeapProd<MidiEventTimed>,
@@ -110,7 +111,7 @@ impl MidiPluginBridge {
             _ => {
                 // Handle other MIDI events if needed
                 // For now, just forward to plugins
-                let _ = self.midi_output.try_push(midi_event.clone());
+                let _ = self.midi_output.try_push(*midi_event);
             }
         }
         Ok(())
@@ -146,7 +147,7 @@ impl MidiPluginBridge {
 
         // TODO: Get plugin parameter info from host
         // For now, create generic mappings
-        let common_params = vec![
+        let common_params = [
             ("Volume", 0.0, 1.0),
             ("Pan", 0.0, 1.0),
             ("Cutoff", 0.0, 1.0),
@@ -241,7 +242,6 @@ pub mod default_cc_assignments {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MidiEvent;
 
     #[test]
     fn test_midi_mapping_creation() {

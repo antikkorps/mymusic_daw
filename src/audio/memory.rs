@@ -29,6 +29,12 @@ pub struct AllocationStats {
     pub peak_bytes: usize,
 }
 
+impl Default for MemoryTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MemoryTracker {
     /// Create a new memory tracker
     pub fn new() -> Self {
@@ -60,7 +66,7 @@ impl MemoryTracker {
     }
 
     /// Record a deallocation
-    pub fn record_deallocation(&self, name: &str, size: usize) {
+    pub fn record_deallocation(&self, _name: &str, _size: usize) {
         self.total_deallocations.fetch_add(1, Ordering::Relaxed);
         self.active_allocations.fetch_sub(1, Ordering::Relaxed);
     }

@@ -7,11 +7,8 @@ use std::sync::Arc;
 use tauri::Manager;
 
 // Import DAW modules
-use mymusic_daw::audio::device::AudioDeviceManager;
 use mymusic_daw::plugin::PluginHost;
-use mymusic_daw::{
-    create_command_channel, create_notification_channel, AudioEngine, MidiConnectionManager,
-};
+use mymusic_daw::{create_command_channel, create_notification_channel, AudioEngine};
 
 // Import library with commands and state
 use app_lib::events::AUDIO_EVENT_EMITTER;
@@ -24,7 +21,10 @@ fn main() {
     // Create communication channels
     // We need two separate channels: one for UI commands and one for MIDI commands
     let (command_tx_ui, command_rx_ui) = create_command_channel(1024);
-    let (command_tx_midi, command_rx_midi) = create_command_channel(1024);
+    // The MIDI command sender is held by the (currently-not-wired) MIDI
+    // bridge — once that ships, this will be passed in instead of being
+    // dropped on the floor.
+    let (_command_tx_midi, command_rx_midi) = create_command_channel(1024);
 
     // Create notification channel
     let (notification_tx, _notification_rx) = create_notification_channel(256);

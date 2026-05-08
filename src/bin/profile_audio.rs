@@ -7,7 +7,6 @@ use mymusic_daw::audio::engine::AudioEngine;
 use mymusic_daw::audio::profiling::global_profiler;
 use mymusic_daw::messaging::channels::{create_command_channel, create_notification_channel};
 use mymusic_daw::plugin::PluginHost;
-use ringbuf::traits::producer::Producer;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -19,9 +18,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize profiling
     global_profiler().reset();
 
-    // Create communication channels
-    let (command_tx_ui, command_rx_ui) = create_command_channel(512);
-    let (command_tx_midi, command_rx_midi) = create_command_channel(512);
+    // Create communication channels. Producer halves are unused in this
+    // standalone profiler — we only spin up the engine to observe its
+    // callback timings, no commands are sent in.
+    let (_command_tx_ui, command_rx_ui) = create_command_channel(512);
+    let (_command_tx_midi, command_rx_midi) = create_command_channel(512);
     let (notification_tx, _notification_rx) = create_notification_channel(256);
 
     // Create plugin host
@@ -29,8 +30,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("🎵 Initializing audio engine with profiling...");
 
-    // Initialize audio engine
-    let audio_engine = AudioEngine::new(
+    // Keep the audio engine alive for the duration of the run; we don't
+    // need the handle past initialization.
+    let _audio_engine = AudioEngine::new(
         command_rx_ui,
         command_rx_midi,
         Arc::new(Mutex::new(notification_tx)),

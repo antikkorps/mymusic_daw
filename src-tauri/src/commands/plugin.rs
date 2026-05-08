@@ -4,13 +4,10 @@ use crate::DawState;
 use crate::{ManagedPlugin, PluginGuiInfo};
 use base64::Engine;
 use mymusic_daw::plugin::scanner::{get_default_search_paths, PluginScanner};
-use mymusic_daw::plugin::{Plugin, PluginHost, PluginInstanceId};
+use mymusic_daw::plugin::{PluginHost, PluginInstanceId};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::PathBuf;
-use std::sync::mpsc;
-use std::thread;
-use std::time::Duration;
 use tauri::State;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -72,7 +69,7 @@ pub fn load_plugin_instance(
     println!("✅ Plugin file exists");
 
     // Create plugin host
-    let mut host = PluginHost::new();
+    let host = PluginHost::new();
 
     // Load the plugin from path
     let plugin_path_buf = std::path::PathBuf::from(&plugin_path);
@@ -409,7 +406,7 @@ fn try_start_virtual_display() -> Result<(), String> {
 
             // Start Xvfb in background
             match std::process::Command::new("Xvfb")
-                .args(&[":99", "-screen", "0", "1024x768x24"])
+                .args([":99", "-screen", "0", "1024x768x24"])
                 .spawn()
             {
                 Ok(_) => {
@@ -932,7 +929,7 @@ pub async fn add_midi_mapping(
     name: String,
     min_value: f32,
     max_value: f32,
-    state: State<'_, DawState>,
+    _state: State<'_, DawState>,
 ) -> Result<(), String> {
     println!(
         "🎛️ Adding MIDI mapping: CC {} -> {} param {}",
@@ -961,7 +958,7 @@ pub async fn add_midi_mapping(
 
 /// Remove a MIDI mapping
 #[tauri::command]
-pub async fn remove_midi_mapping(cc_number: u8, state: State<'_, DawState>) -> Result<(), String> {
+pub async fn remove_midi_mapping(cc_number: u8, _state: State<'_, DawState>) -> Result<(), String> {
     println!("🗑️ Removing MIDI mapping: CC {}", cc_number);
 
     // TODO: Remove from MIDI bridge
@@ -972,7 +969,9 @@ pub async fn remove_midi_mapping(cc_number: u8, state: State<'_, DawState>) -> R
 
 /// Get all current MIDI mappings
 #[tauri::command]
-pub async fn get_midi_mappings(state: State<'_, DawState>) -> Result<Vec<MidiMappingInfo>, String> {
+pub async fn get_midi_mappings(
+    _state: State<'_, DawState>,
+) -> Result<Vec<MidiMappingInfo>, String> {
     println!("📋 Getting all MIDI mappings...");
 
     // TODO: Get from MIDI bridge
@@ -986,15 +985,17 @@ pub async fn get_midi_mappings(state: State<'_, DawState>) -> Result<Vec<MidiMap
 pub async fn auto_map_plugin(
     plugin_instance_id: String,
     start_cc: Option<u8>,
-    state: State<'_, DawState>,
+    _state: State<'_, DawState>,
 ) -> Result<Vec<MidiMappingInfo>, String> {
     println!("🎛️ Auto-mapping plugin {} to MIDI...", plugin_instance_id);
 
-    let instance_id: PluginInstanceId = plugin_instance_id
+    // Validate that the instance id parses; the parsed value is consumed
+    // when this stub gets a real MIDI bridge implementation.
+    let _instance_id: PluginInstanceId = plugin_instance_id
         .parse()
         .map_err(|e| format!("Invalid plugin instance ID: {}", e))?;
 
-    let start_cc = start_cc.unwrap_or(16); // Start at CC 16 by default
+    let _start_cc = start_cc.unwrap_or(16); // Start at CC 16 by default
 
     // TODO: Auto-map via MIDI bridge
     let mappings: Vec<MidiMapping> = vec![]; // Placeholder
@@ -1014,7 +1015,7 @@ pub async fn send_midi_cc(
     plugin_instance_id: String,
     cc_number: u8,
     value: u8,
-    state: State<'_, DawState>,
+    _state: State<'_, DawState>,
 ) -> Result<(), String> {
     println!(
         "🎛️ Sending MIDI CC {} value {} to plugin {}",
@@ -1031,7 +1032,7 @@ pub async fn send_midi_cc(
 #[tauri::command]
 pub async fn create_virtual_midi_port(
     port_name: String,
-    state: State<'_, DawState>,
+    _state: State<'_, DawState>,
 ) -> Result<(), String> {
     println!("🎹 Creating virtual MIDI port: {}", port_name);
 
@@ -1045,7 +1046,7 @@ pub async fn create_virtual_midi_port(
 #[tauri::command]
 pub async fn test_midi_communication(
     plugin_instance_id: String,
-    state: State<'_, DawState>,
+    _state: State<'_, DawState>,
 ) -> Result<String, String> {
     println!(
         "🧪 Testing MIDI communication with plugin {}",

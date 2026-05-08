@@ -49,7 +49,13 @@ pub trait AudioNode: Send {
     fn latency_samples(&self) -> usize;
 }
 
-/// Enumeration of different node types for type-safe access
+/// Enumeration of different node types for type-safe access.
+///
+/// `InstrumentNode` carries a full `VoiceManager` so the variants differ
+/// significantly in size. Boxing every variant is a refactor we'll do when
+/// the routing graph is on the audio hot path — for now the enum lives in
+/// a HashMap so the size cost is paid once per node, not per sample.
+#[allow(clippy::large_enum_variant)]
 pub enum AudioNodeType {
     Instrument(InstrumentNode),
     Effect(EffectNode),
@@ -204,9 +210,13 @@ pub struct AudioRoutingGraph {
     connections: Vec<Connection>,
     /// Topological order of nodes (recomputed when needed)
     processed_order: Option<Vec<NodeId>>,
-    /// Auxiliary buses (sends/returns)
+    /// Auxiliary buses (sends/returns). Kept for the WIP send/return path —
+    /// not yet wired into `process()`.
+    #[allow(dead_code)]
     aux_buses: Vec<AuxBus>,
-    /// Node counter for generating unique IDs
+    /// Node counter for generating unique IDs. WIP: nodes currently get IDs
+    /// from elsewhere; this counter will replace that path.
+    #[allow(dead_code)]
     next_node_id: usize,
 }
 
@@ -745,7 +755,7 @@ mod tests {
 
     #[test]
     fn test_audio_routing_graph_creation() {
-        let mut graph = AudioRoutingGraph::new();
+        let graph = AudioRoutingGraph::new();
         assert_eq!(graph.nodes.len(), 0);
         assert_eq!(graph.connections.len(), 0);
     }
