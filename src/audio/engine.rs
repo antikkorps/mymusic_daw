@@ -681,8 +681,13 @@ impl AudioEngine {
                     // Copy input data to buffers
                     left_input_buffer.data_mut().copy_from_slice(&input_left);
                     right_input_buffer.data_mut().copy_from_slice(&input_right);
-                    left_output_buffer.data_mut().copy_from_slice(&output_left);
-                    right_output_buffer.data_mut().copy_from_slice(&output_right);
+                    // Pre-fill output with input so the synth signal survives when
+                    // no plugins are loaded. Plugins overwrite output in place.
+                    // Without this the device output stays silent until a plugin
+                    // is inserted into the chain.
+                    let _ = (&output_left, &output_right);
+                    left_output_buffer.data_mut().copy_from_slice(&input_left);
+                    right_output_buffer.data_mut().copy_from_slice(&input_right);
                     
                     // Set up input and output buffers for plugins
                     input_buffers.insert("input_left".to_string(), &left_input_buffer);
