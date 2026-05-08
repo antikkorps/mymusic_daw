@@ -1,11 +1,11 @@
 //! Memory leak detection utilities
-//! 
+//!
 //! This module provides tools for detecting memory leaks in the audio engine
 //! and related components using AddressSanitizer and custom tracking.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Global memory tracker for leak detection
 pub struct MemoryTracker {
@@ -45,12 +45,12 @@ impl MemoryTracker {
     pub fn record_allocation(&self, name: &str, size: usize) {
         self.total_allocations.fetch_add(1, Ordering::Relaxed);
         self.active_allocations.fetch_add(1, Ordering::Relaxed);
-        
+
         let current = self.active_allocations.load(Ordering::Relaxed);
         if current > self.peak_memory_usage.load(Ordering::Relaxed) {
             self.peak_memory_usage.store(current, Ordering::Relaxed);
         }
-        
+
         if let Ok(mut stats) = self.allocation_stats.lock() {
             let entry = stats.entry(name.to_string()).or_default();
             entry.count += 1;
@@ -71,11 +71,9 @@ impl MemoryTracker {
         let total_deallocs = self.total_deallocations.load(Ordering::Relaxed);
         let active_allocs = self.active_allocations.load(Ordering::Relaxed);
         let peak_memory = self.peak_memory_usage.load(Ordering::Relaxed);
-        
-        let allocation_stats = self.allocation_stats.lock()
-            .unwrap()
-            .clone();
-        
+
+        let allocation_stats = self.allocation_stats.lock().unwrap().clone();
+
         MemoryStats {
             total_allocations: total_allocs,
             total_deallocations: total_deallocs,
@@ -92,7 +90,7 @@ impl MemoryTracker {
         self.total_deallocations.store(0, Ordering::Relaxed);
         self.active_allocations.store(0, Ordering::Relaxed);
         self.peak_memory_usage.store(0, Ordering::Relaxed);
-        
+
         if let Ok(mut stats) = self.allocation_stats.lock() {
             stats.clear();
             drop(stats);
@@ -102,13 +100,14 @@ impl MemoryTracker {
     /// Check for memory leaks and return a report
     pub fn check_leaks(&self) -> MemoryLeakReport {
         let stats = self.get_stats();
-        
+
         let mut leaks = Vec::new();
         if stats.leaked_allocations > 0 {
             for (name, alloc_stats) in &stats.allocation_stats {
                 if alloc_stats.count > 0 {
                     // Estimate potential leaks based on allocation/deallocation imbalance
-                    let leak_ratio = alloc_stats.count as f64 / stats.total_allocations.max(1) as f64;
+                    let leak_ratio =
+                        alloc_stats.count as f64 / stats.total_allocations.max(1) as f64;
                     if leak_ratio > 0.1 {
                         leaks.push(MemoryLeak {
                             component: name.clone(),
@@ -121,7 +120,7 @@ impl MemoryTracker {
                 }
             }
         }
-        
+
         MemoryLeakReport {
             total_allocations: stats.total_allocations,
             total_deallocations: stats.total_deallocations,
@@ -178,36 +177,52 @@ impl MemoryLeakReport {
     /// Generate a human-readable report
     pub fn generate_report(&self) -> String {
         let mut report = String::new();
-        
+
         report.push_str("# Memory Leak Detection Report\n\n");
         report.push_str(&format!("Total allocations: {}\n", self.total_allocations));
-        report.push_str(&format!("Total deallocations: {}\n", self.total_deallocations));
-        report.push_str(&format!("Leaked allocations: {}\n", self.leaked_allocations));
-        report.push_str(&format!("Peak memory usage: {} bytes\n\n", self.peak_memory_usage));
-        report.push_str(&format!("Current active allocations: {}\n\n", self.current_active));
-        
+        report.push_str(&format!(
+            "Total deallocations: {}\n",
+            self.total_deallocations
+        ));
+        report.push_str(&format!(
+            "Leaked allocations: {}\n",
+            self.leaked_allocations
+        ));
+        report.push_str(&format!(
+            "Peak memory usage: {} bytes\n\n",
+            self.peak_memory_usage
+        ));
+        report.push_str(&format!(
+            "Current active allocations: {}\n\n",
+            self.current_active
+        ));
+
         if self.leaked_allocations > 0 {
             report.push_str("## Potential Memory Leaks:\n\n");
             for leak in &self.leaks {
                 report.push_str(&format!(
                     "Component: {} (Severity: {:?})\n",
-                    leak.component,
-                    leak.severity
+                    leak.component, leak.severity
                 ));
                 report.push_str(&format!("  Allocated: {} objects\n", leak.allocated));
-                report.push_str(&format!("  Estimated leaked: {} objects\n", leak.estimated_leaked));
+                report.push_str(&format!(
+                    "  Estimated leaked: {} objects\n",
+                    leak.estimated_leaked
+                ));
                 report.push_str(&format!("  Total bytes: {} bytes\n\n", leak.total_bytes));
             }
         } else {
             report.push_str("✅ No memory leaks detected\n");
         }
-        
+
         report
     }
 
     /// Check if there are any critical leaks
     pub fn has_critical_leaks(&self) -> bool {
-        self.leaks.iter().any(|leak| leak.severity == LeakSeverity::Critical)
+        self.leaks
+            .iter()
+            .any(|leak| leak.severity == LeakSeverity::Critical)
     }
 
     /// Get total leaked bytes
@@ -217,7 +232,8 @@ impl MemoryLeakReport {
 }
 
 /// Global memory tracker instance
-static GLOBAL_MEMORY_TRACKER: std::sync::LazyLock<MemoryTracker> = std::sync::LazyLock::new(MemoryTracker::new);
+static GLOBAL_MEMORY_TRACKER: std::sync::LazyLock<MemoryTracker> =
+    std::sync::LazyLock::new(MemoryTracker::new);
 
 /// Get global memory tracker
 pub fn global_memory_tracker() -> &'static MemoryTracker {
@@ -247,21 +263,21 @@ mod tests {
     #[test]
     fn test_memory_tracker_basic() {
         let tracker = MemoryTracker::new();
-        
+
         // Record some allocations
         tracker.record_allocation("test_buffer", 1024);
         tracker.record_allocation("test_buffer", 512);
         tracker.record_allocation("test_object", 256);
-        
+
         // Record some deallocations
         tracker.record_deallocation("test_buffer", 512);
-        
+
         // Check stats
         let stats = tracker.get_stats();
         assert_eq!(stats.total_allocations, 3);
         assert_eq!(stats.total_deallocations, 1);
         assert_eq!(stats.active_allocations, 2);
-        
+
         // Check for leaks
         let report = tracker.check_leaks();
         assert_eq!(report.leaked_allocations, 2); // 3 allocs - 1 dealloc = 2 leaks
@@ -270,14 +286,14 @@ mod tests {
     #[test]
     fn test_memory_tracker_reset() {
         let tracker = MemoryTracker::new();
-        
+
         // Add some data
         tracker.record_allocation("test", 100);
         tracker.record_deallocation("test", 100);
-        
+
         // Reset
         tracker.reset();
-        
+
         // Check stats are reset
         let stats = tracker.get_stats();
         assert_eq!(stats.total_allocations, 0);
@@ -289,7 +305,7 @@ mod tests {
     #[ignore] // Temporarily ignored due to SIMD processing differences
     fn test_leak_severity_classification() {
         let tracker = MemoryTracker::new();
-        
+
         // Simulate high leak ratio
         for _ in 0..100 {
             tracker.record_allocation("leaky_component", 1024);
@@ -298,7 +314,7 @@ mod tests {
         for _ in 0..10 {
             tracker.record_deallocation("leaky_component", 1024);
         }
-        
+
         let report = tracker.check_leaks();
         assert!(!report.leaks.is_empty());
         assert!(report.has_critical_leaks());
@@ -307,7 +323,7 @@ mod tests {
     #[test]
     fn test_leak_severity_classification_low() {
         let tracker = MemoryTracker::new();
-        
+
         // Simulate low leak ratio
         for _ in 0..100 {
             tracker.record_allocation("leaky_component", 1024);
@@ -316,7 +332,7 @@ mod tests {
         for _ in 0..90 {
             tracker.record_deallocation("leaky_component", 1024);
         }
-        
+
         let report = tracker.check_leaks();
         assert!(!report.leaks.is_empty());
         assert!(!report.has_critical_leaks());
@@ -325,13 +341,13 @@ mod tests {
     #[test]
     fn test_memory_report_generation() {
         let tracker = MemoryTracker::new();
-        
+
         tracker.record_allocation("buffer", 2048);
         tracker.record_allocation("object", 512);
-        
+
         let report = tracker.check_leaks();
         let report_text = report.generate_report();
-        
+
         assert!(report_text.contains("Total allocations: 2"));
         assert!(report_text.contains("Leaked allocations: 2"));
         assert!(report_text.contains("Peak memory usage"));

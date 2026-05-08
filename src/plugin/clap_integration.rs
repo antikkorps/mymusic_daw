@@ -3,12 +3,12 @@
 // This module provides real integration with CLAP (CLever Audio Plug-in API) plugins.
 // Uses libloading for dynamic loading and FFI for C API interop.
 
+use crate::MidiEventTimed;
 use crate::midi::event::MidiEvent;
 use crate::plugin::buffer_pool::AudioBufferPool;
 use crate::plugin::clap_ffi::*;
 use crate::plugin::clap_gui::ClapPluginGui;
 use crate::plugin::parameters::*;
-use crate::MidiEventTimed;
 use crate::plugin::trait_def::*;
 use crate::plugin::{PluginError, PluginResult};
 use libloading::{Library, Symbol};
@@ -563,28 +563,30 @@ impl Plugin for ClapPluginInstance {
 
             // Initialize the plugin with panic handling and timeout
             println!("🔧 Calling plugin.init()...");
-            println!("⚠️ Note: If this hangs, the plugin requires a display server (GUI environment)");
-            
+            println!(
+                "⚠️ Note: If this hangs, the plugin requires a display server (GUI environment)"
+            );
+
             // Use timeout to prevent hanging during init()
             // Since we can't move the plugin pointer between threads, we'll use a different approach
             let (sender, receiver) = std::sync::mpsc::channel();
             let timeout_sender = sender.clone();
-            
+
             // Spawn a timeout thread
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_secs(5));
                 let _ = timeout_sender.send(Err("Plugin init() timed out".to_string()));
             });
-            
+
             // Run the init in the current thread
             let init_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let plugin = &*self.plugin_ptr;
                 (plugin.init)(self.plugin_ptr)
             }));
-            
+
             // Send the actual result
             let _ = sender.send(Ok(init_result));
-            
+
             // Wait for either the actual result or timeout
             match receiver.recv() {
                 Ok(Ok(Ok(true))) => {
@@ -620,7 +622,7 @@ impl Plugin for ClapPluginInstance {
                     8192, // max_frames_count
                 )
             }));
-            
+
             match activate_result {
                 Ok(true) => {
                     println!("✅ Plugin activate() succeeded");
@@ -642,7 +644,7 @@ impl Plugin for ClapPluginInstance {
             let start_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 (plugin.start_processing)(self.plugin_ptr)
             }));
-            
+
             match start_result {
                 Ok(true) => {
                     println!("✅ Plugin start_processing() succeeded");
@@ -667,14 +669,16 @@ impl Plugin for ClapPluginInstance {
                 // SAFETY: plugin_ptr is valid and plugin.init() has been called
                 unsafe { ClapPluginGui::new(self.plugin_ptr) }
             }));
-            
+
             self.gui = match gui {
                 Ok(gui_opt) => {
                     println!("✅ GUI creation completed successfully after init");
                     gui_opt
                 }
                 Err(_) => {
-                    println!("⚠️ GUI creation panicked (likely no display server) - continuing without GUI");
+                    println!(
+                        "⚠️ GUI creation panicked (likely no display server) - continuing without GUI"
+                    );
                     None
                 }
             };
@@ -923,11 +927,14 @@ impl Plugin for ClapPluginInstance {
 
     fn process_midi(&mut self, midi_event: &MidiEventTimed) -> Result<(), PluginError> {
         // Add MIDI event to pending queue for processing in next audio callback
-        self.pending_midi_events.push((midi_event.event, midi_event.samples_from_now));
-        
-        println!("🎹 MIDI queued for plugin {}: {:?} (offset: {} samples)", 
-                 self.descriptor.name, midi_event.event, midi_event.samples_from_now);
-        
+        self.pending_midi_events
+            .push((midi_event.event, midi_event.samples_from_now));
+
+        println!(
+            "🎹 MIDI queued for plugin {}: {:?} (offset: {} samples)",
+            self.descriptor.name, midi_event.event, midi_event.samples_from_now
+        );
+
         Ok(())
     }
 }

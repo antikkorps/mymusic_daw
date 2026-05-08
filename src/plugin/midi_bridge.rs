@@ -1,12 +1,15 @@
 // MIDI to Plugin Bridge - Bypass display server requirement
 // Maps DAW controls to plugin parameters via MIDI CC messages
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use crate::MidiEvent;
 use crate::MidiEventTimed;
 use crate::plugin::{PluginHost, PluginInstanceId, PluginResult};
-use ringbuf::{HeapRb, traits::{Split, Producer, Consumer}};
+use ringbuf::{
+    HeapRb,
+    traits::{Consumer, Producer, Split},
+};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 /// MIDI CC to Plugin Parameter Mapping
 #[derive(Debug, Clone)]
@@ -55,8 +58,10 @@ impl MidiPluginBridge {
         let param_index = mapping.parameter_index;
         let mut mappings = self.mappings.lock().unwrap();
         mappings.insert(mapping.cc_number, mapping);
-        println!("🎛️ Added MIDI mapping: CC {} -> Plugin param {}", 
-                 cc_number, param_index);
+        println!(
+            "🎛️ Added MIDI mapping: CC {} -> Plugin param {}",
+            cc_number, param_index
+        );
         Ok(())
     }
 
@@ -83,19 +88,23 @@ impl MidiPluginBridge {
                 if let Some(mapping) = mappings.get(&controller) {
                     // Convert MIDI value (0-127) to plugin parameter value (min_value to max_value)
                     let normalized_value = value as f32 / 127.0;
-                    let plugin_value = mapping.min_value + 
-                        normalized_value * (mapping.max_value - mapping.min_value);
+                    let plugin_value = mapping.min_value
+                        + normalized_value * (mapping.max_value - mapping.min_value);
 
                     // Apply to plugin parameter
                     self.set_plugin_parameter(
                         mapping.plugin_instance_id,
                         mapping.parameter_index,
-                        plugin_value
+                        plugin_value,
                     )?;
 
-                    println!("🎛️ MIDI CC {} -> Plugin {:?} param {} = {:.3}", 
-                             controller, mapping.plugin_instance_id, 
-                             mapping.parameter_index, plugin_value);
+                    println!(
+                        "🎛️ MIDI CC {} -> Plugin {:?} param {} = {:.3}",
+                        controller,
+                        mapping.plugin_instance_id,
+                        mapping.parameter_index,
+                        plugin_value
+                    );
                 }
             }
             _ => {
@@ -108,26 +117,33 @@ impl MidiPluginBridge {
     }
 
     /// Set plugin parameter value
-    fn set_plugin_parameter(&self, 
-                           instance_id: PluginInstanceId, 
-                           param_index: u32, 
-                           value: f32) -> PluginResult<()> {
+    fn set_plugin_parameter(
+        &self,
+        instance_id: PluginInstanceId,
+        param_index: u32,
+        value: f32,
+    ) -> PluginResult<()> {
         // This would call the plugin host to set the parameter
         // Implementation depends on the plugin host interface
-        println!("🔧 Setting plugin {:?} param {} to {}", instance_id, param_index, value);
-        
+        println!(
+            "🔧 Setting plugin {:?} param {} to {}",
+            instance_id, param_index, value
+        );
+
         // TODO: Actually set the parameter via plugin host
         // self.plugin_host.set_parameter(instance_id, param_index, value)?;
-        
+
         Ok(())
     }
 
     /// Generate automatic mappings for a plugin instance
-    pub fn auto_map_plugin(&self, 
-                          instance_id: PluginInstanceId, 
-                          start_cc: u8) -> PluginResult<Vec<MidiMapping>> {
+    pub fn auto_map_plugin(
+        &self,
+        instance_id: PluginInstanceId,
+        start_cc: u8,
+    ) -> PluginResult<Vec<MidiMapping>> {
         let mut mappings = Vec::new();
-        
+
         // TODO: Get plugin parameter info from host
         // For now, create generic mappings
         let common_params = vec![
@@ -154,8 +170,12 @@ impl MidiPluginBridge {
             self.add_mapping(mapping)?;
         }
 
-        println!("🎛️ Auto-mapped {} parameters for plugin {:?} starting at CC {}", 
-                 mappings.len(), instance_id, start_cc);
+        println!(
+            "🎛️ Auto-mapped {} parameters for plugin {:?} starting at CC {}",
+            mappings.len(),
+            instance_id,
+            start_cc
+        );
 
         Ok(mappings)
     }
@@ -163,24 +183,29 @@ impl MidiPluginBridge {
     /// Create virtual MIDI port for plugin communication
     pub fn create_virtual_midi_port(&self, port_name: &str) -> PluginResult<()> {
         println!("🎹 Creating virtual MIDI port: {}", port_name);
-        
+
         // TODO: Create virtual MIDI port using OS-specific APIs
         // On macOS: CoreMIDI
         // On Windows: MIDI API
         // On Linux: ALSA sequencer
-        
+
         Ok(())
     }
 
     /// Send MIDI event to specific plugin
-    pub fn send_midi_to_plugin(&self, 
-                               instance_id: PluginInstanceId, 
-                               midi_event: MidiEventTimed) -> PluginResult<()> {
-        println!("📤 Sending MIDI to plugin {:?}: {:?}", instance_id, midi_event.event);
-        
+    pub fn send_midi_to_plugin(
+        &self,
+        instance_id: PluginInstanceId,
+        midi_event: MidiEventTimed,
+    ) -> PluginResult<()> {
+        println!(
+            "📤 Sending MIDI to plugin {:?}: {:?}",
+            instance_id, midi_event.event
+        );
+
         // TODO: Route MIDI event to specific plugin instance
         // This would depend on the plugin's MIDI input capabilities
-        
+
         Ok(())
     }
 
@@ -201,14 +226,14 @@ pub mod default_cc_assignments {
     pub const SOFT_PEDAL: u8 = 67;
     pub const LEGATO_FOOTSWITCH: u8 = 68;
     pub const HOLD_2: u8 = 69;
-    
+
     // Effects controllers
     pub const EFFECTS_1: u8 = 12;
     pub const EFFECTS_2: u8 = 13;
     pub const EFFECTS_3: u8 = 14;
     pub const EFFECTS_4: u8 = 15;
     pub const EFFECTS_5: u8 = 16;
-    
+
     // Continuous controllers 16-31 are undefined in GM spec
     // Can be used for custom mappings
 }

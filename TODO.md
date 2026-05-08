@@ -1439,6 +1439,7 @@ Le DAW Tauri n'avait jamais réellement été lancé bout-en-bout depuis le merg
 | `b0c0c01` | `tests/edge_cases.rs` cassait `cargo test --all-targets` (référençait `ADSR`, `convert_f32_to_i16`, `Lfo::next_sample`, `VoiceManager::new(16, sr)`, `VoiceManager::process`). `src-tauri/src/window_utils.rs` linux n'importait plus contre la version actuelle de `gtk`. | Code laissé contre une API antérieure au merge. |
 | `1836aee` | Fenêtre Tauri blanche, "asset not found: index.html". | React Router 7 par défaut en SSR → ne génère pas de `index.html` statique. Tauri en a besoin. |
 | `858226d` | Aucun son depuis l'UI Tauri même quand `play_note` partait correctement vers `voice_manager.note_on`. | Le callback audio (`build_stream`) écrivait le synth dans `input_buffers` puis donnait à la chaîne plugin un `output_buffers` rempli de zéros. Sans plugin chargé, la sortie restait silencieuse. Fix : passthrough input→output avant `process_all_instances`. |
+| _(à venir)_ | CI `cargo fmt --check` rouge depuis le merge SIMD : ~20 fichiers non formatés sur les deux crates (root + `src-tauri`). | La PR SIMD a été mergée sans passer par le hook fmt. Nouveau commit applique `cargo fmt --all` sur les deux workspaces. |
 
 ### Conclusion expérimentale Phase 6a (intégration SIMD)
 

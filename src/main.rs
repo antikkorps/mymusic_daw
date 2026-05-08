@@ -1,8 +1,8 @@
+use mymusic_daw::plugin::PluginHost;
 use mymusic_daw::ui::app::DawApp;
 use mymusic_daw::{
     AudioEngine, MidiConnectionManager, create_command_channel, create_notification_channel,
 };
-use mymusic_daw::plugin::PluginHost;
 use std::sync::{Arc, Mutex};
 
 // Ringbuffer capacity constants
@@ -34,14 +34,18 @@ fn main() {
     println!("Plugin host initialized");
 
     println!("Audio engine initialisation...");
-    let audio_engine =
-        match AudioEngine::new(command_rx_ui, command_rx_midi, notification_tx.clone(), plugin_host.clone()) {
-            Ok(engine) => engine,
-            Err(e) => {
-                eprintln!("ERROR: {}", e);
-                return;
-            }
-        };
+    let audio_engine = match AudioEngine::new(
+        command_rx_ui,
+        command_rx_midi,
+        notification_tx.clone(),
+        plugin_host.clone(),
+    ) {
+        Ok(engine) => engine,
+        Err(e) => {
+            eprintln!("ERROR: {}", e);
+            return;
+        }
+    };
 
     println!("\nMIDI Initialisation...");
     let midi_manager = MidiConnectionManager::new(command_tx_midi, notification_tx);

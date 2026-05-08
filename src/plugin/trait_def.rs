@@ -1,7 +1,7 @@
+use crate::MidiEventTimed;
 use crate::audio::buffer::AudioBuffer;
 use crate::plugin::PluginError;
 use crate::plugin::parameters::*;
-use crate::MidiEventTimed;
 use std::collections::HashMap;
 
 /// Core plugin trait that all plugins must implement
@@ -60,7 +60,7 @@ pub trait Plugin: Send + Sync {
 
     /// Get plugin as Any for downcasting
     fn as_any(&self) -> &dyn std::any::Any;
-    
+
     /// Get plugin as Any for downcasting (mutable)
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 

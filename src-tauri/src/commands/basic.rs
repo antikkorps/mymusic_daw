@@ -1,17 +1,17 @@
 // Basic DAW commands (volume, notes, engine status)
 
-use tauri::State;
 use crate::DawState;
 use mymusic_daw::messaging::command::Command;
-use mymusic_daw::MidiEvent;
-use mymusic_daw::synth::oscillator::WaveformType;
 use mymusic_daw::synth::envelope::AdsrParams;
-use mymusic_daw::synth::lfo::LfoParams;
 use mymusic_daw::synth::filter::FilterParams;
-use mymusic_daw::synth::modulation::{ModRouting, ModSource, ModDestination};
+use mymusic_daw::synth::lfo::LfoParams;
+use mymusic_daw::synth::modulation::{ModDestination, ModRouting, ModSource};
+use mymusic_daw::synth::oscillator::WaveformType;
 use mymusic_daw::synth::poly_mode::PolyMode;
 use mymusic_daw::synth::portamento::PortamentoParams;
 use mymusic_daw::synth::voice_manager::VoiceMode;
+use mymusic_daw::MidiEvent;
+use tauri::State;
 
 /// Helper function to send commands to the audio engine
 fn send_command_to_engine(command: Command, state: State<DawState>) -> Result<(), String> {
@@ -112,7 +112,13 @@ pub fn set_waveform(waveform: String, state: State<DawState>) -> Result<(), Stri
 
 /// Set ADSR envelope parameters
 #[tauri::command]
-pub fn set_adsr(attack: f32, decay: f32, sustain: f32, release: f32, state: State<DawState>) -> Result<(), String> {
+pub fn set_adsr(
+    attack: f32,
+    decay: f32,
+    sustain: f32,
+    release: f32,
+    state: State<DawState>,
+) -> Result<(), String> {
     let params = AdsrParams::new(attack, decay, sustain, release);
     let command = Command::SetAdsr(params);
     send_command_to_engine(command, state)
@@ -120,7 +126,13 @@ pub fn set_adsr(attack: f32, decay: f32, sustain: f32, release: f32, state: Stat
 
 /// Set LFO parameters
 #[tauri::command]
-pub fn set_lfo(waveform: String, rate: f32, depth: f32, destination: String, state: State<DawState>) -> Result<(), String> {
+pub fn set_lfo(
+    waveform: String,
+    rate: f32,
+    depth: f32,
+    destination: String,
+    state: State<DawState>,
+) -> Result<(), String> {
     let lfo_waveform = match waveform.as_str() {
         "sine" => WaveformType::Sine,
         "square" => WaveformType::Square,
@@ -143,9 +155,14 @@ pub fn set_lfo(waveform: String, rate: f32, depth: f32, destination: String, sta
 
 /// Set filter parameters
 #[tauri::command]
-pub fn set_filter(filter_type: String, cutoff: f32, resonance: f32, state: State<DawState>) -> Result<(), String> {
+pub fn set_filter(
+    filter_type: String,
+    cutoff: f32,
+    resonance: f32,
+    state: State<DawState>,
+) -> Result<(), String> {
     use mymusic_daw::synth::filter::FilterType;
-    
+
     let ft = match filter_type.as_str() {
         "lowpass" => FilterType::LowPass,
         "highpass" => FilterType::HighPass,
@@ -201,7 +218,13 @@ pub fn set_voice_mode(mode: String, state: State<DawState>) -> Result<(), String
 
 /// Set modulation routing
 #[tauri::command]
-pub fn set_mod_routing(index: u8, source: String, destination: String, amount: f32, state: State<DawState>) -> Result<(), String> {
+pub fn set_mod_routing(
+    index: u8,
+    source: String,
+    destination: String,
+    amount: f32,
+    state: State<DawState>,
+) -> Result<(), String> {
     let mod_source = match source.as_str() {
         "lfo" => ModSource::Lfo(0),
         "velocity" => ModSource::Velocity,
@@ -247,10 +270,10 @@ pub fn initialize_events() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Arc, Mutex};
-    use ringbuf::{HeapRb, traits::Producer};
-    use mymusic_daw::messaging::command::Command;
     use atomic_float::AtomicF32;
+    use mymusic_daw::messaging::command::Command;
+    use ringbuf::{traits::Producer, HeapRb};
+    use std::sync::{Arc, Mutex};
 
     // Mock DAW state for testing
     fn create_mock_daw_state() -> crate::DawState {
@@ -264,7 +287,7 @@ mod tests {
     #[test]
     fn test_set_volume_valid_range() {
         let state = create_mock_daw_state();
-        
+
         // Test valid values
         assert!(set_volume(0.0, state.into()).is_ok());
         assert!(set_volume(0.5, state.into()).is_ok());
@@ -274,7 +297,7 @@ mod tests {
     #[test]
     fn test_play_note_valid_velocity() {
         let state = create_mock_daw_state();
-        
+
         // Test valid velocities
         assert!(play_note(60, 1, state.into()).is_ok());
         assert!(play_note(60, 127, state.into()).is_ok());
@@ -283,18 +306,20 @@ mod tests {
     #[test]
     fn test_play_note_zero_velocity() {
         let state = create_mock_daw_state();
-        
+
         // Test zero velocity (should fail)
         let result = play_note(60, 0, state.into());
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Velocity must be greater than 0"));
+        assert!(result
+            .unwrap_err()
+            .contains("Velocity must be greater than 0"));
     }
 
     #[test]
     fn test_get_engine_status() {
         let result = get_engine_status();
         assert!(result.is_ok());
-        
+
         let status = result.unwrap();
         assert_eq!(status["name"], "MyMusic DAW");
         assert_eq!(status["status"], "running");
@@ -303,7 +328,7 @@ mod tests {
     #[test]
     fn test_set_waveform_valid() {
         let state = create_mock_daw_state();
-        
+
         // Test valid waveforms
         assert!(set_waveform("sine".to_string(), state.into()).is_ok());
         assert!(set_waveform("square".to_string(), state.into()).is_ok());
@@ -314,7 +339,7 @@ mod tests {
     #[test]
     fn test_set_waveform_invalid() {
         let state = create_mock_daw_state();
-        
+
         // Test invalid waveform
         let result = set_waveform("invalid".to_string(), state.into());
         assert!(result.is_err());

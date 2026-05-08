@@ -8,14 +8,14 @@ use tauri::Manager;
 
 // Import DAW modules
 use mymusic_daw::audio::device::AudioDeviceManager;
+use mymusic_daw::plugin::PluginHost;
 use mymusic_daw::{
     create_command_channel, create_notification_channel, AudioEngine, MidiConnectionManager,
 };
-use mymusic_daw::plugin::PluginHost;
 
 // Import library with commands and state
-use app_lib::{register_commands, DawState};
 use app_lib::events::AUDIO_EVENT_EMITTER;
+use app_lib::{register_commands, DawState};
 
 fn main() {
     // Initialize the audio engine

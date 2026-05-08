@@ -1,6 +1,6 @@
 // Event system for streaming data from audio engine to React UI
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
-use serde::{Serialize, Deserialize};
 use tauri::{AppHandle, Emitter};
 
 // Event types that can be streamed from audio engine to UI
@@ -11,19 +11,13 @@ pub enum AudioEvent {
     MidiNote {
         note: u8,
         velocity: u8,
-        on: bool, // true for NoteOn, false for NoteOff
+        on: bool,       // true for NoteOn, false for NoteOff
         timestamp: u64, // samples since start
     },
     /// Active voices count (for performance monitoring)
-    ActiveVoices {
-        count: u32,
-        timestamp: u64,
-    },
+    ActiveVoices { count: u32, timestamp: u64 },
     /// CPU usage percentage (for performance monitoring)
-    CpuUsage {
-        percentage: f32,
-        timestamp: u64,
-    },
+    CpuUsage { percentage: f32, timestamp: u64 },
     /// Audio level meter (for VU meters)
     AudioLevel {
         left: f32,
@@ -78,7 +72,7 @@ impl AudioEventEmitter {
     /// Set the app handle (called after Tauri app is initialized)
     pub fn set_app_handle(&mut self, app_handle: AppHandle) {
         self.app_handle = Some(app_handle);
-        
+
         // Emit any pending events
         if let Ok(mut pending) = self.pending_events.lock() {
             for event in pending.drain(..) {
@@ -129,10 +123,7 @@ impl AudioEventEmitter {
     }
 
     pub fn active_voices(&self, count: u32, timestamp: u64) {
-        self.emit(AudioEvent::ActiveVoices {
-            count,
-            timestamp,
-        });
+        self.emit(AudioEvent::ActiveVoices { count, timestamp });
     }
 
     pub fn cpu_usage(&self, percentage: f32, timestamp: u64) {
@@ -142,7 +133,14 @@ impl AudioEventEmitter {
         });
     }
 
-    pub fn audio_level(&self, left: f32, right: f32, peak_left: f32, peak_right: f32, timestamp: u64) {
+    pub fn audio_level(
+        &self,
+        left: f32,
+        right: f32,
+        peak_left: f32,
+        peak_right: f32,
+        timestamp: u64,
+    ) {
         self.emit(AudioEvent::AudioLevel {
             left,
             right,
@@ -160,7 +158,14 @@ impl AudioEventEmitter {
         });
     }
 
-    pub fn transport_position(&self, samples: u64, musical_time: String, is_playing: bool, tempo: f32, timestamp: u64) {
+    pub fn transport_position(
+        &self,
+        samples: u64,
+        musical_time: String,
+        is_playing: bool,
+        tempo: f32,
+        timestamp: u64,
+    ) {
         self.emit(AudioEvent::TransportPosition {
             samples,
             musical_time,
@@ -195,7 +200,7 @@ impl Default for AudioEventEmitter {
 
 // Global event emitter instance
 lazy_static::lazy_static! {
-    pub static ref AUDIO_EVENT_EMITTER: Arc<Mutex<AudioEventEmitter>> = 
+    pub static ref AUDIO_EVENT_EMITTER: Arc<Mutex<AudioEventEmitter>> =
         Arc::new(Mutex::new(AudioEventEmitter::new()));
 }
 

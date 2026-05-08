@@ -10,14 +10,12 @@ use rand::Rng;
 #[test]
 fn fuzz_midi_parser_random_bytes() {
     let mut rng = rand::thread_rng();
-    
+
     // Test with 1000 random byte sequences
     for _ in 0..1000 {
         let length = rng.gen_range(1..=128);
-        let random_bytes: Vec<u8> = (0..length)
-            .map(|_| rng.gen_range(0..=255))
-            .collect();
-        
+        let random_bytes: Vec<u8> = (0..length).map(|_| rng.gen_range(0..=255)).collect();
+
         // Should not panic, even with garbage data
         let _ = std::panic::catch_unwind(|| {
             let _ = MidiEvent::from_bytes(&random_bytes);
@@ -29,17 +27,17 @@ fn fuzz_midi_parser_random_bytes() {
 #[test]
 fn fuzz_midi_parser_patterns() {
     let mut rng = rand::thread_rng();
-    
+
     // Common MIDI status bytes
     let status_bytes = vec![
         0x80, 0x90, 0xA0, 0xB0, 0xC0, 0xD0, 0xE0, // Channel messages
         0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, // System common
         0xF8, 0xFA, 0xFB, 0xFC, 0xFE, 0xFF, // System real-time
     ];
-    
+
     for _ in 0..500 {
         let mut bytes = Vec::new();
-        
+
         // Randomly choose a pattern
         match rng.gen_range(0..=5) {
             0 => {
@@ -78,7 +76,7 @@ fn fuzz_midi_parser_patterns() {
             }
             _ => {}
         }
-        
+
         // Should not panic
         let _ = std::panic::catch_unwind(|| {
             let _ = MidiEvent::from_bytes(&bytes);
@@ -92,15 +90,15 @@ fn test_midi_parser_edge_cases() {
     // Test empty bytes
     let result = MidiEvent::from_bytes(&[]);
     assert!(result.is_none());
-    
+
     // Test single byte
     let result = MidiEvent::from_bytes(&[0x40]);
     assert!(result.is_none());
-    
+
     // Test system real-time messages (should be ignored by our parser)
     let result = MidiEvent::from_bytes(&[0xF8]); // Clock
     assert!(result.is_none());
-    
+
     let result = MidiEvent::from_bytes(&[0xFA]); // Start
     assert!(result.is_none());
 }
@@ -111,11 +109,11 @@ fn test_midi_parser_malformed_messages() {
     // Incomplete NoteOn (missing velocity)
     let result = MidiEvent::from_bytes(&[0x90, 0x40]);
     assert!(result.is_none());
-    
+
     // Incomplete Control Change (missing value)
     let result = MidiEvent::from_bytes(&[0xB0, 0x07]);
     assert!(result.is_none());
-    
+
     // Incomplete Pitch Bend (missing MSB)
     let result = MidiEvent::from_bytes(&[0xE0, 0x00]);
     assert!(result.is_none());
@@ -126,8 +124,14 @@ fn test_midi_parser_malformed_messages() {
 fn test_midi_parser_maximum_values() {
     // Test all bytes at maximum value (0x7F)
     let result = MidiEvent::from_bytes(&[0x90, 0x7F, 0x7F]);
-    assert!(matches!(result, Some(MidiEvent::NoteOn { note: 0x7F, velocity: 0x7F })));
-    
+    assert!(matches!(
+        result,
+        Some(MidiEvent::NoteOn {
+            note: 0x7F,
+            velocity: 0x7F
+        })
+    ));
+
     // Test minimum values (0x00)
     let result = MidiEvent::from_bytes(&[0x90, 0x00, 0x00]);
     assert!(matches!(result, Some(MidiEvent::NoteOff { note: 0x00 })));
@@ -141,13 +145,15 @@ fn test_midi_parser_many_messages() {
         let channel = (i % 16) as u8;
         let note = (i % 128) as u8;
         let velocity = (i % 128) as u8;
-        
+
         let result = MidiEvent::from_bytes(&[0x90 | channel, note, velocity]);
-        
+
         if velocity == 0 {
             assert!(matches!(result, Some(MidiEvent::NoteOff { note: n }) if n == note));
         } else {
-            assert!(matches!(result, Some(MidiEvent::NoteOn { note: n, velocity: v }) if n == note && v == velocity));
+            assert!(
+                matches!(result, Some(MidiEvent::NoteOn { note: n, velocity: v }) if n == note && v == velocity)
+            );
         }
     }
 }
@@ -167,32 +173,56 @@ fn test_midi_parser_invalid_status() {
 fn test_midi_parser_all_message_types() {
     // Note On
     let result = MidiEvent::from_bytes(&[0x90, 0x40, 0x7F]);
-    assert!(matches!(result, Some(MidiEvent::NoteOn { note: 0x40, velocity: 0x7F })));
-    
+    assert!(matches!(
+        result,
+        Some(MidiEvent::NoteOn {
+            note: 0x40,
+            velocity: 0x7F
+        })
+    ));
+
     // Note Off (explicit)
     let result = MidiEvent::from_bytes(&[0x80, 0x40, 0x00]);
     assert!(matches!(result, Some(MidiEvent::NoteOff { note: 0x40 })));
-    
+
     // Note Off (via NoteOn with velocity 0)
     let result = MidiEvent::from_bytes(&[0x90, 0x40, 0x00]);
     assert!(matches!(result, Some(MidiEvent::NoteOff { note: 0x40 })));
-    
+
     // Control Change
     let result = MidiEvent::from_bytes(&[0xB0, 0x07, 0x64]);
-    assert!(matches!(result, Some(MidiEvent::ControlChange { controller: 0x07, value: 0x64 })));
-    
+    assert!(matches!(
+        result,
+        Some(MidiEvent::ControlChange {
+            controller: 0x07,
+            value: 0x64
+        })
+    ));
+
     // Pitch Bend
     let result = MidiEvent::from_bytes(&[0xE0, 0x00, 0x40]);
-    assert!(matches!(result, Some(MidiEvent::PitchBend { value: 0x2000 }))); // 0x40 << 7 | 0x00
-    
+    assert!(matches!(
+        result,
+        Some(MidiEvent::PitchBend { value: 0x2000 })
+    )); // 0x40 << 7 | 0x00
+
     // Channel Aftertouch
     let result = MidiEvent::from_bytes(&[0xD0, 0x40]);
-    assert!(matches!(result, Some(MidiEvent::ChannelAftertouch { value: 0x40 })));
-    
+    assert!(matches!(
+        result,
+        Some(MidiEvent::ChannelAftertouch { value: 0x40 })
+    ));
+
     // Poly Aftertouch
     let result = MidiEvent::from_bytes(&[0xA0, 0x40, 0x40]);
-    assert!(matches!(result, Some(MidiEvent::PolyAftertouch { note: 0x40, value: 0x40 })));
-    
+    assert!(matches!(
+        result,
+        Some(MidiEvent::PolyAftertouch {
+            note: 0x40,
+            value: 0x40
+        })
+    ));
+
     // Program Change is NOT supported (returns None)
     let result = MidiEvent::from_bytes(&[0xC0, 0x05]);
     assert!(result.is_none());

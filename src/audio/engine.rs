@@ -37,10 +37,10 @@ use crate::messaging::channels::{CommandConsumer, NotificationProducer};
 use crate::messaging::command::Command;
 use crate::messaging::notification::{Notification, NotificationCategory};
 use crate::midi::event::{MidiEvent, MidiEventTimed};
+use crate::plugin::PluginHost;
 use crate::sequencer::metronome::{Metronome, MetronomeScheduler};
 use crate::sequencer::timeline::{Tempo, TimeSignature};
 use crate::synth::voice_manager::VoiceManager;
-use crate::plugin::PluginHost;
 
 pub struct AudioEngine {
     _device: Device,
@@ -141,7 +141,7 @@ impl AudioEngine {
                 metronome_scheduler.clone(), // Clone (for this stream)
                 crate::sequencer::SequencerPlayer::new(sample_rate as f64), // New instance
                 sample_rate,                 // Pass sample rate for scheduler
-                plugin_host.clone(),          // Clone for plugin access
+                plugin_host.clone(),         // Clone for plugin access
             ),
             SampleFormat::I16 => Self::build_stream::<i16>(
                 &device,
@@ -426,7 +426,7 @@ impl AudioEngine {
         mut metronome_scheduler: MetronomeScheduler, // Moved into closure (no Mutex)
         mut sequencer_player: crate::sequencer::SequencerPlayer, // Moved into closure (no Mutex)
         sample_rate: f32,                   // Sample rate for scheduler calculations
-        plugin_host: Arc<PluginHost>,      // Clone for plugin access
+        plugin_host: Arc<PluginHost>,       // Clone for plugin access
     ) -> Result<Stream, String>
     where
         T: SizedSample + FromSample<f32> + Send + 'static,
@@ -453,7 +453,9 @@ impl AudioEngine {
 
                     // helper function to process MIDI events
                     let process_midi_event =
-                        |timed_event: MidiEventTimed, vm: &mut VoiceManager, plugin_host: &PluginHost| {
+                        |timed_event: MidiEventTimed,
+                         vm: &mut VoiceManager,
+                         plugin_host: &PluginHost| {
                             // TODO Phase 4+: Implement proper sample-accurate scheduling
                             // For now, process all events immediately at buffer start
                             match timed_event.event {
@@ -474,7 +476,7 @@ impl AudioEngine {
                                 }
                                 _ => {} // Ignore other events for now
                             }
-                            
+
                             // Route MIDI events to all loaded plugins
                             plugin_host.process_midi_for_all_plugins(&timed_event);
                         };
@@ -564,7 +566,8 @@ impl AudioEngine {
                     // Process UI commands (direct access, no locks!)
                     {
                         let _cmd_timer = profile_operation("process_ui_commands");
-                        while let Some(cmd) = ringbuf::traits::Consumer::try_pop(&mut command_rx_ui) {
+                        while let Some(cmd) = ringbuf::traits::Consumer::try_pop(&mut command_rx_ui)
+                        {
                             process_command(cmd, &mut voice_manager);
                         }
                     }
@@ -572,7 +575,9 @@ impl AudioEngine {
                     // Process MIDI commands (direct access, no locks!)
                     {
                         let _cmd_timer = profile_operation("process_midi_commands");
-                        while let Some(cmd) = ringbuf::traits::Consumer::try_pop(&mut command_rx_midi) {
+                        while let Some(cmd) =
+                            ringbuf::traits::Consumer::try_pop(&mut command_rx_midi)
+                        {
                             process_command(cmd, &mut voice_manager);
                         }
                     }
@@ -621,17 +626,17 @@ impl AudioEngine {
 
                     // Generate audio samples (direct access, no locks!)
                     let buffer_size = data.len() / channels;
-                    
+
                     // Create temporary buffers for plugin processing
                     let mut input_buffers = std::collections::HashMap::new();
                     let mut output_buffers = std::collections::HashMap::new();
-                    
+
                     // Create separate input and output buffers for plugins
                     let mut input_left = vec![0.0f32; buffer_size];
                     let mut input_right = vec![0.0f32; buffer_size];
                     let mut output_left = vec![0.0f32; buffer_size];
                     let mut output_right = vec![0.0f32; buffer_size];
-                    
+
                     // Generate samples from voice manager and metronome into input buffers
                     {
                         let _audio_gen_timer = profile_operation("audio_generation");
@@ -664,20 +669,23 @@ impl AudioEngine {
                             // Store in input buffers for plugins
                             input_left[i] = left;
                             input_right[i] = right;
-                            
+
                             // Advance position counter if playing
                             if is_playing {
                                 current_position += 1;
                             }
                         }
                     }
-                    
+
                     // Create audio buffers for plugin processing
                     let mut left_input_buffer = crate::audio::buffer::AudioBuffer::new(buffer_size);
-                    let mut right_input_buffer = crate::audio::buffer::AudioBuffer::new(buffer_size);
-                    let mut left_output_buffer = crate::audio::buffer::AudioBuffer::new(buffer_size);
-                    let mut right_output_buffer = crate::audio::buffer::AudioBuffer::new(buffer_size);
-                    
+                    let mut right_input_buffer =
+                        crate::audio::buffer::AudioBuffer::new(buffer_size);
+                    let mut left_output_buffer =
+                        crate::audio::buffer::AudioBuffer::new(buffer_size);
+                    let mut right_output_buffer =
+                        crate::audio::buffer::AudioBuffer::new(buffer_size);
+
                     // Copy input data to buffers
                     left_input_buffer.data_mut().copy_from_slice(&input_left);
                     right_input_buffer.data_mut().copy_from_slice(&input_right);
@@ -688,29 +696,33 @@ impl AudioEngine {
                     let _ = (&output_left, &output_right);
                     left_output_buffer.data_mut().copy_from_slice(&input_left);
                     right_output_buffer.data_mut().copy_from_slice(&input_right);
-                    
+
                     // Set up input and output buffers for plugins
                     input_buffers.insert("input_left".to_string(), &left_input_buffer);
                     input_buffers.insert("input_right".to_string(), &right_input_buffer);
                     output_buffers.insert("output_left".to_string(), &mut left_output_buffer);
                     output_buffers.insert("output_right".to_string(), &mut right_output_buffer);
-                    
+
                     // Process all plugins
                     {
                         let _plugin_timer = profile_operation("plugin_processing");
-                        if let Err(e) = plugin_host.process_all_instances(&input_buffers, &mut output_buffers, buffer_size) {
+                        if let Err(e) = plugin_host.process_all_instances(
+                            &input_buffers,
+                            &mut output_buffers,
+                            buffer_size,
+                        ) {
                             // Log error but continue with audio processing
                             eprintln!("Plugin processing error: {:?}", e);
                         }
                     }
-                    
+
                     // Copy processed audio back to output buffer
                     {
                         let _output_timer = profile_operation("output_processing");
                         for (i, _frame) in data.chunks_mut(channels).enumerate() {
                             let left = left_output_buffer.data()[i];
                             let right = right_output_buffer.data()[i];
-                            
+
                             // Soft saturation (protection against hard clipping)
                             let left = soft_clip(left);
                             let right = soft_clip(right);

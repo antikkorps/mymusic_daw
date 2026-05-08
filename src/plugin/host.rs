@@ -1,8 +1,8 @@
+use crate::MidiEventTimed;
 use crate::plugin::parameters::*;
 use crate::plugin::scanner::PluginScanner;
 use crate::plugin::trait_def::*;
 use crate::plugin::{PluginError, PluginResult};
-use crate::MidiEventTimed;
 use libloading::Library;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -81,7 +81,9 @@ impl PluginInstanceWrapper {
     }
 
     /// Try to get a mutable reference to the CLAP plugin instance for GUI operations
-    pub fn as_clap_plugin_mut(&mut self) -> Option<&mut crate::plugin::clap_integration::ClapPluginInstance> {
+    pub fn as_clap_plugin_mut(
+        &mut self,
+    ) -> Option<&mut crate::plugin::clap_integration::ClapPluginInstance> {
         if self.is_clap_plugin {
             self.plugin.as_any_mut().downcast_mut()
         } else {
@@ -92,9 +94,7 @@ impl PluginInstanceWrapper {
     /// Check if this plugin supports GUI
     pub fn has_gui(&self) -> bool {
         if self.is_clap_plugin {
-            self.as_clap_plugin()
-                .map(|p| p.has_gui())
-                .unwrap_or(false)
+            self.as_clap_plugin().map(|p| p.has_gui()).unwrap_or(false)
         } else {
             false
         }
@@ -243,7 +243,10 @@ impl PluginHost {
         let instance_name = name.unwrap_or_else(|| format!("{} Instance", plugin_id));
 
         // Check if this is a CLAP plugin by trying to downcast
-        let is_clap_plugin = plugin.as_any().downcast_ref::<crate::plugin::clap_integration::ClapPluginInstance>().is_some();
+        let is_clap_plugin = plugin
+            .as_any()
+            .downcast_ref::<crate::plugin::clap_integration::ClapPluginInstance>()
+            .is_some();
 
         let wrapper = PluginInstanceWrapper {
             plugin,

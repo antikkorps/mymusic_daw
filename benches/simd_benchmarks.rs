@@ -1,17 +1,17 @@
 //! SIMD optimization benchmarks
-//! 
+//!
 //! This module benchmarks SIMD-optimized operations against scalar implementations
 //! to measure performance improvements.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use mymusic_daw::audio::simd::*;
-use mymusic_daw::synth::oscillator::{SimpleOscillator, WaveformType, Oscillator};
-use mymusic_daw::synth::filter::{StateVariableFilter, FilterParams};
+use mymusic_daw::synth::filter::{FilterParams, StateVariableFilter};
+use mymusic_daw::synth::oscillator::{Oscillator, SimpleOscillator, WaveformType};
 use num_traits::Float;
 
 fn bench_oscillator_scalar_vs_simd(c: &mut Criterion) {
     let mut group = c.benchmark_group("oscillator_generation");
-    
+
     for &sample_count in &[64, 256, 512, 1024, 4096] {
         group.bench_with_input(
             BenchmarkId::new("scalar", sample_count),
@@ -26,7 +26,7 @@ fn bench_oscillator_scalar_vs_simd(c: &mut Criterion) {
                 });
             },
         );
-        
+
         group.bench_with_input(
             BenchmarkId::new("simd", sample_count),
             &sample_count,
@@ -40,13 +40,13 @@ fn bench_oscillator_scalar_vs_simd(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 
 fn bench_gain_staging(c: &mut Criterion) {
     let mut group = c.benchmark_group("gain_staging");
-    
+
     for &voice_count in &[4, 8, 16] {
         group.bench_with_input(
             BenchmarkId::new("scalar", voice_count),
@@ -63,7 +63,7 @@ fn bench_gain_staging(c: &mut Criterion) {
                 });
             },
         );
-        
+
         group.bench_with_input(
             BenchmarkId::new("simd", voice_count),
             &voice_count,
@@ -77,13 +77,13 @@ fn bench_gain_staging(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 
 fn bench_soft_clip(c: &mut Criterion) {
     let mut group = c.benchmark_group("soft_clip");
-    
+
     for &sample_count in &[64, 256, 512, 1024, 4096] {
         group.bench_with_input(
             BenchmarkId::new("scalar", sample_count),
@@ -98,7 +98,7 @@ fn bench_soft_clip(c: &mut Criterion) {
                 });
             },
         );
-        
+
         group.bench_with_input(
             BenchmarkId::new("simd", sample_count),
             &sample_count,
@@ -111,13 +111,13 @@ fn bench_soft_clip(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 
 fn bench_flush_denormals(c: &mut Criterion) {
     let mut group = c.benchmark_group("flush_denormals");
-    
+
     for &sample_count in &[64, 256, 512, 1024, 4096] {
         group.bench_with_input(
             BenchmarkId::new("scalar", sample_count),
@@ -135,7 +135,7 @@ fn bench_flush_denormals(c: &mut Criterion) {
                 });
             },
         );
-        
+
         group.bench_with_input(
             BenchmarkId::new("simd", sample_count),
             &sample_count,
@@ -148,13 +148,13 @@ fn bench_flush_denormals(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 
 fn bench_stereo_mixing(c: &mut Criterion) {
     let mut group = c.benchmark_group("stereo_mixing");
-    
+
     for &sample_count in &[64, 256, 512, 1024, 4096] {
         group.bench_with_input(
             BenchmarkId::new("scalar", sample_count),
@@ -165,7 +165,7 @@ fn bench_stereo_mixing(c: &mut Criterion) {
                     let right = vec![0.3; sample_count];
                     let gain = 0.8;
                     let mut output = vec![0.0; sample_count * 2];
-                    
+
                     for i in 0..sample_count {
                         output[i * 2] = left[i] * gain;
                         output[i * 2 + 1] = right[i] * gain;
@@ -174,7 +174,7 @@ fn bench_stereo_mixing(c: &mut Criterion) {
                 });
             },
         );
-        
+
         group.bench_with_input(
             BenchmarkId::new("simd", sample_count),
             &sample_count,
@@ -189,13 +189,13 @@ fn bench_stereo_mixing(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 
 fn bench_filter_scalar_vs_simd(c: &mut Criterion) {
     let mut group = c.benchmark_group("filter_processing");
-    
+
     for &sample_count in &[64, 256, 512, 1024, 4096] {
         group.bench_with_input(
             BenchmarkId::new("scalar", sample_count),
@@ -209,21 +209,21 @@ fn bench_filter_scalar_vs_simd(c: &mut Criterion) {
                         enabled: true,
                     };
                     let mut filter = StateVariableFilter::new(params, 44100.0);
-                    
+
                     for _ in 0..sample_count {
                         black_box(filter.process(0.5));
                     }
                 });
             },
         );
-        
+
         group.bench_with_input(
             BenchmarkId::new("simd", sample_count),
             &sample_count,
             |b, &sample_count| {
                 b.iter(|| {
                     let mut simd_filter = SimdStateVariableFilter::new(1000.0, 1.0, 44100.0);
-                    
+
                     for _ in 0..(sample_count / 4) {
                         let inputs = [0.5, 0.5, 0.5, 0.5];
                         black_box(simd_filter.process(inputs, FilterType::LowPass));
@@ -232,7 +232,7 @@ fn bench_filter_scalar_vs_simd(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 
