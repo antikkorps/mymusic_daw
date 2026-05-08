@@ -59,33 +59,15 @@ fn get_windows_window_handle(window: &WebviewWindow) -> Result<*mut c_void, Stri
     Ok(hwnd_ptr)
 }
 
-/// Get X11 Window handle from Tauri window
+/// Get X11 Window handle from Tauri window.
+///
+/// NOTE: native plugin GUI embedding on Linux is not yet supported. The
+/// previous implementation here was broken against current `gtk` / Tauri
+/// APIs (renamed `WidgetExt`, `gtk_window()` now returns `Result`, missing
+/// xid traversal). Stubbed out so the rest of the Tauri app compiles.
 #[cfg(target_os = "linux")]
-fn get_linux_window_handle(window: &WebviewWindow) -> Result<*mut c_void, String> {
-    use gtk::prelude::*;
-    use gtk::{Window as GtkWindow, WidgetExt};
-    
-    // Try to get the GTK window
-    if let Some(gtk_window) = window.gtk_window() {
-        // Get the X11 Window ID
-        let xid = gtk_window.window().and_then(|w| {
-            w.display().get_default_screen()
-                .and_then(|s| s.root_window())
-                .map(|rw| unsafe {
-                    // This is a simplified approach - in practice you'd need
-                    // more sophisticated X11 handling
-                    rw.xid() as *mut c_void
-                })
-        });
-        
-        if let Some(xid_ptr) = xid {
-            println!("🐧 Got Linux X11 Window handle: {:p}", xid_ptr);
-            return Ok(xid_ptr);
-        }
-    }
-    
-    // Fallback: try Wayland (more complex)
-    Err("Linux window handle extraction not fully implemented".to_string())
+fn get_linux_window_handle(_window: &WebviewWindow) -> Result<*mut c_void, String> {
+    Err("Linux plugin GUI embedding not implemented yet".to_string())
 }
 
 /// Encode window handle as base64 string for safe transport

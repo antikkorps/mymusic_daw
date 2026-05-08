@@ -3,15 +3,14 @@
 //! This module tests extreme scenarios and edge cases to ensure the DAW
 //! handles them gracefully without crashing or producing undefined behavior.
 
-use mymusic_daw::synth::filter::{StateVariableFilter, FilterParams, FilterType};
-use mymusic_daw::synth::oscillator::{SimpleOscillator, WaveformType, Oscillator};
-use mymusic_daw::synth::voice::Voice;
+use mymusic_daw::synth::envelope::{AdsrEnvelope, AdsrParams};
+use mymusic_daw::synth::filter::{FilterParams, FilterType, StateVariableFilter};
+use mymusic_daw::synth::lfo::{Lfo, LfoDestination, LfoParams};
+use mymusic_daw::synth::oscillator::{Oscillator, SimpleOscillator, WaveformType};
 use mymusic_daw::synth::voice_manager::VoiceManager;
-use mymusic_daw::synth::envelope::ADSR;
-use mymusic_daw::synth::lfo::Lfo;
 use mymusic_daw::audio::dsp_utils::OnePoleSmoother;
-use mymusic_daw::audio::format_conversion::convert_f32_to_i16;
-use std::f32::{INFINITY, NEG_INFINITY, NAN};
+use mymusic_daw::audio::format_conversion::f32_to_i16;
+use std::f32::{INFINITY, NAN, NEG_INFINITY};
 
 /// Test oscillator with extreme frequencies
 #[test]
@@ -175,58 +174,64 @@ fn test_filter_nan_inf_input() {
 fn test_adsr_extreme_parameters() {
     let sample_rate = 44100.0;
     
+    let make_adsr = |a, d, s, r| {
+        AdsrEnvelope::new(
+            AdsrParams { attack: a, decay: d, sustain: s, release: r },
+            sample_rate,
+        )
+    };
+
     // Test zero-length stages
-    let mut adsr = ADSR::new(0.0, 0.0, 0.5, 0.0, sample_rate);
+    let mut adsr = make_adsr(0.0, 0.0, 0.5, 0.0);
     adsr.note_on();
-    
+
     for _ in 0..100 {
-        let output = adsr.next_sample();
+        let output = adsr.process();
         assert!(output.is_finite());
-        assert!(output >= 0.0 && output <= 1.0);
+        assert!((0.0..=1.0).contains(&output));
     }
-    
+
     // Test very long attack
-    let mut adsr = ADSR::new(60.0, 0.0, 0.5, 0.0, sample_rate); // 60 second attack
+    let mut adsr = make_adsr(60.0, 0.0, 0.5, 0.0); // 60 second attack
     adsr.note_on();
-    
+
     for _ in 0..1000 {
-        let output = adsr.next_sample();
+        let output = adsr.process();
         assert!(output.is_finite());
-        assert!(output >= 0.0 && output <= 1.0);
+        assert!((0.0..=1.0).contains(&output));
     }
-    
-    // Test sustain at 0 and 1
-    let mut adsr = ADSR::new(0.1, 0.1, 0.0, 0.1, sample_rate); // Sustain = 0
+
+    // Test sustain at 0 and 1.
+    // Need to consume *both* attack (0.1s) and decay (0.1s) = 0.2s = sr/5 samples
+    // before the envelope settles to the sustain plateau.
+    let mut adsr = make_adsr(0.1, 0.1, 0.0, 0.1); // Sustain = 0
     adsr.note_on();
-    
-    // Run through attack and decay
-    for _ in 0..(sample_rate as usize / 10) {
-        let _ = adsr.next_sample();
+
+    for _ in 0..(sample_rate as usize / 5) {
+        let _ = adsr.process();
     }
-    
+
     // Should be at sustain level (0)
-    let output = adsr.next_sample();
-    assert!(output.abs() < 0.01); // Near zero
-    
+    let output = adsr.process();
+    assert!(output.abs() < 0.01, "sustain=0 leaked {}", output);
+
     // Test sustain = 1
-    let mut adsr = ADSR::new(0.1, 0.1, 1.0, 0.1, sample_rate);
+    let mut adsr = make_adsr(0.1, 0.1, 1.0, 0.1);
     adsr.note_on();
-    
-    // Run through attack and decay
-    for _ in 0..(sample_rate as usize / 10) {
-        let _ = adsr.next_sample();
+
+    for _ in 0..(sample_rate as usize / 5) {
+        let _ = adsr.process();
     }
-    
-    // Should be at sustain level (1)
-    let output = adsr.next_sample();
-    assert!((output - 1.0).abs() < 0.01); // Near 1
+
+    let output = adsr.process();
+    assert!((output - 1.0).abs() < 0.01, "sustain=1 returned {}", output);
 }
 
 /// Test voice manager with maximum polyphony
 #[test]
 fn test_voice_manager_max_polyphony() {
     let sample_rate = 44100.0;
-    let mut voice_manager = VoiceManager::new(16, sample_rate);
+    let mut voice_manager = VoiceManager::new(sample_rate);
     
     // Trigger more notes than available voices
     for i in 0..32 {
@@ -235,7 +240,7 @@ fn test_voice_manager_max_polyphony() {
     
     // Process audio
     for _ in 0..1000 {
-        let _ = voice_manager.process();
+        let _ = voice_manager.next_sample();
     }
     
     // Should not crash and should have exactly 16 active voices
@@ -246,14 +251,14 @@ fn test_voice_manager_max_polyphony() {
 #[test]
 fn test_voice_manager_rapid_triggering() {
     let sample_rate = 44100.0;
-    let mut voice_manager = VoiceManager::new(16, sample_rate);
+    let mut voice_manager = VoiceManager::new(sample_rate);
     
     // Rapidly trigger and release the same note
     for _ in 0..100 {
         voice_manager.note_on(60, 100);
-        let _ = voice_manager.process();
+        let _ = voice_manager.next_sample();
         voice_manager.note_off(60);
-        let _ = voice_manager.process();
+        let _ = voice_manager.next_sample();
     }
     
     // Should not crash
@@ -304,7 +309,7 @@ fn test_format_conversion_extreme_values() {
     ];
     
     for &value in &test_values {
-        let converted = convert_f32_to_i16(value);
+        let converted = f32_to_i16(value);
         // Should not crash and should produce valid i16
         assert!(converted >= -32768 && converted <= 32767);
     }
@@ -315,26 +320,38 @@ fn test_format_conversion_extreme_values() {
 fn test_lfo_extreme_rates() {
     let sample_rate = 44100.0;
     
+    let make_lfo = |rate: f32| {
+        Lfo::new(
+            LfoParams {
+                waveform: WaveformType::Sine,
+                rate,
+                depth: 1.0,
+                destination: LfoDestination::None,
+            },
+            sample_rate,
+        )
+    };
+
     // Test very slow LFO (0.1 Hz)
-    let mut lfo = Lfo::new(WaveformType::Sine, 0.1, sample_rate);
+    let mut lfo = make_lfo(0.1);
     for _ in 0..1000 {
-        let output = lfo.next_sample();
+        let output = lfo.process();
         assert!(output.is_finite());
-        assert!(output >= -1.0 && output <= 1.0);
+        assert!((-1.0..=1.0).contains(&output));
     }
-    
+
     // Test very fast LFO (1000 Hz)
-    let mut lfo = Lfo::new(WaveformType::Sine, 1000.0, sample_rate);
+    let mut lfo = make_lfo(1000.0);
     for _ in 0..1000 {
-        let output = lfo.next_sample();
+        let output = lfo.process();
         assert!(output.is_finite());
-        assert!(output >= -1.0 && output <= 1.0);
+        assert!((-1.0..=1.0).contains(&output));
     }
-    
+
     // Test LFO at Nyquist frequency
-    let mut lfo = Lfo::new(WaveformType::Sine, sample_rate / 2.0, sample_rate);
+    let mut lfo = make_lfo(sample_rate / 2.0);
     for _ in 0..1000 {
-        let output = lfo.next_sample();
+        let output = lfo.process();
         assert!(output.is_finite());
     }
 }
@@ -346,7 +363,7 @@ fn test_concurrent_access_patterns() {
     use std::thread;
     
     let sample_rate = 44100.0;
-    let voice_manager = Arc::new(Mutex::new(VoiceManager::new(16, sample_rate)));
+    let voice_manager = Arc::new(Mutex::new(VoiceManager::new(sample_rate)));
     
     // Simulate multiple threads accessing voice manager
     let mut handles = vec![];
@@ -357,7 +374,7 @@ fn test_concurrent_access_patterns() {
             for j in 0..100 {
                 let mut manager = vm.lock().unwrap();
                 manager.note_on(60 + (i * 10 + j) as u8 % 24, 100);
-                let _ = manager.process();
+                let _ = manager.next_sample();
             }
         });
         handles.push(handle);
@@ -379,16 +396,16 @@ fn test_graceful_degradation() {
     let sample_rate = 44100.0;
     
     // Create voice manager and trigger a voice
-    let mut voice_manager = VoiceManager::new(16, sample_rate);
+    let mut voice_manager = VoiceManager::new(sample_rate);
     voice_manager.note_on(60, 100);
     
     // Process to get the voice active
-    let _ = voice_manager.process();
+    let _ = voice_manager.next_sample();
     
     // The voice should handle invalid internal states gracefully
     // This test mainly ensures the system doesn't crash with edge cases
     for _ in 0..100 {
-        let _ = voice_manager.process();
+        let _ = voice_manager.next_sample();
     }
     
     // Should still have valid state
@@ -399,7 +416,7 @@ fn test_graceful_degradation() {
 #[test]
 fn test_buffer_overflow_scenarios() {
     let sample_rate = 44100.0;
-    let mut voice_manager = VoiceManager::new(16, sample_rate);
+    let mut voice_manager = VoiceManager::new(sample_rate);
     
     // Fill all voices
     for i in 0..16 {
@@ -416,7 +433,7 @@ fn test_buffer_overflow_scenarios() {
     
     // Process audio
     for _ in 0..1000 {
-        let _ = voice_manager.process();
+        let _ = voice_manager.next_sample();
     }
 }
 
