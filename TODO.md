@@ -1427,6 +1427,50 @@ Le MyMusic DAW est maintenant une application moderne et professionnelle avec un
 
 ---
 
+## Session 2026-05-08 : Réveil Tauri & SIMD audit 🔧
+
+Le DAW Tauri n'avait jamais réellement été lancé bout-en-bout depuis le merge de la branche SIMD : plusieurs régressions sourdes empêchaient l'app de démarrer ou de produire du son. Cette session a fait l'archéologie nécessaire pour le rendre jouable, et a au passage évalué l'intégration SIMD prévue en Phase 6a.
+
+### Bugs production-bloquants corrigés
+
+| Commit | Problème | Cause |
+|---|---|---|
+| `fd060cc` | `audio/simd.rs` ne marchait pas en réalité — `next_square_polyblep` figé à -1.0, `simd_flush_denormals` inversait sa logique, `next_triangle` inversé vs scalaire, "PolyBLEP" sans correction. La lib ne compilait même pas (`audio/mod.rs` ne déclarait ni `simd`/`profiling`/`memory`). | API `wide::f32x4::blend(self, t, f)` mal utilisée + modules orphelins. |
+| `b0c0c01` | `tests/edge_cases.rs` cassait `cargo test --all-targets` (référençait `ADSR`, `convert_f32_to_i16`, `Lfo::next_sample`, `VoiceManager::new(16, sr)`, `VoiceManager::process`). `src-tauri/src/window_utils.rs` linux n'importait plus contre la version actuelle de `gtk`. | Code laissé contre une API antérieure au merge. |
+| `1836aee` | Fenêtre Tauri blanche, "asset not found: index.html". | React Router 7 par défaut en SSR → ne génère pas de `index.html` statique. Tauri en a besoin. |
+| `858226d` | Aucun son depuis l'UI Tauri même quand `play_note` partait correctement vers `voice_manager.note_on`. | Le callback audio (`build_stream`) écrivait le synth dans `input_buffers` puis donnait à la chaîne plugin un `output_buffers` rempli de zéros. Sans plugin chargé, la sortie restait silencieuse. Fix : passthrough input→output avant `process_all_instances`. |
+
+### Conclusion expérimentale Phase 6a (intégration SIMD)
+
+Voir l'encart "📊 Résultats SIMD" de la section Phase 6a. Synthèse :
+
+- L'infrastructure `SimdOscillator` + `poly_blep_simd` + `reset_lane` est désormais correcte et testée (4 tests de parité scalaire ↔ SIMD passent à tol 1e-3).
+- L'intégration cross-voice par sample dans `VoiceManager::next_sample()` a été tentée puis revertée : régression mesurée de **+24 à +47 %** sur `bench_voice_manager` (1, 4, 8, 16 voix). Causes : `wide::f32x4::sin` pas plus rapide que 4 × `f32::sin`, `set_frequencies` divise chaque sample, cache thrashing 3-pass, voix inactives qui paient le SIMD.
+- L'infrastructure `SynthVoice::prepare`/`finalize` + `VoicePrepared` reste en place (sous `#[allow(dead_code)]`) comme base d'un futur refactor block-based.
+
+### Observations UX restantes (issues mineures)
+
+- [ ] **Clavier physique inactif** sur `/synthesizer-demo` : les touches `(a)(s)(d)(f)(g)(h)(j)(k)` affichées sous chaque note ne sont que décoratives. Il manque un `useEffect` qui attache un listener `keydown`/`keyup` document-level, traduit la touche en note MIDI, déclenche `playNote`/`stopNote` et gère la répétition de touche (ne pas re-déclencher tant que la touche est maintenue).
+- [ ] **Dashboard ne renvoie plus l'audio à la sortie** sans plugin : corrigé pour la sortie principale, mais le routing audio multi-nœuds (`audio::routing`) doit être audité de la même façon (un nœud sans plugin doit transmettre, pas effacer).
+
+### 🎯 Proposition prochaine étape
+
+**Option recommandée : un mini-sprint UX "le DAW joue de la musique"**, ciblé sur ce que l'utilisateur touche directement.
+
+1. **Clavier physique → MIDI** sur `/synthesizer-demo` (et plus tard `/piano-roll`) : `useKeyboardMidi()` hook qui mappe `a-k` → C4-C5, gère sustain et anti-répétition. Effort : ~30 min, gain : très visible (le synthé devient utilisable au clavier comme l'app egui historique).
+2. **Sustain global** : par défaut une voix s'arrête à `note_off`. Ajouter un toggle "Hold notes" dans la demo pour que la note continue jusqu'à un click "Stop all" — utile pour tester ADSR/LFO/filter sans devoir cliquer maintenu.
+3. **Pass-through audio cohérent** dans `audio::routing` : reprendre la même logique que le fix `858226d` au niveau du graphe — tout nœud passthrough/empty doit propager son entrée. Un test d'intégration "node sans plugin doit rendre l'audio identique à l'entrée" sécuriserait la régression à long terme.
+4. **MIDI Learn de base** sur les knobs (volume, cutoff, ADSR) : un click droit → "Learn", la prochaine CC reçue mappe le contrôle. Permet d'utiliser le DAW avec un contrôleur MIDI physique sans passer par la souris pour chaque paramètre.
+
+Pris ensemble, c'est ~1-2 jours de travail et ça sort le DAW de "je clique avec la souris" pour rejoindre l'usage réel d'un musicien (clavier + contrôleur). C'est aussi le moment naturel pour reprendre le **dogfooding** abandonné en Phase 3b — composer un morceau court (4-8 mesures) de bout en bout dans la version Tauri, et noter chaque friction.
+
+**Alternatives moins prioritaires** (si on préfère continuer sur le rail Phase 6a) :
+- Réparer `test_leak_severity_classification` (1 test ignoré restant dans `audio/memory.rs`).
+- Tests de charge production : 16 voix + 4 effets, 1000+ notes, run 24h.
+- Refactor block-based pour réessayer SIMD sur l'axe temps (cf. note Phase 6a). Gros chantier, à faire seulement quand le DAW est utilisable et qu'on a une raison réelle de gagner du CPU.
+
+---
+
 ## Backlog / Idées futures
 
 ### Features techniques
