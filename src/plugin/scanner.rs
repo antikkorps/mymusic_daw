@@ -342,7 +342,15 @@ mod tests {
 
         // Scan the file
         let descriptor = scanner.scan_file(&plugin_path).unwrap();
-        assert_eq!(descriptor.id, "test");
+        // The synthetic id is `<parent_dir>.<file_stem>` so two plugins with
+        // the same file name in different folders don't collide. We can't
+        // hard-code the parent (it's a randomly-named TempDir) so check the
+        // suffix instead.
+        assert!(
+            descriptor.id.ends_with(".test"),
+            "expected id ending with `.test`, got {:?}",
+            descriptor.id
+        );
 
         // Check that it's in the cache
         assert_eq!(scanner.get_all_plugins().len(), 1);
@@ -388,7 +396,13 @@ mod tests {
         // Test search by name
         let results = scanner.search_by_name("synth");
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, "synth");
+        // Id format is `<parent_dir>.<file_stem>`; the parent is a random
+        // TempDir name, so check the file-stem suffix.
+        assert!(
+            results[0].id.ends_with(".synth"),
+            "expected id ending with `.synth`, got {:?}",
+            results[0].id
+        );
 
         // Test search by category (all will be Effect category by default)
         let effects = scanner.search_by_category(PluginCategory::Effect);

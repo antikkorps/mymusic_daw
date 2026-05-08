@@ -30,9 +30,12 @@ dirs = "5.0"
 # SIMD dependencies
 wide = "0.7"
 
+# Used by `ProjectManager::load_project` to build a unique scratch dir
+# per call (avoids cross-thread races on a shared temp path).
+tempfile = "3.0"
+
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
-tempfile = "3.0"
 flamegraph = "0.6"
 pprof = { version = "0.13", features = ["flamegraph", "criterion"] }
 num-traits = "0.2"

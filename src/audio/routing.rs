@@ -764,10 +764,13 @@ mod tests {
     fn test_add_node() {
         let mut graph = AudioRoutingGraph::new();
         let voice_manager = VoiceManager::new(SAMPLE_RATE);
+        // `add_node` returns the id baked into the node it received — there
+        // is no auto-id assignment. (The previous expectation of `NodeId(1)`
+        // came from an earlier auto-assign API that no longer exists.)
         let node = InstrumentNode::new(NodeId(0), voice_manager);
         let node_id = graph.add_node(AudioNodeType::Instrument(node));
 
-        assert_eq!(node_id, NodeId(1));
+        assert_eq!(node_id, NodeId(0));
         assert_eq!(graph.nodes.len(), 1);
     }
 

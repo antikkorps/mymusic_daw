@@ -217,8 +217,19 @@ impl ProjectManager {
 
         let mut zip_archive = ZipArchive::new(zip_file).map_err(ProjectError::Zip)?;
 
-        // Extract to temporary directory
-        let temp_dir = std::env::temp_dir().join(format!("project_extract_{}", std::process::id()));
+        // Extract to a *unique* temporary directory. Using
+        // `project_extract_<pid>` collided whenever two `load_project` calls
+        // ran in parallel from the same process — most painfully under
+        // `cargo test` in parallel mode, where one extract was racing with
+        // another's read and producing flaky test failures. `tempfile` gives
+        // us a per-call unique path that's also auto-cleaned on drop.
+        let temp_dir_handle = tempfile::Builder::new()
+            .prefix("project_extract_")
+            .tempdir()
+            .map_err(|e| {
+                ProjectError::FileSystemError(format!("Failed to create temp directory: {}", e))
+            })?;
+        let temp_dir = temp_dir_handle.path().to_path_buf();
         zip_archive.extract(&temp_dir).map_err(ProjectError::Zip)?;
 
         // Load manifest.json
@@ -291,10 +302,9 @@ impl ProjectManager {
                 .map_err(|e| ProjectError::ValidationFailed(e.to_string()))?;
         }
 
-        // Clean up temp directory
-        std::fs::remove_dir_all(&temp_dir).map_err(|e| {
-            ProjectError::FileSystemError(format!("Failed to clean up temp directory: {}", e))
-        })?;
+        // `temp_dir_handle` cleans itself up when dropped at end of scope;
+        // dropping explicitly here makes the lifetime obvious to readers.
+        drop(temp_dir_handle);
 
         Ok(project)
     }
