@@ -6,9 +6,10 @@
 use super::oscillator::{Oscillator, SimpleOscillator, WaveformType};
 
 /// LFO modulation destination
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum LfoDestination {
     /// No modulation
+    #[default]
     None,
     /// Modulate pitch (vibrato)
     Pitch,
@@ -16,12 +17,6 @@ pub enum LfoDestination {
     Volume,
     /// Modulate filter cutoff (wah effect) - for Phase 3a
     FilterCutoff,
-}
-
-impl Default for LfoDestination {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 /// LFO parameters

@@ -163,8 +163,7 @@ impl Pattern {
         }
 
         // Re-sort after quantization
-        self.notes
-            .sort_by(|a, b| a.start.samples.cmp(&b.start.samples));
+        self.notes.sort_by_key(|n| n.start.samples);
     }
 }
 

@@ -39,10 +39,8 @@ impl MidiRecorder {
 
     pub fn process_event(&mut self, event: MidiEvent, current_sample: u64) {
         match event {
-            MidiEvent::NoteOn { note, velocity } => {
-                if velocity > 0 {
-                    self.active_notes.insert(note, (velocity, current_sample));
-                }
+            MidiEvent::NoteOn { note, velocity } if velocity > 0 => {
+                self.active_notes.insert(note, (velocity, current_sample));
             }
             MidiEvent::NoteOff { note } => {
                 if let Some((velocity, start_sample)) = self.active_notes.remove(&note) {

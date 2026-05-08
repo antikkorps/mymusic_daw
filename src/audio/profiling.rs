@@ -82,11 +82,7 @@ impl AudioProfiler {
         let max_time = self.max_callback_time.load(Ordering::Relaxed);
         let min_time = self.min_callback_time.load(Ordering::Relaxed);
 
-        let avg_time = if callback_count > 0 {
-            total_time / callback_count
-        } else {
-            0
-        };
+        let avg_time = total_time.checked_div(callback_count).unwrap_or(0);
 
         let mut operation_stats = HashMap::new();
 
