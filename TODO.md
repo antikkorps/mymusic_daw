@@ -1453,21 +1453,70 @@ Voir l'encart "📊 Résultats SIMD" de la section Phase 6a. Synthèse :
 - [ ] **Clavier physique inactif** sur `/synthesizer-demo` : les touches `(a)(s)(d)(f)(g)(h)(j)(k)` affichées sous chaque note ne sont que décoratives. Il manque un `useEffect` qui attache un listener `keydown`/`keyup` document-level, traduit la touche en note MIDI, déclenche `playNote`/`stopNote` et gère la répétition de touche (ne pas re-déclencher tant que la touche est maintenue).
 - [ ] **Dashboard ne renvoie plus l'audio à la sortie** sans plugin : corrigé pour la sortie principale, mais le routing audio multi-nœuds (`audio::routing`) doit être audité de la même façon (un nœud sans plugin doit transmettre, pas effacer).
 
-### 🎯 Proposition prochaine étape
+### 🎯 État réel et prochaine étape
 
-**Option recommandée : un mini-sprint UX "le DAW joue de la musique"**, ciblé sur ce que l'utilisateur touche directement.
+**Le faux sentiment de progrès** : Phase 4 (séquenceur) et Phase 7 (Tauri) sont marquées TERMINÉES dans ce document, mais quand on essaie de composer un morceau, ça ne marche pas. Pourquoi :
 
-1. **Clavier physique → MIDI** sur `/synthesizer-demo` (et plus tard `/piano-roll`) : `useKeyboardMidi()` hook qui mappe `a-k` → C4-C5, gère sustain et anti-répétition. Effort : ~30 min, gain : très visible (le synthé devient utilisable au clavier comme l'app egui historique).
-2. **Sustain global** : par défaut une voix s'arrête à `note_off`. Ajouter un toggle "Hold notes" dans la demo pour que la note continue jusqu'à un click "Stop all" — utile pour tester ADSR/LFO/filter sans devoir cliquer maintenu.
-3. **Pass-through audio cohérent** dans `audio::routing` : reprendre la même logique que le fix `858226d` au niveau du graphe — tout nœud passthrough/empty doit propager son entrée. Un test d'intégration "node sans plugin doit rendre l'audio identique à l'entrée" sécuriserait la régression à long terme.
-4. **MIDI Learn de base** sur les knobs (volume, cutoff, ADSR) : un click droit → "Learn", la prochaine CC reçue mappe le contrôle. Permet d'utiliser le DAW avec un contrôleur MIDI physique sans passer par la souris pour chaque paramètre.
+| Domaine | État egui (legacy) | État Tauri (cible v2.0) |
+|---|---|---|
+| Piano roll | ✅ Fonctionnel (édition, quantization, playback cursor) | ⚠️ Mock (`mockMidiNotes`) — la route `/piano-roll` n'envoie aucune commande au backend |
+| Timeline | ✅ Fonctionnelle (transport, snap, métronome) | ⚠️ Mock (`mockTracks`, `mockClips`) — purement décorative |
+| Mixer | (pas applicable, pas de multi-piste) | ⚠️ Mock (`mockTracks`, `mockMasterTrack`) |
+| Recording MIDI | ✅ `MidiRecorder` câblé | ❌ Pas exposé via Tauri |
+| Multi-piste runtime | ❌ **N'existe pas** : moteur audio = 1 `VoiceManager`, 1 `active_pattern` | ❌ Idem |
+| Export WAV/FLAC | ✅ `AudioExporter` câblé | ❌ Pas exposé via Tauri |
 
-Pris ensemble, c'est ~1-2 jours de travail et ça sort le DAW de "je clique avec la souris" pour rejoindre l'usage réel d'un musicien (clavier + contrôleur). C'est aussi le moment naturel pour reprendre le **dogfooding** abandonné en Phase 3b — composer un morceau court (4-8 mesures) de bout en bout dans la version Tauri, et noter chaque friction.
+La struct `Track` dans `src/project/types.rs` n'est qu'un format de sérialisation (id, name, color, volume, pan, mute, solo, pattern_id) — elle n'a **aucun équivalent runtime** dans le moteur audio. Composer un morceau implique aujourd'hui d'utiliser la version egui, pas Tauri.
 
-**Alternatives moins prioritaires** (si on préfère continuer sur le rail Phase 6a) :
-- Réparer `test_leak_severity_classification` (1 test ignoré restant dans `audio/memory.rs`).
-- Tests de charge production : 16 voix + 4 effets, 1000+ notes, run 24h.
-- Refactor block-based pour réessayer SIMD sur l'axe temps (cf. note Phase 6a). Gros chantier, à faire seulement quand le DAW est utilisable et qu'on a une raison réelle de gagner du CPU.
+**Conclusion** : pianoter sur `/synthesizer-demo` n'est pas du dogfooding. Pour dogfooder réellement il faut **multi-piste runtime + piano roll Tauri + timeline Tauri câblée**. C'est un sprint architectural, pas un sprint UX.
+
+#### Proposition : Phase 4.5 — "Multi-piste runtime + UI Tauri câblée sur le vrai backend"
+
+**Objectif** : que créer un morceau dans la version Tauri produise les mêmes résultats que dans la version egui historique. Pré-requis pour relancer le dogfooding et tendre vers v1.0.
+
+**Découpage suggéré** (ordre de dépendance) :
+
+1. **Multi-piste runtime côté Rust** (le gros morceau, ~1-2 sem)
+   - [ ] `MultiTrackEngine` : N voice_managers + N patterns + un mixer simple (gain/pan par piste, sum stéréo)
+   - [ ] Adapter `AudioEngine` pour router les MIDI events `Command::Midi { track_id, event }` vers la bonne piste
+   - [ ] Exposer `Command::AddTrack`, `RemoveTrack`, `SetTrackVolume`, `SetTrackPan`, `SetTrackMute`, `SetTrackSolo`, `SetTrackPattern`
+   - [ ] Tests d'intégration : 4 pistes simultanées, mute/solo, pan, mix final correct
+   - [ ] Migrer la persistance pour charger/sauver les pistes runtime (le format existe déjà dans `project/types.rs`)
+
+2. **Commands Tauri pour le multi-piste** (~2-3 j)
+   - [ ] `add_track`, `remove_track`, `set_track_volume`, `set_track_pan`, `set_track_mute`, `set_track_solo`, `get_tracks`
+   - [ ] Hook React `useTracks()` dans `ui/app/hooks/`
+   - [ ] Remplacer `mockTracks` dans `mixer.tsx` et `timeline.tsx` par les vraies pistes
+
+3. **Piano roll Tauri câblé** (~3-4 j)
+   - [ ] Commands `get_pattern(track_id)`, `set_pattern_notes(track_id, notes)`, `add_note`, `remove_note`, `move_note`
+   - [ ] Hook `usePianoRoll(trackId)` qui reflète l'état du pattern de la piste
+   - [ ] Remplacer `mockMidiNotes` — édition réelle qui se traduit en audio
+   - [ ] Sélecteur de piste actif dans la barre du piano roll
+
+4. **Timeline Tauri câblée** (~2-3 j)
+   - [ ] Affichage des patterns par piste (un bloc par pattern actif)
+   - [ ] Drag-to-resize et déplacement de pattern dans le temps (offset musical)
+   - [ ] Commands `set_pattern_position(track_id, pattern_id, position_bars)`
+   - [ ] Curseur de lecture qui suit la position du transport (déjà dispo backend)
+
+5. **Recording MIDI exposé via Tauri** (~1-2 j)
+   - [ ] Commands `start_recording(track_id)`, `stop_recording`, `get_recording_status`
+   - [ ] UI : bouton record sur chaque piste, indicateur "armed"
+
+6. **Export audio depuis Tauri** (~1 j)
+   - [ ] Commands `export_audio(path, format, options)`, `get_export_progress`
+   - [ ] UI : dialog d'export accessible depuis le menu Project
+
+**Total estimé** : ~3-4 semaines pour un Tauri qui rivalise avec l'egui legacy. **À l'issue**, lancement du vrai dogfooding : composer un morceau de 2-3 minutes (drums + synth + automation simple), noter chaque friction, itérer.
+
+**Alternative plus modeste si on veut un test rapide** : porter la version egui en headless dans un harness de test pour générer un morceau programmatiquement et l'exporter en WAV. Ne valide pas l'UX mais valide que la chaîne audio sait produire un morceau cohérent. Pas un substitut au dogfooding réel, mais un garde-fou utile avant le gros refactor.
+
+**Items hors scope de Phase 4.5 mais à garder en mémoire** :
+- Clavier physique → MIDI dans Tauri (`useKeyboardMidi`) — petit sucre UX, à faire en // pendant la phase
+- MIDI Learn sur les knobs — utile mais pas bloquant pour un morceau
+- Refactor block-based pour SIMD (Phase 6a) — à faire seulement quand le DAW est utilisable et qu'on a une raison mesurée de gagner du CPU
+- Test ignoré `test_leak_severity_classification` — dette technique mineure
 
 ---
 
